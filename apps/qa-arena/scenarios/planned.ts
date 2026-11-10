@@ -4,9 +4,6 @@
  * test, so a typo cannot reach production. Remove an id from here when its scenario is registered.
  */
 export const PLANNED_SCENARIOS = [
-  "fase3-accesibilidad",
-  "fase3-rendimiento",
-  "fase3-visual",
   "fase4-agente-explorador",
   "fase4-asistente-compras",
   "fase5-simulador-equipo",

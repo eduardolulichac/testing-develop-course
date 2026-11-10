@@ -22,6 +22,9 @@ import eval29LoginError from "./eval-2-9-login-error/scenario.ts";
 import eval29Quitar from "./eval-2-9-quitar/scenario.ts";
 import fase2Despliegue from "./fase2-despliegue/scenario.ts";
 import fase2BaseDeDatos from "./fase2-base-de-datos/scenario.ts";
+import fase3Flakiness from "./fase3-flakiness/scenario.ts";
+import fase3ServicioCaido from "./fase3-servicio-caido/scenario.ts";
+import fase3Seguridad from "./fase3-seguridad/scenario.ts";
 
 export { defects, type DefectId } from "./defects.ts";
 export { defineScenario } from "./define.ts";
@@ -51,6 +54,9 @@ export const scenarios = [
   eval29LoginError,
   fase2Despliegue,
   fase2BaseDeDatos,
+  fase3Flakiness,
+  fase3ServicioCaido,
+  fase3Seguridad,
 ].sort((a, b) => a.id.localeCompare(b.id));
 
 /**

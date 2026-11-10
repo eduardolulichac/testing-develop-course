@@ -20,7 +20,7 @@
     "@course/scenario-engine": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.6.6",
     "vitest": "^5.1.0"
   }
 }

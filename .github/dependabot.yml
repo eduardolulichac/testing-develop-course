@@ -5,6 +5,13 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # Lessons and challenge templates pin Playwright 1.64.1 as the verified version:
+      # it only changes on purpose, together with the content.
+      - dependency-name: "@playwright/test"
+      # The runtime is Node 24; major @types/node versions must match it.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       minor-and-patch:
         update-types: [minor, patch]

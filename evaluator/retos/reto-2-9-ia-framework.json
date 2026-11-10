@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "arena": {
+    "escenario": "fase1-aserciones",
+    "release": null,
+    "semilla": 1577
+  },
+  "umbral": 70,
+  "obligatorios": [
+    "suite-verde-baseline",
+    "titulos-ia-conservados",
+    "registro-ia",
+    "sin-arena-interna"
+  ],
+  "criterios": [
+    {
+      "id": "suite-verde-baseline",
+      "titulo": "Todos los tests pasan contra la Arena sin defectos",
+      "peso": 15,
+      "competencia": "criterio_ia",
+      "feedback_fallo": "Algún test generado por la IA falla contra la tienda correcta. Ejecuta la suite en local y revisa si apunta a algo que no existe.",
+      "tipo": "suite_pasa",
+      "escenario": "baseline"
+    },
+    {
+      "id": "titulos-ia-conservados",
+      "titulo": "Conservas los 6 tests generados por la IA, corregidos y en verde",
+      "peso": 10,
+      "competencia": "tecnica",
+      "feedback_fallo": "Corrige los tests de la IA, no los reemplaces: los 6 títulos deben existir y pasar contra la Arena sin defectos.",
+      "tipo": "reporte_titulos",
+      "titulos": [
+        "el login valido muestra el nombre del usuario",
+        "el login con clave incorrecta muestra un error",
+        "el detalle del producto 15 muestra nombre y precio",
+        "agregar un producto desde el detalle sube el contador",
+        "quitar el unico producto deja el carrito vacio",
+        "el cupon BIGSPEND se aplica al carrito"
+      ]
+    },
+    {
+      "id": "detecta-ia-cupon",
+      "titulo": "El test del cupón detecta el defecto de precios",
+      "peso": 20,
+      "competencia": "criterio_ia",
+      "feedback_fallo": "El test «el cupon BIGSPEND se aplica al carrito» sigue en verde con el descuento mal redondeado. Comprueba el importe del descuento, no solo que aparezca.",
+      "tipo": "suite_detecta",
+      "escenario": "eval-2-9-cupon",
+      "release": null,
+      "grep": "@ia-cupon"
+    },
+    {
+      "id": "detecta-ia-quitar",
+      "titulo": "El test de quitar el producto detecta el contador que no baja",
+      "peso": 10,
+      "competencia": "criterio_ia",
+      "feedback_fallo": "El test «quitar el unico producto deja el carrito vacio» sigue en verde cuando el contador del encabezado no baja. Comprueba también el contador, no solo el mensaje de carrito vacío.",
+      "tipo": "suite_detecta",
+      "escenario": "eval-2-9-quitar",
+      "release": null,
+      "grep": "@ia-quitar"
+    },
+    {
+      "id": "detecta-ia-login-error",
+      "titulo": "El test del login incorrecto detecta un mensaje de error alterado",
+      "peso": 10,
+      "competencia": "criterio_ia",
+      "feedback_fallo": "El test «el login con clave incorrecta muestra un error» sigue en verde cuando el texto del mensaje cambia. Comprueba el texto del error, no solo que haya uno.",
+      "tipo": "suite_detecta",
+      "escenario": "eval-2-9-login-error",
+      "release": null,
+      "grep": "@ia-login-error"
+    },
+    {
+      "id": "sin-esperas-fijas",
+      "titulo": "Sin esperas fijas",
+      "peso": 5,
+      "competencia": "criterio_ia",
+      "feedback_fallo": "Quita los `waitForTimeout`: espera a un elemento o a un resultado concreto, no a un número de segundos.",
+      "tipo": "estatico",
+      "regla": "sin-esperas-fijas"
+    },
+    {
+      "id": "localizadores-por-rol",
+      "titulo": "Localizadores accesibles, sin selectores CSS",
+      "peso": 5,
+      "competencia": "criterio_ia",
+      "feedback_fallo": "Hay selectores CSS o XPath. Usa getByRole, getByLabel o getByTestId.",
+      "tipo": "estatico",
+      "regla": "localizadores-por-rol"
+    },
+    {
+      "id": "sin-credenciales-en-codigo",
+      "titulo": "Sin contraseñas escritas en el código",
+      "peso": 5,
+      "competencia": "criterio_ia",
+      "feedback_fallo": "Hay una contraseña de práctica escrita en el código. Léela de `process.env.USUARIO_CLAVE`.",
+      "tipo": "estatico",
+      "regla": "sin-credenciales-en-codigo"
+    },
+    {
+      "id": "specs-sin-localizadores",
+      "titulo": "Los tests no tocan la página directamente",
+      "peso": 10,
+      "competencia": "tecnica",
+      "feedback_fallo": "Los specs no deben tocar la página directamente: mueve los localizadores y las acciones a tus Page Objects.",
+      "tipo": "estatico",
+      "regla": "pom-specs-sin-localizadores"
+    },
+    {
+      "id": "sin-duplicacion",
+      "titulo": "Sin bloques de código repetidos",
+      "peso": 10,
+      "competencia": "tecnica",
+      "feedback_fallo": "Hay bloques de 8 líneas repetidos (ver evidencia). Extráelos a un método de un Page Object.",
+      "tipo": "estatico",
+      "regla": "sin-duplicacion"
+    },
+    {
+      "id": "registro-ia",
+      "titulo": "Registras tu revisión de la IA en ia/registro.yaml",
+      "peso": 0,
+      "competencia": "criterio_ia",
+      "feedback_fallo": "Registra en `ia/registro.yaml` al menos 3 usos con archivo existente, y al menos uno con decisión «modifico» o «rechazo» y su motivo.",
+      "tipo": "informe",
+      "formato": "registro-ia-v1",
+      "archivo": "ia/registro.yaml",
+      "min": 3
+    },
+    {
+      "id": "sin-arena-interna",
+      "titulo": "La suite no usa los endpoints internos de la Arena",
+      "peso": 0,
+      "competencia": "autonomia",
+      "feedback_fallo": "Los tests no deben llamar a /__arena ni leer variables ARENA_*: prueba la tienda como lo haría un usuario.",
+      "tipo": "estatico",
+      "regla": "sin-arena-interna"
+    }
+  ]
+}

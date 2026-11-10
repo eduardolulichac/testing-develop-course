@@ -1,0 +1,70 @@
+name: CI
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Levantar la Arena
+        run: docker compose -f arena/compose.yml up -d --wait
+      - name: Suite completa
+        env:
+          USUARIO_EMAIL: ana@arena.test
+          USUARIO_CLAVE: ${{ secrets.USUARIO_CLAVE }}
+        run: npx playwright test
+      - name: Publicar el informe
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: informe-playwright
+          path: playwright-report
+      - name: Apagar la Arena
+        if: always()
+        run: docker compose -f arena/compose.yml down -v
+
+  desplegar-staging:
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    if: ${{ github.event_name == 'push' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Levantar la Arena
+        run: docker compose -f arena/compose.yml up -d --wait
+      - name: Desplegar el release v2.1.0
+        run: >-
+          curl -fsS -X PUT http://127.0.0.1:18080/__arena/scenario
+          -H 'content-type: application/json'
+          -d '{"id":"fase2-despliegue","release":"v2.1.0"}'
+      - name: Pruebas de humo
+        env:
+          USUARIO_EMAIL: ana@arena.test
+          USUARIO_CLAVE: ${{ secrets.USUARIO_CLAVE }}
+        run: npx playwright test --grep @smoke
+      - name: Publicar el informe de humo
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: informe-humo
+          path: playwright-report
+      - name: Apagar la Arena
+        if: always()
+        run: docker compose -f arena/compose.yml down -v

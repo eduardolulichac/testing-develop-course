@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "arena": {
+    "escenario": "fase2-despliegue",
+    "release": "v2.1.0",
+    "semilla": 2601
+  },
+  "umbral": 70,
+  "obligatorios": [
+    "suite-verde-baseline",
+    "ci-dispara-en-pr",
+    "ci-sin-pull-request-target",
+    "sin-arena-interna"
+  ],
+  "criterios": [
+    {
+      "id": "suite-verde-baseline",
+      "titulo": "Todos los tests pasan contra la Arena sin defectos",
+      "peso": 10,
+      "competencia": "tecnica",
+      "feedback_fallo": "Un test que falla contra la versión correcta no es fiable. Ejecuta la suite en local contra la Arena sana.",
+      "tipo": "suite_pasa",
+      "escenario": "baseline"
+    },
+    {
+      "id": "humo-etiquetado",
+      "titulo": "Tienes al menos 3 pruebas de humo con @smoke",
+      "peso": 5,
+      "competencia": "tecnica",
+      "feedback_fallo": "Escribe al menos tres tests con @smoke en el título: catálogo, inicio de sesión y compra.",
+      "tipo": "reporte_etiquetas",
+      "etiqueta": "smoke",
+      "min": 3
+    },
+    {
+      "id": "humo-detecta-despliegue",
+      "titulo": "Tus pruebas de humo detectan el despliegue roto",
+      "peso": 15,
+      "competencia": "analisis",
+      "feedback_fallo": "Tras el despliegue del viernes, tus pruebas de humo siguen en verde. ¿Cubren el flujo de compra completo?",
+      "tipo": "suite_detecta",
+      "escenario": "fase2-despliegue",
+      "release": "v2.1.0",
+      "grep": "@smoke"
+    },
+    {
+      "id": "ci-dispara-en-pr",
+      "titulo": "Tu CI se ejecuta en cada pull request a main",
+      "peso": 5,
+      "competencia": "tecnica",
+      "feedback_fallo": "Ningún workflow tuyo se ejecuta con pull_request hacia main. Añade `on: pull_request` a .github/workflows/ci.yml.",
+      "tipo": "estatico",
+      "regla": "ci-dispara-en-pr"
+    },
+    {
+      "id": "ci-sin-pull-request-target",
+      "titulo": "Ningún workflow usa pull_request_target",
+      "peso": 5,
+      "competencia": "tecnica",
+      "feedback_fallo": "pull_request_target corre código de forks con permisos y secretos. Usa pull_request.",
+      "tipo": "estatico",
+      "regla": "ci-sin-pull-request-target"
+    },
+    {
+      "id": "ci-permisos-minimos",
+      "titulo": "Permisos mínimos en tus workflows",
+      "peso": 5,
+      "competencia": "tecnica",
+      "feedback_fallo": "Declara `permissions: contents: read` en la raíz de cada workflow y no des permisos de escritura.",
+      "tipo": "estatico",
+      "regla": "ci-permisos-minimos"
+    },
+    {
+      "id": "ci-actionlint",
+      "titulo": "Tus workflows pasan actionlint",
+      "peso": 5,
+      "competencia": "tecnica",
+      "feedback_fallo": "actionlint encontró problemas en tus workflows. Ejecútalo en local y corrige cada hallazgo.",
+      "tipo": "estatico",
+      "regla": "ci-actionlint"
+    },
+    {
+      "id": "ci-artefactos-siempre",
+      "titulo": "El informe se publica aunque la suite falle",
+      "peso": 10,
+      "competencia": "comunicacion",
+      "feedback_fallo": "Sube playwright-report con actions/upload-artifact y `if: ${{ !cancelled() }}` para que el informe esté siempre disponible.",
+      "tipo": "estatico",
+      "regla": "ci-artefactos-siempre"
+    },
+    {
+      "id": "ci-secretos",
+      "titulo": "Las credenciales de las pruebas vienen de secrets",
+      "peso": 5,
+      "competencia": "tecnica",
+      "feedback_fallo": "El paso que ejecuta las pruebas debe recibir USUARIO_CLAVE desde `${{ secrets.USUARIO_CLAVE }}`, nunca en claro.",
+      "tipo": "estatico",
+      "regla": "ci-secretos"
+    },
+    {
+      "id": "sin-credenciales-en-codigo",
+      "titulo": "Sin contraseñas de práctica en el repositorio",
+      "peso": 5,
+      "competencia": "tecnica",
+      "feedback_fallo": "Hay una contraseña de práctica escrita en el código o en un workflow. Léela de variables de entorno o de secrets.",
+      "tipo": "estatico",
+      "regla": "sin-credenciales-en-codigo"
+    },
+    {
+      "id": "ci-humo-tras-despliegue",
+      "titulo": "Las pruebas de humo corren tras el despliegue a staging",
+      "peso": 10,
+      "competencia": "autonomia",
+      "feedback_fallo": "Necesitas un job con `environment` que ejecute `--grep @smoke` y dependa (needs) del job que corre la suite completa.",
+      "tipo": "estatico",
+      "regla": "ci-humo-tras-despliegue"
+    },
+    {
+      "id": "ci-rama-protegida",
+      "titulo": "La rama main exige que tu CI pase",
+      "peso": 10,
+      "competencia": "autonomia",
+      "feedback_fallo": "La rama main no exige que tu CI pase antes de fusionar. Configura una regla con el check de tu job de tests.",
+      "tipo": "estatico",
+      "regla": "ci-rama-protegida"
+    },
+    {
+      "id": "ci-ejecucion-real",
+      "titulo": "Tu CI ya se ejecutó de verdad en un pull request",
+      "peso": 10,
+      "competencia": "autonomia",
+      "feedback_fallo": "GitHub no muestra una ejecución de tu CI en un pull request con el job de pruebas en verde. Abre un PR, espera a que el job de tests termine con éxito y vuelve a enviar. No hace falta que el commit sea el mismo.",
+      "tipo": "estatico",
+      "regla": "ci-ejecucion-real"
+    },
+    {
+      "id": "sin-arena-interna",
+      "titulo": "La suite no usa los endpoints internos de la Arena",
+      "peso": 0,
+      "competencia": "autonomia",
+      "feedback_fallo": "Los tests no deben llamar a /__arena ni leer variables ARENA_*: el despliegue se simula en el workflow, no en la suite.",
+      "tipo": "estatico",
+      "regla": "sin-arena-interna"
+    }
+  ]
+}

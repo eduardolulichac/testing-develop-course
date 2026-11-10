@@ -1,0 +1,22 @@
+name: Error en una lección
+description: Errata, enlace roto, explicación confusa o un fragmento de código que no corre
+labels: [contenido]
+body:
+  - type: input
+    id: modulo
+    attributes:
+      label: Módulo y sección
+      description: Por ejemplo "1.2, paso 3"
+    validations:
+      required: true
+  - type: textarea
+    id: que-pasa
+    attributes:
+      label: Qué pasa y qué esperabas
+    validations:
+      required: true
+  - type: textarea
+    id: entorno
+    attributes:
+      label: Tu entorno
+      description: Sistema operativo, versión de Node y de Playwright si aplica

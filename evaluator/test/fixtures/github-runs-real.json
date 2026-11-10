@@ -1,0 +1,54 @@
+{
+  "runs": [
+    {
+      "id": 42490106998,
+      "path": ".github/workflows/caller.yml",
+      "event": "pull_request",
+      "headSha": "9c88b2b0cb97ef865bb7393552b5c45754807392",
+      "createdAt": "2026-11-08T14:30:11Z",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "name": "llamada / tests",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 42490106927,
+      "path": ".github/workflows/matrix.yml",
+      "event": "pull_request",
+      "headSha": "9c88b2b0cb97ef865bb7393552b5c45754807392",
+      "createdAt": "2026-11-08T14:30:11Z",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "name": "tests (1)",
+          "conclusion": "success"
+        },
+        {
+          "name": "tests (2)",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 42490106929,
+      "path": ".github/workflows/simple.yml",
+      "event": "pull_request",
+      "headSha": "9c88b2b0cb97ef865bb7393552b5c45754807392",
+      "createdAt": "2026-11-08T14:30:11Z",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "name": "tests",
+          "conclusion": "success"
+        },
+        {
+          "name": "skipped-job",
+          "conclusion": "skipped"
+        }
+      ]
+    }
+  ]
+}

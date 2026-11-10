@@ -1,0 +1,168 @@
+ejercicios:
+  - slug: ej-2-9-compilar-primero
+    tipo: guiado
+    titulo: "Deja que el compilador encuentre lo que la IA inventó"
+    pistas:
+      - "Crea `pages/ia/CatalogoPage.ts` y `tests/ia/catalogo.spec.ts` con el código de la sección 3, instala TypeScript con `npm install --save-exact --save-dev typescript@6.0.3` y guarda el `tsconfig.json` del paso 3."
+      - "Ejecuta `npx tsc` y lee el mensaje: tiene el archivo, la línea y la columna, el código del error (TS2339) y el nombre de la propiedad que no existe en el tipo `Page`."
+      - "Ejecuta también el test con Playwright (`npx playwright test tests/ia/catalogo.spec.ts`). Compara: ¿cuándo aparece el problema, y qué mensaje recibes?"
+    solucion: |
+      `npx tsc` imprime `pages/ia/CatalogoPage.ts(9,21): error TS2339: Property 'waitForLoadComplete' does not exist on type 'Page'.` y termina con un código distinto de cero. Playwright no ha comprobado los tipos: ejecuta el test hasta llegar a esa línea y falla con `TypeError: this.page.waitForLoadComplete is not a function`. El compilador avisa de todos los métodos inventados de una vez y sin abrir el navegador; Playwright, de uno en uno y al llegar a ellos. Compilar no encuentra el botón «Filtrar» inventado, porque un localizador es solo un texto: eso lo encuentra la ejecución.
+  - slug: ej-2-9-escaner-framework
+    tipo: guiado
+    titulo: "Clasifica las señales de una búsqueda rápida"
+    pistas:
+      - "Ejecuta `grep -rnE \"waitForTimeout|\\.locator\\(|nth|password|localhost\" pages tests` y anota cada línea que devuelve: archivo, línea y qué señal es."
+      - "Para la espera fija, pregúntate qué condición real esperas (que aparezca la lista filtrada). Para el selector por posición, mira en la página real cuál es el contenedor de la lista y su rol."
+      - 'El localizador accesible suele ser una combinación: `getByTestId("product-list")` para acotar y `getByRole("listitem")` para los elementos. Para esperar el resultado, usa una aserción como `toHaveCount`.'
+    solucion: |
+      Sobre `pages/ia/CatalogoPage.ts` devuelve dos líneas: la 15 (`waitForTimeout(2000)`, espera fija) y la 19 (`locator("ul.grid > li:nth-child(1)")`, selector CSS por posición). Sustituciones: la espera se elimina y se reemplaza por una aserción sobre el resultado, `await expect(catalogo.productos).toHaveCount(1)`; el selector pasa a `page.getByTestId("product-list").getByRole("listitem")`, y `primerProducto` ya no hace falta porque se usa `.first()` sobre ese localizador. Ninguna de las dos depende de la clase de estilo `grid` ni de la posición.
+  - slug: ej-2-9-verificar-datos
+    tipo: guiado
+    titulo: "Contrasta los datos generados con la tienda"
+    pistas:
+      - "Guarda el archivo `datos/productos.json` de la sección 3 y el script `scripts/verificar-datos.mts` del paso 6. Ejecútalo con `node scripts/verificar-datos.mts` y la Arena levantada."
+      - "El script dice qué producto difiere y en qué campo. Para ver los valores reales, abre `/api/products?limit=100` en tu navegador o con `curl`: cada producto tiene `id`, `name`, `priceCents` y `category`."
+      - "Corrige el archivo con los valores de la API (y quita lo que no existe, o cámbialo por un producto real). Vuelve a ejecutar el script hasta que imprima `datos coinciden con la tienda` y comprueba el código de salida con `echo $?`."
+    solucion: |
+      Con los datos del ejemplo, el script imprime `id 24 (Atlas mundial): difiere -> precio 2140` y `id 31 (Lámpara LED): NO EXISTE en la tienda`, y termina con código 1. Se corrige el precio de «Atlas mundial» a `2140` y se sustituye el producto 31 por uno que exista en la API (los ids que devuelve `/api/products?limit=100` en la semilla incluyen 1, 4, 10, 13, 14, 15, 16, 17, 19, 21, 22 y 24). Con los datos reales, el script imprime `datos coinciden con la tienda` y `echo $?` da `0`. Cuenta lo que encontraste en tu tabla de medición como errores hallados.
+  - slug: ej-2-9-refactor-detecta
+    tipo: guiado
+    titulo: "Comprueba que el refactor sigue detectando el defecto"
+    escenario: fase1-compra
+    pistas:
+      - "Guarda el test original (`tests/cupon-original.spec.ts`) y el refactor de la IA (`pages/ia/CarritoPage.ts` y `tests/ia/cupon.spec.ts`). Ejecuta `npx playwright test cupon` con `baseline`: los dos pasan."
+      - "Activa `fase1-compra`, reinicia la Arena y ejecuta de nuevo. Compara cuál falla y cuál no, y busca la diferencia entre `dblclick()` y `click()` en el código del refactor."
+      - "Añade a `CarritoPage` un método que haga `dblclick()` sobre «Aplicar» y úsalo en el test. Vuelve a ejecutar con `fase1-compra` y con `baseline`; al terminar, devuelve la Arena a `baseline`."
+    solucion: |
+      Con `fase1-compra`, el original falla con `Expected: "-$5.00"` y `Received: "-$10.00"` (el doble clic aplica el cupón dos veces) y el refactor pasa, porque `aplicarCupon` hace un solo `click()`: el test conserva el título pero dejó de probar el doble clic. La corrección es un método `aplicarCuponConDobleClic(codigo)` que hace `fill` y `dblclick()` sobre «Aplicar», y el test lo usa. Con `fase1-compra` falla igual que el original; con `baseline` pasa. Para volver: `curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"baseline"}'`.
+  - slug: ej-2-9-medir-y-registrar
+    tipo: guiado
+    titulo: "Mide tus tres entregas y registra tus decisiones"
+    pistas:
+      - "Crea `ia/medicion.md` con una fila por entrega (Page Object, datos, refactor) y las columnas manual, pedir, revisar, corregir, ahorro, hallados y escapados. Calcula `ahorro = manual - (pedir + revisar + corregir)`."
+      - "Crea `ia/registro.yaml` con una entrada por archivo: `archivo` (una ruta que exista), `pedido` (al menos 20 caracteres), `decision` (`acepto`, `modifico` o `rechazo`) y `motivo`."
+      - "Cada `motivo` debe decir qué estaba mal y cómo lo comprobaste (por ejemplo, «con tsc», «con el escenario fase1-compra»). Revisa que ninguna entrada contenga claves o datos personales."
+    solucion: |
+      Una tabla posible (con tus propios números):
+
+      ```markdown
+      | Uso            | Manual | Pedir | Revisar | Corregir | Ahorro | Hallados | Escapados |
+      | -------------- | -----: | ----: | ------: | -------: | -----: | -------: | --------: |
+      | Page Object    |  25min |  2min |   10min |    12min |   1min |        4 |         0 |
+      | Datos          |  15min |  2min |    6min |     5min |   2min |        2 |         0 |
+      | Refactor cupón |  20min |  2min |   14min |     6min |  -2min |        1 |         0 |
+      ```
+
+      Y el registro con las tres entradas de la sección 3, cada una con `decision: modifico` y un motivo concreto. Un ahorro negativo es un dato válido: la IA te costó más de lo que ahorró en esa tarea. Lo importante es que los números sean tuyos y los motivos, verificables.
+  - slug: reto-2-9-ia-framework
+    tipo: reto
+    titulo: "Revisa, corrige y registra código de framework generado por IA"
+    escenario: fase1-aserciones
+    criterio_aprobacion:
+      version: 1
+      arena: { escenario: fase1-aserciones, release: null, semilla: 1577 }
+      umbral: 70
+      obligatorios: [suite-verde-baseline, titulos-ia-conservados, registro-ia, sin-arena-interna]
+      criterios:
+        - id: suite-verde-baseline
+          titulo: "Todos los tests pasan contra la Arena sin defectos"
+          tipo: suite_pasa
+          escenario: baseline
+          peso: 15
+          competencia: criterio_ia
+          feedback_fallo: "Algún test generado por la IA falla contra la tienda correcta. Ejecuta la suite en local y revisa si apunta a algo que no existe."
+        - id: titulos-ia-conservados
+          titulo: "Conservas los 6 tests generados por la IA, corregidos y en verde"
+          tipo: reporte_titulos
+          titulos:
+            - "el login valido muestra el nombre del usuario"
+            - "el login con clave incorrecta muestra un error"
+            - "el detalle del producto 15 muestra nombre y precio"
+            - "agregar un producto desde el detalle sube el contador"
+            - "quitar el unico producto deja el carrito vacio"
+            - "el cupon BIGSPEND se aplica al carrito"
+          peso: 10
+          competencia: tecnica
+          feedback_fallo: "Corrige los tests de la IA, no los reemplaces: los 6 títulos deben existir y pasar contra la Arena sin defectos."
+        # Detection is measured PER AI TEST (review A2): each criterion runs only the tests that carry
+        # the `@ia-*` tag of one of the 6 AI tests, so emptying a test (or keeping its title and
+        # nothing else) leaves its criterion at fail. The tags come with the template.
+        - id: detecta-ia-cupon
+          titulo: "El test del cupón detecta el defecto de precios"
+          tipo: suite_detecta
+          escenario: eval-2-9-cupon
+          release: null
+          grep: "@ia-cupon"
+          peso: 20
+          competencia: criterio_ia
+          feedback_fallo: "El test «el cupon BIGSPEND se aplica al carrito» sigue en verde con el descuento mal redondeado. Comprueba el importe del descuento, no solo que aparezca."
+        - id: detecta-ia-quitar
+          titulo: "El test de quitar el producto detecta el contador que no baja"
+          tipo: suite_detecta
+          escenario: eval-2-9-quitar
+          release: null
+          grep: "@ia-quitar"
+          peso: 10
+          competencia: criterio_ia
+          feedback_fallo: "El test «quitar el unico producto deja el carrito vacio» sigue en verde cuando el contador del encabezado no baja. Comprueba también el contador, no solo el mensaje de carrito vacío."
+        - id: detecta-ia-login-error
+          titulo: "El test del login incorrecto detecta un mensaje de error alterado"
+          tipo: suite_detecta
+          escenario: eval-2-9-login-error
+          release: null
+          grep: "@ia-login-error"
+          peso: 10
+          competencia: criterio_ia
+          feedback_fallo: "El test «el login con clave incorrecta muestra un error» sigue en verde cuando el texto del mensaje cambia. Comprueba el texto del error, no solo que haya uno."
+        - id: sin-esperas-fijas
+          titulo: "Sin esperas fijas"
+          tipo: estatico
+          regla: sin-esperas-fijas
+          peso: 5
+          competencia: criterio_ia
+          feedback_fallo: "Quita los `waitForTimeout`: espera a un elemento o a un resultado concreto, no a un número de segundos."
+        - id: localizadores-por-rol
+          titulo: "Localizadores accesibles, sin selectores CSS"
+          tipo: estatico
+          regla: localizadores-por-rol
+          peso: 5
+          competencia: criterio_ia
+          feedback_fallo: "Hay selectores CSS o XPath. Usa getByRole, getByLabel o getByTestId."
+        - id: sin-credenciales-en-codigo
+          titulo: "Sin contraseñas escritas en el código"
+          tipo: estatico
+          regla: sin-credenciales-en-codigo
+          peso: 5
+          competencia: criterio_ia
+          feedback_fallo: "Hay una contraseña de práctica escrita en el código. Léela de `process.env.USUARIO_CLAVE`."
+        - id: specs-sin-localizadores
+          titulo: "Los tests no tocan la página directamente"
+          tipo: estatico
+          regla: pom-specs-sin-localizadores
+          peso: 10
+          competencia: tecnica
+          feedback_fallo: "Los specs no deben tocar la página directamente: mueve los localizadores y las acciones a tus Page Objects."
+        - id: sin-duplicacion
+          titulo: "Sin bloques de código repetidos"
+          tipo: estatico
+          regla: sin-duplicacion
+          peso: 10
+          competencia: tecnica
+          feedback_fallo: "Hay bloques de 8 líneas repetidos (ver evidencia). Extráelos a un método de un Page Object."
+        - id: registro-ia
+          titulo: "Registras tu revisión de la IA en ia/registro.yaml"
+          tipo: informe
+          formato: registro-ia-v1
+          archivo: ia/registro.yaml
+          min: 3
+          peso: 0
+          competencia: criterio_ia
+          feedback_fallo: "Registra en `ia/registro.yaml` al menos 3 usos con archivo existente, y al menos uno con decisión «modifico» o «rechazo» y su motivo."
+        - id: sin-arena-interna
+          titulo: "La suite no usa los endpoints internos de la Arena"
+          tipo: estatico
+          regla: sin-arena-interna
+          peso: 0
+          competencia: autonomia
+          feedback_fallo: "Los tests no deben llamar a /__arena ni leer variables ARENA_*: prueba la tienda como lo haría un usuario."

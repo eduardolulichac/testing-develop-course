@@ -1,0 +1,41 @@
+ejercicios:
+  - slug: ej-1-7-puntuar-cinco-casos
+    tipo: guiado
+    titulo: "Calcula el puntaje de cinco casos"
+    pistas:
+      - "Cambia cada nivel por su número: Alto o Alta es 3, Medio o Media es 2, Bajo o Baja es 1."
+      - "La fórmula es riesgo por frecuencia, más estabilidad, menos costo. El costo resta."
+      - "Ejemplo con C29: riesgo 3 por frecuencia 3 es 9; más estabilidad 3 es 12; menos costo 1 es 11. Haz lo mismo con los otros cuatro."
+    solucion: "C29 = 3x3 + 3 - 1 = 11. C01 = 2x3 + 3 - 1 = 8. C22 = 2x3 + 3 - 1 = 8. C51 = 3x1 + 2 - 3 = 2. C78 = 2x1 + 1 - 3 = 0. Orden: C29, luego C01 y C22 empatados en 8, luego C51 y por último C78. Los dos últimos no se automatizan ahora: C51 necesita dos clientes y una compra, y C78 devuelve texto libre."
+  - slug: ej-1-7-ui-o-api
+    tipo: guiado
+    titulo: "Elige la capa: interfaz o API"
+    pistas:
+      - "Pregúntate si el defecto se detecta sin abrir el navegador. Una regla de negocio con resultado exacto suele poder comprobarse pidiéndole el dato al servidor."
+      - "Pregúntate también qué ve la persona: si lo que importa es lo que aparece en pantalla de principio a fin, necesitas la interfaz."
+      - "Dos de los cuatro casos son reglas del servidor (límite de stock y mínimo del cupón). Los otros dos son lo que ve el cliente al comprar."
+    solucion: "C35 por API: es una regla de stock con un código exacto (409). C43 por API: es el mínimo del cupón, con respuesta exacta y sin pantalla. C38 por UI: lo que importa es que la persona vea bien el subtotal, el envío y el total. C54 por UI: es el recorrido completo de compra, que solo la interfaz recorre de principio a fin."
+  - slug: ej-1-7-que-no-automatizar
+    tipo: guiado
+    titulo: "Decide qué casos no se automatizan ahora"
+    pistas:
+      - "Busca los casos con costo Alto o estabilidad Baja. Esos son los que más dolor dan al mantenerlos."
+      - "Hay casos que dependen del reloj (esperar o mover la hora), del instante exacto de dos clics, de un texto que puede variar o de una captura de pantalla."
+      - "Uno de los seis es barato y estable, solo que de poco valor. No necesita justificar costo, sino prioridad."
+    solucion: "No ahora: C27 (hay que esperar 24 h o mover el reloj; se cubre comprobando que la API informa 24 h y probando la caducidad a mano de vez en cuando), C53 (exige controlar el reloj; se cubre con una prueba de integración en la Fase 2), C66 (inestable en UI; se cubre con una prueba de API con peticiones simultáneas y revisión manual), C78 (texto libre; se prueba a mano y con técnicas de IA de la Fase 4) y C80 (una captura cambia con cualquier ajuste visual; se revisa a mano en modo móvil). C13 es barato y estable, pero de riesgo bajo y poco uso: puntaje 4, no es prioridad. Si sobra tiempo se agrega al final."
+  - slug: ej-1-7-probar-y-justificar
+    tipo: guiado
+    titulo: "Prueba C48 a mano y justifícalo"
+    pistas:
+      - "Entra a la tienda como ana@arena.test (contraseña de práctica Cliente123!), abre «Auriculares BT» y usa «Agregar al carrito». Luego ve al carrito."
+      - "Escribe WELCOME10 en el campo del cupón y presiona «Aplicar». Anota el descuento y el total. Presiona «Aplicar» otra vez y compáralos."
+      - "Completa la plantilla: automatizo o no, por qué (riesgo y frecuencia), costo, estabilidad, capa."
+    solucion: "Con un producto de $9.90, el descuento es -$0.99 y el total $13.91 después de aplicar el cupón, y siguen igual después de aplicarlo de nuevo: no se duplica. Justificación: Automatizo C48 porque un cupón que se acumula cuesta dinero (riesgo alto) y los clientes con cupón son frecuentes (media). El costo es bajo (un producto y dos peticiones) y es estable porque la regla de un solo cupón por carrito no cambia. Lo cubro por API, y la UI solo comprueba que el descuento mostrado coincide."
+  - slug: ej-1-7-etiquetar-en-codigo
+    tipo: guiado
+    titulo: "Deja rastro de tus decisiones en el código"
+    pistas:
+      - "El ID va al principio del título del test. La etiqueta se pasa como segundo argumento: un objeto con la clave tag."
+      - "Para un test elegido pero sin escribir existe test.fixme, y para uno descartado a propósito, test.skip. Los dos se escriben igual que test."
+      - "Para listar sin ejecutar usa npx playwright test --list y filtra con --grep @smoke."
+    solucion: 'Un archivo con tres tests: test("C14 login válido ...", { tag: "@smoke" }, async ({ page }) => { ... }), test.fixme("C54 pago aprobado ...", { tag: "@smoke" }, async ({ page }) => { ... }) y test.skip("C80 captura ... (descartado: costo alto, baja estabilidad)", async () => {}). El comando npx playwright test --list --grep @smoke muestra solo C14 y C54, porque C80 no lleva la etiqueta. Al ejecutar sin filtro, C14 pasa y los otros dos aparecen como omitidos.'

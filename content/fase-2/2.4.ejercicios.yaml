@@ -1,0 +1,55 @@
+ejercicios:
+  - slug: ej-2-4-sesion-guardada
+    tipo: guiado
+    titulo: "Guarda la sesión de Ana una sola vez"
+    escenario: fase2-e2e-combinado
+    pistas:
+      - "Necesitas un test especial que no prueba nada, solo prepara: `tests/auth.setup.ts`. Inicia sesión por API con la ayuda `loginPorApi`, abre `/` para tener el origen de la tienda y escribe el token en `localStorage` con la clave `arena.token`."
+      - 'Guarda el estado con `await page.context().storageState({ path: SESION_ANA })` y declara en `playwright.config.ts` un proyecto `setup` (con `testMatch: /auth\.setup\.ts/`) del que dependa el proyecto de tus tests mediante `dependencies: ["setup"]`.'
+      - 'En el test usa `test.use({ storageState: SESION_ANA })`, abre la página con `abrir(page, "/orders")` y comprueba el encabezado con `getByRole("heading", { name: "Mis pedidos" })` y el nombre con `getByTestId("user-name")`.'
+    solucion: 'En `tests/auth.setup.ts`: `const token = await loginPorApi(request)`, `await page.goto("/")`, `await page.evaluate(([clave, valor]) => localStorage.setItem(clave, valor), [CLAVE_TOKEN, token])` y `await page.context().storageState({ path: SESION_ANA })`. En la configuración, `projects: [{ name: "setup", testMatch: /auth\.setup\.ts/ }, { name: "tienda", testIgnore: /auth\.setup\.ts/, dependencies: ["setup"] }]`. El test: `test.use({ storageState: SESION_ANA })`, `await abrir(page, "/orders")`, `await expect(page.getByRole("heading", { name: "Mis pedidos" })).toBeVisible()` y `await expect(page.getByTestId("user-name")).toHaveText("Ana Cliente")`. Pasa en unos 150 ms y sin tocar `/login`: la sesión llega desde el archivo `.auth/ana.json`.'
+  - slug: ej-2-4-carrito-por-api
+    tipo: guiado
+    titulo: "Prepara el carrito por API y compara tiempos"
+    escenario: fase2-e2e-combinado
+    pistas:
+      - "Importa `test` y `expect` de `../support/fixtures` (no de `@playwright/test`) para tener el fixture `api`, que ya entrega el cliente de Ana con el carrito vacío. No olvides `test.use({ storageState: SESION_ANA })` para que la página también tenga sesión."
+      - "La ayuda `prepararCarrito(api, productId, cantidad, cupon?)` añade el producto por `POST /api/cart/items`. «Auriculares BT» es el producto 1."
+      - 'Abre `/cart` con `abrir` y comprueba `getByTestId("cart-subtotal")`. Para comparar, escribe el mismo test con `iniciarSesion` y `agregarProducto(page, 2, 1)` y mira la duración de cada uno en la salida de Playwright.'
+    solucion: 'Con `test.use({ storageState: SESION_ANA })`: `test("subtotal", async ({ page, api }) => { await prepararCarrito(api, 1, 2); await abrir(page, "/cart"); await expect(page.getByTestId("cart-subtotal")).toHaveText("$19.80"); })`. Con `fase2-e2e-combinado` dura unos 150 ms; la versión por pantalla (`iniciarSesion` + `agregarProducto` + `abrir`) dura cerca de 2 segundos, casi todos del login lento. El resultado de la verificación es el mismo, y por eso la preparación por API no pierde cobertura.'
+  - slug: ej-2-4-requisitos
+    tipo: guiado
+    titulo: "Dos requisitos, dos tests y una contradicción"
+    escenario: fase2-e2e-combinado
+    pistas:
+      - "Abre `/requirements` y lee REQ-3 («...calculados después de aplicar el descuento del cupón...») y REQ-7 («Envío gratis en compras desde 50 USD.»). Las dos tarjetas tienen `data-testid` `requirement-REQ-3` y `requirement-REQ-7`."
+      - 'Usa el fixture `cliente` y `prepararCarrito(cliente.api, 15, 1, "WELCOME10")`: el subtotal es 50,90 USD y, con el 10 % de descuento, 45,81 USD. Para REQ-3 espera el envío `$5.00`; para REQ-7, `$0.00`.'
+      - "Ejecuta los dos. Uno tiene que fallar sea cual sea la tienda. Antes de reportar un defecto, cita los dos textos y pregunta a producto cuál manda."
+    solucion: 'Dos tests con el mismo carrito: `test("REQ-3: envío tras el descuento", ...)` espera `await expect(page.getByTestId("cart-shipping")).toHaveText("$5.00")` y `test("REQ-7: envío gratis desde 50 USD", ...)` espera `"$0.00"`. En `v1.0.0` el de REQ-7 pasa y el de REQ-3 falla con `Expected: "$5.00"` y `Received: "$0.00"`. No puedes saber si es un defecto: REQ-3 y REQ-7 se contradicen. Lo correcto es anotar los dos textos, preguntar a negocio qué cálculo manda y esperar la respuesta, no elegir uno por tu cuenta.'
+  - slug: ej-2-4-combinacion
+    tipo: guiado
+    titulo: "Combina cupón, cantidad y stock"
+    escenario: fase2-e2e-combinado
+    pistas:
+      - "Busca en el catálogo de la Arena un producto con poco stock. Prepara por API un carrito con una cantidad igual a todo su stock y un cupón, y mira qué muestra la pantalla."
+      - 'El producto 15 («Botella termica») tiene stock 6. Prepara 6 unidades con `prepararCarrito(cliente.api, 15, 6, "WELCOME10")`: 6 × 50,90 USD = 305,40 USD, y el 10 % serían 30,54 USD.'
+      - 'Comprueba en pantalla `getByTestId("cart-subtotal")` con `$305.40` y `getByTestId("cart-discount")` con `-$30.54`. Guarda lo que devuelve `prepararCarrito` y compara `discountCents` (centavos) con el texto del descuento en pantalla. Si los dos dicen 0, la pantalla muestra fielmente lo que calculó la API.'
+    solucion: 'Con `const carrito = await prepararCarrito(cliente.api, 15, 6, "WELCOME10")`, `await abrir(page, "/cart")`, `await expect(page.getByTestId("cart-subtotal")).toHaveText("$305.40")` y `await expect(page.getByTestId("cart-discount")).toHaveText("-$30.54")`. El subtotal pasa, el descuento falla con `Expected: "-$30.54"` y `Received: "-$0.00"`. `carrito.discountCents` ya vale 0 en la respuesta de la API, así que el problema está en el cálculo del servidor y no en la pantalla. Con una cantidad menor que el stock (por ejemplo 5) el descuento sí se aplica: el defecto solo aparece al combinar cupón, cantidad y stock.'
+  - slug: ej-2-4-cliente-aislado
+    tipo: guiado
+    titulo: "Comprueba que tus tests no se pisan"
+    escenario: fase2-e2e-combinado
+    pistas:
+      - "Reinicia los datos y ejecuta `npx playwright test precios --workers=4 --fully-parallel --repeat-each=4` con `baseline`. Cada test usa `cliente`, su propio cliente."
+      - "Luego ejecuta `npx playwright test carrito-por-api --workers=4 --fully-parallel --repeat-each=3`: esos tests usan el carrito compartido de Ana."
+      - "Mira qué tests fallan y con qué valores. Cada ejecución puede fallar distinto, y eso es justo lo que delata el estado compartido."
+    solucion: 'Con `cliente`, todos los tests pasan en cada repetición (en la ejecución de referencia, 12 de 12 más el proyecto `setup`). Con el carrito de Ana compartido, algunos fallan y no siempre los mismos: por ejemplo `Expected: "$19.80"` con otro valor recibido, porque otro test añadió o quitó productos al mismo tiempo. El aislamiento por cliente nuevo hace que el paralelismo sea seguro; con Ana hay que ejecutar de uno en uno (`workers: 1`).'
+  - slug: ej-2-4-release-nueva
+    tipo: guiado
+    titulo: "Un requisito cambia de versión"
+    escenario: fase2-e2e-combinado
+    pistas:
+      - 'Cambia de release sin reiniciar: `curl -X PUT http://localhost:18080/__arena/scenario -H ''content-type: application/json'' -d ''{"id":"fase2-e2e-combinado","release":"v1.1.0"}''`. Después abre `/requirements`: la versión pasa a 1.1.'
+      - "Lee el nuevo REQ-3 y el nuevo REQ-7 y compáralos con los de la versión 1.0. Ejecuta de nuevo tu test de envío y mira el mensaje."
+      - "Cambia el valor esperado del test de envío de modo que refleje el requisito vigente y renombra el test para indicar la versión. Ejecuta también el test de la combinación: ¿cambia su resultado?"
+    solucion: 'En `v1.1.0`, REQ-3 dice que el envío gratis se calcula «sobre el subtotal antes de aplicar el descuento del cupón» y REQ-7 pasa a coincidir con REQ-3. Tu test viejo (`$5.00`) falla con `Expected: "$5.00"` y `Received: "$0.00"`, pero ahora el que está desactualizado es el test, no el sistema. Se actualiza a `$0.00` y pasa. El test de la combinación (cupón, 6 unidades, stock 6) sigue fallando en ambas versiones: ese defecto no depende de la redacción del requisito. Regla: antes de llamar «defecto» a un rojo, revisa qué versión del requisito estás probando.'

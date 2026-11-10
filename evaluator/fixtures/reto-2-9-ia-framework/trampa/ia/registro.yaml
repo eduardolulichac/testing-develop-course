@@ -1,0 +1,11 @@
+usos:
+  - archivo: tests/propios.spec.ts
+    pedido: "Escribe mis propios tests del cupón y del login"
+    decision: rechazo
+    motivo: "Prefiero escribir mis propios tests desde cero en lugar de corregir los de la IA."
+  - archivo: pages/TiendaPage.ts
+    pedido: "Crea un Page Object compartido para la tienda"
+    decision: acepto
+  - archivo: pages/SesionPage.ts
+    pedido: "Crea un Page Object para el login de la tienda"
+    decision: acepto

@@ -1,0 +1,17 @@
+usos:
+  - archivo: pages/ia/ProductoPage.ts
+    pedido: "Crea un Page Object para el detalle de producto"
+    decision: modifico
+    motivo: "El botón Comprar no existe en la tienda: usé Agregar al carrito y cambié la pausa de 3 segundos por esperar el mensaje de confirmación."
+  - archivo: tests/ia/cupon.spec.ts
+    pedido: "Genera un test de cupón para el carrito"
+    decision: modifico
+    motivo: "Solo comprobaba que el descuento fuera visible, no su valor; añadí la aserción del importe de 7.63 con redondeo."
+  - archivo: pages/ia/SesionPage.ts
+    pedido: "Crea un Page Object para el login de la tienda"
+    decision: modifico
+    motivo: "Tenía la contraseña de práctica escrita en el código; ahora se lee de USUARIO_CLAVE."
+  - archivo: pages/ia/CarritoPage.ts
+    pedido: "Crea un Page Object para el carrito y los cupones"
+    decision: acepto
+    motivo: "Cambié el selector CSS del contador por getByTestId; el resto estaba bien."

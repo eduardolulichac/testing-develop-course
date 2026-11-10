@@ -1,0 +1,83 @@
+preguntas:
+  - id: casos-mejor-candidato
+    enunciado: "¿Cuál de estos casos es el mejor candidato para automatizar primero?"
+    opciones:
+      [
+        "Comprobar que el catálogo «se ve bien» en un móvil",
+        "Pagar con una tarjeta aprobada y comprobar el pedido pagado",
+        "Probar si dos clientes compran el último producto en el mismo instante",
+        "Preguntarle al asistente de compras algo inesperado y valorar la respuesta",
+      ]
+    correcta: 1
+    explicacion: "El pago aprobado tiene riesgo alto, lo hace casi todo cliente, su resultado es exacto y sus datos se controlan. Las otras opciones son subjetivas, dependen de la coincidencia en el tiempo o devuelven texto libre: son malos candidatos al principio."
+  - id: casos-calculo-puntaje
+    enunciado: "Un caso tiene riesgo Alto, frecuencia Media, costo Medio y estabilidad Alta. ¿Cuál es su puntaje con riesgo x frecuencia + estabilidad - costo?"
+    opciones: ["7", "8", "9", "11"]
+    correcta: 0
+    explicacion: "Riesgo 3 por frecuencia 2 son 6; más estabilidad 3 son 9; menos costo 2 son 7. Un error común es sumar el costo en lugar de restarlo, lo que daría 11."
+  - id: casos-costo-resta
+    enunciado: "En la fórmula del puntaje, ¿qué papel tiene el costo de mantenimiento?"
+    opciones:
+      [
+        "Se suma: los casos caros valen más",
+        "Se resta: los casos caros de mantener bajan el puntaje",
+        "Se multiplica por la frecuencia",
+        "No cuenta, solo el riesgo",
+      ]
+    correcta: 1
+    explicacion: "Un costo Alto es malo: cuesta escribir, mantener y revisar el test. Por eso resta. En los otros tres criterios, un nivel alto favorece automatizar."
+  - id: casos-capa-regla-negocio
+    enunciado: "Quieres comprobar que un cupón de 5 dólares se rechaza si el subtotal es de 9.90. ¿Dónde conviene probarlo?"
+    opciones:
+      [
+        "Solo a mano",
+        "En la interfaz, con un navegador, porque es lo más real",
+        "Por API: es una regla del servidor con respuesta exacta, más rápida y estable",
+        "En ninguna capa: no merece pruebas",
+      ]
+    correcta: 2
+    explicacion: "Una regla de negocio se comprueba mejor al nivel más bajo que detecta el defecto. La API es más rápida y no se rompe si cambia la pantalla. La interfaz se reserva para recorridos completos y lo que solo se ve en pantalla."
+  - id: casos-riesgo-alto-costo-alto
+    enunciado: "Un caso tiene riesgo Alto pero costo Alto y estabilidad Baja, y su puntaje es bajo. ¿Qué haces?"
+    opciones:
+      [
+        "Lo borro de la lista y no lo vuelvo a mirar",
+        "Lo automatizo en UI igualmente, porque el riesgo es alto",
+        "No lo automatizo en UI, pero anoto cómo lo cubro con otra técnica o a mano",
+        "Bajo su riesgo a Medio para que cuadre",
+      ]
+    correcta: 2
+    explicacion: "El puntaje es una guía. Un riesgo alto no desaparece porque el test sea caro: se cubre con otra técnica (por ejemplo una prueba de API) o con revisión manual, y se deja anotado. Cambiar el riesgo para que cuadre es hacer trampa."
+  - id: casos-justificacion
+    enunciado: "¿Cuál de estas es la mejor justificación para automatizar un caso?"
+    opciones:
+      [
+        "Porque es importante",
+        "Porque me lo pidió la IA",
+        "Porque un cupón vencido que se acepta cuesta dinero; el costo es bajo, la regla es estable y se prueba por API",
+        "Porque es el primero de la tabla",
+      ]
+    correcta: 2
+    explicacion: "Una buena justificación nombra el riesgo (qué se pierde), el costo y la estabilidad, y la capa. «Es importante» no se puede revisar, y ni la IA ni el orden de la tabla son criterios."
+  - id: casos-cobertura
+    enunciado: "Elegiste los 25 puntajes más altos y todos son del catálogo y del carrito. ¿Qué te falta revisar?"
+    opciones:
+      [
+        "Nada: el puntaje ya garantiza una buena lista",
+        "La cobertura de flujos: cupones, pago y pedidos, y los casos negativos críticos",
+        "Aumentar el número de casos a 40",
+        "Cambiar a casos de menor riesgo",
+      ]
+    correcta: 1
+    explicacion: "El puntaje ordena, pero no asegura cobertura. Una buena lista tiene al menos un caso de cada flujo importante (cuenta, carrito, cupones, pago, pedidos) y los negativos críticos, como un cupón o un pago rechazado."
+  - id: casos-titulo-test
+    enunciado: "¿Para qué conviene escribir el ID del caso al principio del título del test?"
+    opciones:
+      [
+        "Para que Playwright lo ejecute primero",
+        "Para poder seguir cada test hasta la decisión que lo justifica",
+        "Porque Playwright lo exige",
+        "Para que el test sea más rápido",
+      ]
+    correcta: 1
+    explicacion: "El ID enlaza el test con tu tabla de casos y su justificación. Playwright no lo exige ni lo ejecuta antes: es una convención del equipo para poder rastrear qué cubre cada test."

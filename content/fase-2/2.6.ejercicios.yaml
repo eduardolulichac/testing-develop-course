@@ -1,0 +1,171 @@
+ejercicios:
+  - slug: ej-2-6-primer-workflow
+    tipo: guiado
+    titulo: "Tu primer workflow: se ejecuta en cada pull request"
+    pistas:
+      - "El archivo va en `.github/workflows/ci.yml`. Necesita `name`, `on` (con `pull_request` y `branches: [main]`), `permissions` en la raíz y `jobs`."
+      - "Dentro del job pon `runs-on: ubuntu-latest` y dos pasos: `uses: actions/checkout@v7` y un `run: node --version`."
+      - "Un workflow solo se ejecuta cuando existe un pull request. Crea una rama (`git switch -c prueba-ci`), cambia cualquier archivo, súbela con `git push -u origin prueba-ci` y abre el PR desde GitHub hacia `main`. La ejecución aparece en la pestaña Actions y al pie del PR."
+    solucion: "El archivo: `name: CI`, `on: { pull_request: { branches: [main] } }`, `permissions: { contents: read }` y un job `tests` con `runs-on: ubuntu-latest` y los pasos `uses: actions/checkout@v7` y `run: node --version`. Al abrir el PR, GitHub muestra el check «CI / tests» junto al PR y la ejecución en la pestaña Actions. El workflow debe existir en la rama de la que sale el PR (o en `main`) para que se dispare."
+  - slug: ej-2-6-suite-en-ci
+    tipo: guiado
+    titulo: "Ejecuta tu suite en el servidor con un secreto"
+    pistas:
+      - "Antes de `npx playwright test` el job necesita: `actions/setup-node@v7` con `node-version: 24`, `npm ci`, `npx playwright install --with-deps chromium` y `docker compose -f arena/compose.yml up -d --wait`."
+      - "Crea el secreto en Settings → Secrets and variables → Actions con el nombre `USUARIO_CLAVE`. En el paso de la suite pásalo con `env:` usando `${{ secrets.USUARIO_CLAVE }}`; el correo (`USUARIO_EMAIL`) no es secreto."
+      - "Abre el PR y lee el registro del paso de la suite. Si falla con `Falta USUARIO_CLAVE`, el secreto no existe o se llama distinto."
+    solucion: "El job `tests` queda como el del ejemplo resuelto: checkout, setup-node, `npm ci`, instalación de Chromium, `docker compose -f arena/compose.yml up -d --wait` y un paso `Suite completa` con `env: { USUARIO_EMAIL: ana@arena.test, USUARIO_CLAVE: ${{ secrets.USUARIO_CLAVE }} }` y `run: npx playwright test`. En el registro, la contraseña no aparece: GitHub la sustituye por `***`. Con la Arena sana, los tests de la plantilla pasan."
+  - slug: ej-2-6-informe
+    tipo: guiado
+    titulo: "El informe se publica aunque la suite falle"
+    pistas:
+      - "Añade, después de la suite, un paso con `uses: actions/upload-artifact@v7`, `name: informe-playwright` y `path: playwright-report`."
+      - "Haz fallar un test a propósito (por ejemplo, cambia un texto esperado) y sube el cambio al PR. Si el paso del informe no se ejecuta, falta una condición."
+      - "Añade `if: ${{ !cancelled() }}` al paso del informe. Con la suite en rojo, el job termina en rojo y el artefacto aparece al final de la ejecución, en Artifacts."
+    solucion: "El paso queda: `- name: Publicar el informe`, `if: ${{ !cancelled() }}`, `uses: actions/upload-artifact@v7` y `with: { name: informe-playwright, path: playwright-report }`. Sin el `if`, el paso se salta cuando la suite falla y no hay artefacto. Con el `if`, el job está en rojo y `informe-playwright` se puede descargar y abrir (`index.html`). Después deshaz el fallo, para que el job vuelva a verde."
+  - slug: ej-2-6-humo-local
+    tipo: guiado
+    titulo: "Pruebas de humo que detectan el despliegue del viernes"
+    escenario: fase2-despliegue
+    pistas:
+      - "Levanta la Arena de `arena/compose.yml`, escribe en `tests/humo.spec.ts` tres pruebas con `@smoke` en el título (catálogo, inicio de sesión y compra completa) y usa las ayudas de `tests/support/tienda.ts` del paso 8. Borra el `test.fixme`."
+      - 'Elige el release sano con `curl -X PUT http://127.0.0.1:18080/__arena/scenario -H ''content-type: application/json'' -d ''{"id":"fase2-despliegue","release":"v2.0.0"}''` y ejecuta `npx playwright test --grep @smoke`.'
+      - "Cambia a `v2.1.0` con el mismo comando y vuelve a ejecutar. La compra debe terminar con un `expect` sobre el mensaje «Pago aprobado. Gracias por tu compra.» y el estado «Pagado»."
+    solucion: 'Con `v2.0.0` pasan las tres pruebas. Con `v2.1.0` pasan el catálogo y el inicio de sesión, y falla la de compra: `Expected: "Pago aprobado. Gracias por tu compra."` y `Error: element(s) not found`, tras esperar el plazo de la aserción. Un humo que solo abriera el catálogo y el inicio de sesión se quedaría en verde con el release roto. Al terminar, vuelve a `{"id":"baseline"}`.'
+  - slug: ej-2-6-despliegue-staging
+    tipo: guiado
+    titulo: "Despliega a staging y vigila con las pruebas de humo"
+    escenario: fase2-despliegue
+    pistas:
+      - "Crea en GitHub el entorno `staging` (Settings → Environments → New environment). Añade un segundo job con `environment: staging` y `needs:` apuntando al job de las pruebas."
+      - 'Ese job levanta su propia Arena (cada job corre en otra máquina), «despliega» con `curl -fsS -X PUT http://127.0.0.1:18080/__arena/scenario ...` y el cuerpo `{"id":"fase2-despliegue","release":"v2.1.0"}`, y ejecuta `npx playwright test --grep @smoke` con el secreto.'
+      - "Sube el informe de este job con un nombre distinto del primero (por ejemplo, `informe-humo`) y `if: ${{ !cancelled() }}`. Abre el PR y observa los dos jobs."
+    solucion: "El job `desplegar-staging` queda como el del ejemplo resuelto: `needs: tests`, `environment: staging`, Arena propia, el paso `Desplegar el release v2.1.0`, el paso `Pruebas de humo` con `--grep @smoke` y el informe `informe-humo`. En el PR, `tests` termina en verde y `desplegar-staging` en rojo: el humo detectó el release roto, que es su trabajo. Si ambos informes tienen el mismo nombre, el segundo `upload-artifact` falla."
+  - slug: ej-2-6-actionlint
+    tipo: guiado
+    titulo: "Lee y corrige un hallazgo de actionlint"
+    pistas:
+      - "Instala actionlint siguiendo las instrucciones de su proyecto (`rhysd/actionlint`) y ejecútalo desde la raíz del repositorio con `actionlint`. Con tu workflow correcto, no imprime nada."
+      - "Cambia `runs-on` por `runs-onn` en un job y vuelve a ejecutar `actionlint`. Lee el archivo, la línea y el mensaje."
+      - "Corrige el nombre de la clave y vuelve a ejecutarlo hasta que no imprima nada."
+    solucion: "`actionlint` imprime una línea con la ruta del workflow, la línea y la columna del error, y un mensaje que señala la clave `runs-onn` como no válida para un job y que falta `runs-on`. Al corregirla, la salida queda vacía. Ejecutarlo antes de cada `push` evita un ciclo de «subir, esperar, fallar» por un error de escritura."
+  - slug: ej-2-6-revisar
+    tipo: guiado
+    titulo: "Encuentra los problemas de un workflow ajeno"
+    pistas:
+      - "Hay un problema en cada uno de estos aspectos: el disparador, los permisos, las credenciales y el informe. Revisa los pasos 3, 4, 6 y 7."
+      - "Para el disparador piensa qué ejecuta `pull_request_target` y con qué permisos; para los permisos, qué necesita de verdad una suite."
+      - "Para el informe, qué ocurre con un paso sin `if` cuando el anterior falla; para la contraseña, dónde debe vivir."
+    solucion: "1) `pull_request_target`: ejecuta código de un PR con los permisos y los secretos del repositorio. Se cambia por `pull_request` con `branches: [main]`. 2) `permissions: write-all`: una suite solo necesita `contents: read`. 3) La contraseña de práctica en un `env:` queda en el historial de Git: se mueve a un secreto y se lee con `${{ secrets.USUARIO_CLAVE }}`. 4) El informe sin `if` no se sube cuando la suite falla: se añade `if: ${{ !cancelled() }}` al paso de `upload-artifact`."
+  - slug: reto-2-6-pipeline
+    tipo: reto
+    titulo: "Construye el pipeline de CI/CD con pruebas de humo"
+    escenario: fase2-despliegue
+    criterio_aprobacion:
+      version: 1
+      arena: { escenario: fase2-despliegue, release: "v2.1.0", semilla: 2601 }
+      umbral: 70
+      obligatorios:
+        [suite-verde-baseline, ci-dispara-en-pr, ci-sin-pull-request-target, sin-arena-interna]
+      criterios:
+        - id: suite-verde-baseline
+          titulo: "Todos los tests pasan contra la Arena sin defectos"
+          tipo: suite_pasa
+          escenario: baseline
+          peso: 10
+          competencia: tecnica
+          feedback_fallo: "Un test que falla contra la versión correcta no es fiable. Ejecuta la suite en local contra la Arena sana."
+        - id: humo-etiquetado
+          titulo: "Tienes al menos 3 pruebas de humo con @smoke"
+          tipo: reporte_etiquetas
+          etiqueta: smoke
+          min: 3
+          peso: 5
+          competencia: tecnica
+          feedback_fallo: "Escribe al menos tres tests con @smoke en el título: catálogo, inicio de sesión y compra."
+        - id: humo-detecta-despliegue
+          titulo: "Tus pruebas de humo detectan el despliegue roto"
+          tipo: suite_detecta
+          escenario: fase2-despliegue
+          release: "v2.1.0"
+          grep: "@smoke"
+          peso: 15
+          competencia: analisis
+          feedback_fallo: "Tras el despliegue del viernes, tus pruebas de humo siguen en verde. ¿Cubren el flujo de compra completo?"
+        - id: ci-dispara-en-pr
+          titulo: "Tu CI se ejecuta en cada pull request a main"
+          tipo: estatico
+          regla: ci-dispara-en-pr
+          peso: 5
+          competencia: tecnica
+          feedback_fallo: "Ningún workflow tuyo se ejecuta con pull_request hacia main. Añade `on: pull_request` a .github/workflows/ci.yml."
+        - id: ci-sin-pull-request-target
+          titulo: "Ningún workflow usa pull_request_target"
+          tipo: estatico
+          regla: ci-sin-pull-request-target
+          peso: 5
+          competencia: tecnica
+          feedback_fallo: "pull_request_target corre código de forks con permisos y secretos. Usa pull_request."
+        - id: ci-permisos-minimos
+          titulo: "Permisos mínimos en tus workflows"
+          tipo: estatico
+          regla: ci-permisos-minimos
+          peso: 5
+          competencia: tecnica
+          feedback_fallo: "Declara `permissions: contents: read` en la raíz de cada workflow y no des permisos de escritura."
+        - id: ci-actionlint
+          titulo: "Tus workflows pasan actionlint"
+          tipo: estatico
+          regla: ci-actionlint
+          peso: 5
+          competencia: tecnica
+          feedback_fallo: "actionlint encontró problemas en tus workflows. Ejecútalo en local y corrige cada hallazgo."
+        - id: ci-artefactos-siempre
+          titulo: "El informe se publica aunque la suite falle"
+          tipo: estatico
+          regla: ci-artefactos-siempre
+          peso: 10
+          competencia: comunicacion
+          feedback_fallo: "Sube playwright-report con actions/upload-artifact y `if: ${{ !cancelled() }}` para que el informe esté siempre disponible."
+        - id: ci-secretos
+          titulo: "Las credenciales de las pruebas vienen de secrets"
+          tipo: estatico
+          regla: ci-secretos
+          peso: 5
+          competencia: tecnica
+          feedback_fallo: "El paso que ejecuta las pruebas debe recibir USUARIO_CLAVE desde `${{ secrets.USUARIO_CLAVE }}`, nunca en claro."
+        - id: sin-credenciales-en-codigo
+          titulo: "Sin contraseñas de práctica en el repositorio"
+          tipo: estatico
+          regla: sin-credenciales-en-codigo
+          peso: 5
+          competencia: tecnica
+          feedback_fallo: "Hay una contraseña de práctica escrita en el código o en un workflow. Léela de variables de entorno o de secrets."
+        - id: ci-humo-tras-despliegue
+          titulo: "Las pruebas de humo corren tras el despliegue a staging"
+          tipo: estatico
+          regla: ci-humo-tras-despliegue
+          peso: 10
+          competencia: autonomia
+          feedback_fallo: "Necesitas un job con `environment` que ejecute `--grep @smoke` y dependa (needs) del job que corre la suite completa."
+        - id: ci-rama-protegida
+          titulo: "La rama main exige que tu CI pase"
+          tipo: estatico
+          regla: ci-rama-protegida
+          peso: 10
+          competencia: autonomia
+          feedback_fallo: "La rama main no exige que tu CI pase antes de fusionar. Configura una regla con el check de tu job de tests."
+        - id: ci-ejecucion-real
+          titulo: "Tu CI ya se ejecutó de verdad en un pull request"
+          tipo: estatico
+          regla: ci-ejecucion-real
+          peso: 10
+          competencia: autonomia
+          feedback_fallo: "GitHub no muestra una ejecución de tu CI en un pull request con el job de pruebas en verde. Abre un PR, espera a que el job de tests termine con éxito y vuelve a enviar. No hace falta que el commit sea el mismo."
+        - id: sin-arena-interna
+          titulo: "La suite no usa los endpoints internos de la Arena"
+          tipo: estatico
+          regla: sin-arena-interna
+          peso: 0
+          competencia: autonomia
+          feedback_fallo: "Los tests no deben llamar a /__arena ni leer variables ARENA_*: el despliegue se simula en el workflow, no en la suite."

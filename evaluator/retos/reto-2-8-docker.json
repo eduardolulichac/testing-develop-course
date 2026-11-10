@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "arena": {
+    "escenario": "fase2-e2e-combinado",
+    "release": "v1.0.0",
+    "semilla": 2401
+  },
+  "umbral": 70,
+  "obligatorios": [
+    "docker-un-comando",
+    "suite-verde-baseline",
+    "sin-arena-interna"
+  ],
+  "criterios": [
+    {
+      "id": "docker-un-comando",
+      "titulo": "Un solo comando levanta la Arena, ejecuta la suite y deja el informe",
+      "peso": 20,
+      "competencia": "autonomia",
+      "feedback_fallo": "`docker compose up --build --abort-on-container-exit --exit-code-from tests` debe terminar con 0 y generar resultados/informe.json con al menos 8 tests en verde. Pruébalo tú antes con ese mismo comando.",
+      "tipo": "docker_compose",
+      "archivo": "compose.yml",
+      "servicio": "tests",
+      "informe": "resultados/informe.json",
+      "min_pasan": 8
+    },
+    {
+      "id": "docker-imagen-coincide",
+      "titulo": "Tu Dockerfile usa la imagen de Playwright de la misma versión que tu proyecto",
+      "peso": 10,
+      "competencia": "tecnica",
+      "feedback_fallo": "El FROM debe ser mcr.microsoft.com/playwright:v<versión exacta de @playwright/test>-noble. Si las versiones difieren, Playwright no encuentra los navegadores.",
+      "tipo": "estatico",
+      "regla": "docker-imagen-playwright-coincide"
+    },
+    {
+      "id": "docker-ignore",
+      "titulo": "Tu .dockerignore excluye node_modules",
+      "peso": 5,
+      "competencia": "tecnica",
+      "feedback_fallo": "Crea un .dockerignore con una línea `node_modules`: así no copias tus dependencias locales a la imagen.",
+      "tipo": "estatico",
+      "regla": "docker-ignore"
+    },
+    {
+      "id": "compose-seguro",
+      "titulo": "Tu compose no abre la puerta al anfitrión",
+      "peso": 5,
+      "competencia": "tecnica",
+      "feedback_fallo": "Quita `privileged`, `network_mode: host`, `pid: host`, los montajes del socket de Docker y los volúmenes fuera del repositorio.",
+      "tipo": "estatico",
+      "regla": "compose-seguro"
+    },
+    {
+      "id": "suite-verde-baseline",
+      "titulo": "Todos los tests pasan contra la Arena sin defectos",
+      "peso": 15,
+      "competencia": "tecnica",
+      "feedback_fallo": "Un test que falla contra la versión correcta no es fiable. Ejecuta la suite contra la Arena sana y corrige el test.",
+      "tipo": "suite_pasa",
+      "escenario": "baseline"
+    },
+    {
+      "id": "detecta-e2e-combinado",
+      "titulo": "Tu suite detecta los defectos de precio y envío del Sprint 14",
+      "peso": 15,
+      "competencia": "analisis",
+      "feedback_fallo": "Con los defectos del Sprint 14 tu suite sigue en verde. Contrasta el envío gratis con un cupón y la combinación de cupón y stock con lo que dicen los requisitos.",
+      "tipo": "suite_detecta",
+      "escenario": "fase2-e2e-combinado",
+      "release": "v1.0.0"
+    },
+    {
+      "id": "trazabilidad-requisitos",
+      "titulo": "Tus tests cubren al menos 5 requisitos REQ-n",
+      "peso": 15,
+      "competencia": "comunicacion",
+      "feedback_fallo": "Anota los tests con `{ annotation: { type: 'requisito', description: 'REQ-3' } }` y cubre al menos 5 requisitos distintos, con todos sus tests en verde.",
+      "tipo": "reporte_requisitos",
+      "requisitos": [
+        "REQ-1",
+        "REQ-2",
+        "REQ-3",
+        "REQ-4",
+        "REQ-5",
+        "REQ-6",
+        "REQ-7",
+        "REQ-8",
+        "REQ-9",
+        "REQ-10"
+      ],
+      "min": 5
+    },
+    {
+      "id": "sin-credenciales-en-codigo",
+      "titulo": "Sin contraseñas de práctica en el repositorio",
+      "peso": 5,
+      "competencia": "tecnica",
+      "feedback_fallo": "Hay una contraseña de práctica escrita en el código, en un workflow o en un archivo de datos. Pásala por variables de entorno.",
+      "tipo": "estatico",
+      "regla": "sin-credenciales-en-codigo"
+    },
+    {
+      "id": "sin-esperas-fijas",
+      "titulo": "Sin esperas fijas en los tests",
+      "peso": 10,
+      "competencia": "tecnica",
+      "feedback_fallo": "Quita waitForTimeout y las pausas fijas: dentro de un contenedor el tiempo varía, usa las esperas automáticas de las aserciones.",
+      "tipo": "estatico",
+      "regla": "sin-esperas-fijas"
+    },
+    {
+      "id": "sin-arena-interna",
+      "titulo": "La suite no usa los endpoints internos de la Arena",
+      "peso": 0,
+      "competencia": "autonomia",
+      "feedback_fallo": "Los tests no deben llamar a /__arena ni leer variables ARENA_* (salvo ARENA_URL).",
+      "tipo": "estatico",
+      "regla": "sin-arena-interna"
+    }
+  ]
+}

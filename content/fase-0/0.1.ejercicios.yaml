@@ -1,0 +1,33 @@
+ejercicios:
+  - slug: ej-0-1-crear-carpeta-de-practica
+    tipo: guiado
+    titulo: "Crea tu carpeta de práctica desde la terminal"
+    pistas:
+      - "Empieza por comprobar dónde estás con el comando que imprime el directorio actual."
+      - "Para crear una carpeta existe un comando de dos letras más `dir`: `mk...`."
+      - "Después de crearla entra en ella con `cd` y confirma con `pwd` que la ruta termina en su nombre."
+    solucion: "Ejecuta `pwd`, luego `mkdir practica-qa`, entra con `cd practica-qa` y vuelve a ejecutar `pwd`: la ruta debe terminar en `/practica-qa`."
+  - slug: ej-0-1-rutas-y-archivos
+    tipo: guiado
+    titulo: "Crea carpetas anidadas y escribe una ruta relativa"
+    pistas:
+      - "`mkdir` tiene una opción que crea también las carpetas intermedias: empieza por `-p`."
+      - "Para crear un archivo con texto puedes redirigir la salida de `echo` con `>`. Para ver ocultos usa `ls` con la opción `-a`."
+      - "Desde `datos/logs` hay que subir dos niveles con `../..` y luego nombrar el archivo."
+    solucion: 'Dentro de `practica-qa`: `mkdir -p datos/logs`, `echo "hola QA" > nota.txt`, `cat nota.txt` y `ls -a`. Desde `datos/logs`, la ruta relativa a la nota es `../../nota.txt`.'
+  - slug: ej-0-1-variable-de-entorno
+    tipo: guiado
+    titulo: "Define, lee y borra una variable de entorno"
+    pistas:
+      - "Para definir una variable que otros programas puedan leer se usa `export NOMBRE=valor`."
+      - "Para leerla en la terminal usa `echo $ARENA_URL`; para leerla desde Node, `process.env.ARENA_URL`."
+      - "Con `node -e 'console.log(process.env.ARENA_URL)'` ves el valor desde Node; para borrar la variable existe `unset`."
+    solucion: '`export ARENA_URL=http://localhost:18080`, `echo $ARENA_URL`, `node -e ''console.log(process.env.ARENA_URL)''` (ambos muestran la dirección), `unset ARENA_URL` y `echo "[$ARENA_URL]"` muestra `[]`.'
+  - slug: ej-0-1-arena-responde
+    tipo: guiado
+    titulo: "Levanta QA Arena y comprueba que responde"
+    pistas:
+      - "Los archivos de Docker Compose de la Arena están en `apps/qa-arena`, dentro del repositorio del curso (paso 0): ejecuta el comando desde esa carpeta."
+      - "La orden es `docker compose up --build` (con `-d` si quieres seguir usando la terminal). Para comprobar usa `curl -i` contra el puerto 18080."
+      - 'Prueba `/healthz` (`200` y `{"ok":true}`) y después `/__arena/state`, donde sí aparece la cabecera `x-arena-release`. Apaga con `docker compose down`.'
+    solucion: "`cd apps/qa-arena`, `docker compose up --build -d`, `curl -i http://localhost:18080/healthz` (200) y `curl -i http://localhost:18080/__arena/state`: la cabecera `x-arena-release` vale `none` si no hay versión simulada activa. Al terminar, `docker compose down`."

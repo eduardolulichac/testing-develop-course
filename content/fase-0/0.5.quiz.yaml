@@ -1,0 +1,73 @@
+preguntas:
+  - id: prompt-partes
+    enunciado: "¿Cuáles son las cuatro partes del método de prompt de este módulo?"
+    opciones:
+      - "Saludo, pregunta, insistencia y agradecimiento"
+      - "Contexto, tarea, formato y verificar"
+      - "Código, error, solución y prueba"
+      - "Tema, tono, longitud y autor"
+    correcta: 1
+    explicacion: "El método es contexto (quién eres), tarea (qué quieres), formato (cómo la quieres) y verificar (cómo comprobarla)."
+  - id: prompt-contexto
+    enunciado: "¿Por qué conviene decirle a la IA tu nivel y tu sistema operativo?"
+    opciones:
+      - "Porque es obligatorio para que responda"
+      - "Porque la respuesta se ajusta a ti y evita comandos que no funcionan en tu sistema"
+      - "Porque así no se equivoca nunca"
+      - "Porque acorta el tiempo de respuesta"
+    correcta: 1
+    explicacion: "Con tu contexto la respuesta se adapta a tu nivel y a tu sistema. Aun así puede equivocarse, y por eso hay que verificar."
+  - id: prompt-inventada-senal
+    enunciado: "¿Cuál de estas es una señal de que una respuesta puede ser inventada?"
+    opciones:
+      - "Incluye una opción de comando que no aparece en su ayuda"
+      - "Es corta"
+      - "Usa tablas"
+      - "Te explica con un ejemplo"
+    correcta: 0
+    explicacion: "Una opción que no figura en la ayuda del programa es una señal clara. La longitud o el formato no dicen nada sobre su veracidad."
+  - id: prompt-verificar-misma-ia
+    enunciado: "Le preguntas «¿seguro?» a la misma IA y te confirma. ¿Has verificado la respuesta?"
+    opciones:
+      - "Sí, la IA es la mejor fuente"
+      - "Sí, si lo confirma dos veces"
+      - "No, hay que contrastar con una fuente independiente, como documentación oficial o ejecutando"
+      - "Solo si la respuesta es larga"
+    correcta: 2
+    explicacion: "La misma IA puede repetir su error con seguridad. Verificar es usar una fuente independiente."
+  - id: prompt-ejecutar
+    enunciado: "La IA te da un comando para tu terminal. ¿Qué haces antes de usarlo en un proyecto?"
+    opciones:
+      - "Lo pego directamente en el proyecto"
+      - "Lo ejecuto en una carpeta de pruebas y reviso su ayuda"
+      - "Lo guardo sin probarlo"
+      - "Se lo pido a otra IA"
+    correcta: 1
+    explicacion: "Ejecutar en un directorio temporal permite ver el resultado real sin riesgos. La ayuda del comando confirma sus opciones."
+  - id: prompt-sort
+    enunciado: "Una IA afirma que `[10,9,1].sort()` en JavaScript devuelve `[1, 9, 10]`. ¿Cómo lo compruebas?"
+    opciones:
+      - "Lo creo, parece razonable"
+      - 'Ejecuto `node -e "console.log([10,9,1].sort())"` y veo que da `[ 1, 10, 9 ]`'
+      - "Pregunto de nuevo a la IA con otras palabras"
+      - "Busco una opinión en un foro"
+    correcta: 1
+    explicacion: "Ejecutarlo es la prueba más directa: `sort()` sin función ordena como texto y da `[ 1, 10, 9 ]`."
+  - id: prompt-datos-privados
+    enunciado: "Quieres que la IA te ayude a entender una respuesta de una API que contiene un token de sesión. ¿Qué haces?"
+    opciones:
+      - "Pego todo tal cual"
+      - "Quito o sustituyo el token antes de pegarla"
+      - "No uso nunca la IA"
+      - "Lo pego en un chat privado, que es seguro"
+    correcta: 1
+    explicacion: "No se comparten tokens, contraseñas ni datos personales en un chat. Se sustituyen por valores de ejemplo."
+  - id: prompt-registro
+    enunciado: "¿Para qué sirve el registro de errores de la IA?"
+    opciones:
+      - "Para que la IA aprenda de mis correcciones"
+      - "Para recordar qué se comprobó, cómo se descubrió el error y qué hacer distinto"
+      - "No sirve para nada"
+      - "Para que la IA no se equivoque otra vez"
+    correcta: 1
+    explicacion: "El registro fija el aprendizaje: qué falló, cómo lo detectaste y cómo cambiarás tu forma de verificar. No cambia el comportamiento de la IA."

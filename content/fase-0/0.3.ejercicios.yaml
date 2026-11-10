@@ -1,0 +1,817 @@
+ejercicios:
+  - slug: ej-0-3-01-primera-variable
+    tipo: guiado
+    titulo: "Declara tus primeras variables"
+    pistas:
+      - "Usa `const` para lo que no cambia y `let` para lo que sí cambia."
+      - "`failedTests = failedTests + 2;` actualiza la variable. Una `const` no se puede reasignar."
+      - "Termina con `console.log(testName, failedTests);`."
+    solucion: |-
+      Código:
+
+      ```ts
+      const testName = "login valido";
+      let failedTests = 0;
+      failedTests = failedTests + 2;
+      console.log(testName, failedTests);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      login valido 2
+      ```
+
+      `testName` no cambia, por eso es `const`; `failedTests` cambia, por eso es `let`.
+  - slug: ej-0-3-02-mensaje-con-plantilla
+    tipo: guiado
+    titulo: "Arma un mensaje con una plantilla de texto"
+    pistas:
+      - "Una plantilla se escribe entre comillas invertidas: `` ` ``."
+      - "Dentro de la plantilla, `${variable}` inserta el valor de la variable."
+      - "La frase queda: `` `Pasaron ${passed} de ${total} tests` ``."
+    solucion: |-
+      Código:
+
+      ```ts
+      const passed = 8;
+      const total = 10;
+      console.log(`Pasaron ${passed} de ${total} tests`);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      Pasaron 8 de 10 tests
+      ```
+
+      Las plantillas con `${...}` evitan concatenar con `+` y se leen mejor.
+  - slug: ej-0-3-03-corrige-un-tipo
+    tipo: guiado
+    titulo: "Corrige un error de tipos"
+    pistas:
+      - "Lee el mensaje: `Type 'string' is not assignable to type 'number'`. ¿Qué tipo prometiste y qué tipo diste?"
+      - 'El valor `"3"` entre comillas es texto. Un número se escribe sin comillas.'
+      - '`let attempts: number = 3;` y después `const price: number = 19.99;`, `const sku: string = "A-100";`, `const inStock: boolean = true;`.'
+    solucion: |-
+      Código:
+
+      ```ts
+      let attempts: number = 3;
+      const price: number = 19.99;
+      const sku: string = "A-100";
+      const inStock: boolean = true;
+      console.log(attempts, price, sku, inStock);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      3 19.99 A-100 true
+      ```
+
+      Los tipos son una promesa: si dices `number` y das texto, TypeScript lo detecta antes de ejecutar. Comprobado con `tsc --noEmit` sin errores.
+  - slug: ej-0-3-04-porcentaje-de-aprobacion
+    tipo: guiado
+    titulo: "Calcula el porcentaje de tests que pasan"
+    pistas:
+      - "El porcentaje es parte entre total, multiplicado por 100."
+      - "`passedTests / totalTests` da 0.9. Falta multiplicar."
+      - "`(passedTests / totalTests) * 100` y pásalo a una plantilla de texto."
+    solucion: |-
+      Código:
+
+      ```ts
+      const passedTests = 18;
+      const totalTests = 20;
+      const passRate = (passedTests / totalTests) * 100;
+      console.log(`Aprobación: ${passRate}%`);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      Aprobación: 90%
+      ```
+
+      Los paréntesis dejan claro el orden: primero la división y luego la multiplicación.
+  - slug: ej-0-3-05-texto-a-numero
+    tipo: guiado
+    titulo: "Convierte texto a número y detecta el fallo"
+    pistas:
+      - 'Un texto como `"19.99"` no se puede sumar como número: primero hay que convertirlo.'
+      - "La función `Number(texto)` convierte. Si no puede, devuelve `NaN` (Not a Number)."
+      - "`NaN` no es igual ni a sí mismo; usa `Number.isNaN(valor)` para detectarlo."
+    solucion: |-
+      Código:
+
+      ```ts
+      const rawPrice = "19.99";
+      const parsed = Number(rawPrice);
+      console.log(parsed + 1);
+      console.log(Number.isNaN(Number("abc")));
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      20.99
+      true
+      ```
+
+      Si sumas texto, `"19.99" + 1` da `"19.991"`. Convertir con `Number` y comprobar con `Number.isNaN` es la base de validar entradas.
+  - slug: ej-0-3-06-aprobado-o-fallido
+    tipo: guiado
+    titulo: "Decide PASS o FAIL"
+    pistas:
+      - "Necesitas una decisión de dos caminos: `if ... else ...`."
+      - "La condición es `failed > 0`."
+      - "Declara `let verdict: string;` y asígnale un valor en cada rama."
+    solucion: |-
+      Código:
+
+      ```ts
+      const failed = 2;
+      let verdict: string;
+      if (failed > 0) {
+        verdict = "FAIL";
+      } else {
+        verdict = "PASS";
+      }
+      console.log(verdict);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      FAIL
+      ```
+
+      Cada rama asigna el valor; al final `verdict` siempre tiene texto.
+  - slug: ej-0-3-07-precio-en-rango
+    tipo: guiado
+    titulo: "Valida un precio dentro de un rango"
+    pistas:
+      - "Son dos condiciones que deben cumplirse a la vez."
+      - 'El operador "y" se escribe `&&`.'
+      - "`if (candidate > 0 && candidate <= 10000) { ... } else { ... }`."
+    solucion: |-
+      Código:
+
+      ```ts
+      const candidate = 49.9;
+      if (candidate > 0 && candidate <= 10000) {
+        console.log("precio válido");
+      } else {
+        console.log("precio inválido");
+      }
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      precio válido
+      ```
+
+      Con `&&` deben cumplirse las dos condiciones. Observa que 0 queda fuera y 10000 queda dentro.
+  - slug: ej-0-3-08-semaforo-de-fallos
+    tipo: guiado
+    titulo: "Clasifica con un semáforo"
+    pistas:
+      - "Hay tres caminos: usa `if`, `else if` y `else`."
+      - "Pregunta primero por el caso más concreto (`=== 0`)."
+      - "`if (failures === 0) ... else if (failures <= 3) ... else ...`."
+    solucion: |-
+      Código:
+
+      ```ts
+      let failures = 2;
+      if (failures === 0) {
+        console.log("verde");
+      } else if (failures <= 3) {
+        console.log("amarillo");
+      } else {
+        console.log("rojo");
+      }
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      amarillo
+      ```
+
+      El orden importa: se ejecuta la primera rama cuya condición sea verdadera.
+  - slug: ej-0-3-09-codigo-http-con-switch
+    tipo: guiado
+    titulo: "Traduce un código HTTP con switch"
+    pistas:
+      - "`switch` compara un valor contra varios `case`."
+      - "Cada `case` termina con `break` para no seguir con el siguiente."
+      - "El último caso es `default`, que cubre todo lo demás."
+    solucion: |-
+      Código:
+
+      ```ts
+      let statusCode = 404;
+      switch (statusCode) {
+        case 200:
+          console.log("OK");
+          break;
+        case 404:
+          console.log("No encontrado");
+          break;
+        case 500:
+          console.log("Error del servidor");
+          break;
+        default:
+          console.log("Código desconocido");
+      }
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      No encontrado
+      ```
+
+      Usamos `let statusCode` y no `const status`: con `const`, TypeScript deduce que el valor es exactamente `404` y se queja de los otros `case`; y `status` ya es un nombre global del navegador, así que puede chocar con las definiciones de TypeScript.
+  - slug: ej-0-3-10-valor-por-defecto
+    tipo: guiado
+    titulo: "Usa un valor por defecto con ??"
+    pistas:
+      - "Un campo opcional se escribe `timeout?: number` y puede ser `undefined`."
+      - "El operador `??` usa la derecha solo si la izquierda es `null` o `undefined`."
+      - "`config.timeout ?? 5000`. Con `||` el 0 se perdería."
+    solucion: |-
+      Código:
+
+      ```ts
+      const config: { timeout?: number } = { timeout: 0 };
+      const timeout = config.timeout ?? 5000;
+      const other: { timeout?: number } = {};
+      console.log(timeout, other.timeout ?? 5000);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      0 5000
+      ```
+
+      `??` respeta el 0 (que es un valor válido); `||` lo trataría como "vacío" y lo reemplazaría.
+  - slug: ej-0-3-11-ejecuciones-con-for
+    tipo: guiado
+    titulo: "Repite con un bucle for"
+    pistas:
+      - "Un `for` tiene tres partes: inicio, condición y paso."
+      - "Empieza en 1 y repite mientras sea menor o igual que 5."
+      - "`for (let run = 1; run <= 5; run++) { ... }`."
+    solucion: |-
+      Código:
+
+      ```ts
+      for (let run = 1; run <= 5; run++) {
+        console.log(`Ejecución ${run}`);
+      }
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      Ejecución 1
+      Ejecución 2
+      Ejecución 3
+      Ejecución 4
+      Ejecución 5
+      ```
+
+      `run++` suma 1 en cada vuelta; sin él el bucle sería infinito.
+  - slug: ej-0-3-12-contar-fallos
+    tipo: guiado
+    titulo: "Cuenta los tests que fallan"
+    pistas:
+      - "Necesitas un contador que empiece en 0."
+      - "`for (const ok of results)` recorre cada elemento."
+      - "Dentro, `if (!ok) { failCount++; }`. El `!` invierte el booleano."
+    solucion: |-
+      Código:
+
+      ```ts
+      const results = [true, false, true, false, false];
+      let failCount = 0;
+      for (const ok of results) {
+        if (!ok) {
+          failCount++;
+        }
+      }
+      console.log(`Fallos: ${failCount}`);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      Fallos: 3
+      ```
+
+      `for...of` recorre los valores sin manejar índices.
+  - slug: ej-0-3-13-reintentar-con-while
+    tipo: guiado
+    titulo: "Reintenta con while"
+    pistas:
+      - "`while` repite mientras la condición sea verdadera."
+      - "Necesitas dos variables: `tries` y `success`."
+      - "Condición: `!success && tries < attemptsLog.length`. Dentro lee el intento y suma 1 a `tries`."
+    solucion: |-
+      Código:
+
+      ```ts
+      const attemptsLog = [false, false, true, true];
+      let tries = 0;
+      let success = false;
+      while (!success && tries < attemptsLog.length) {
+        success = attemptsLog[tries];
+        tries++;
+      }
+      console.log(`Pasó en el intento ${tries}`);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      Pasó en el intento 3
+      ```
+
+      La segunda parte de la condición evita un bucle infinito si nunca pasa.
+  - slug: ej-0-3-14-primer-fallo-con-break
+    tipo: guiado
+    titulo: "Encuentra el primer test que falla"
+    pistas:
+      - "Usa un `for` con índice para leer `names[i]` y `outcomes[i]`."
+      - "`break` sale del bucle de inmediato."
+      - 'Guarda el resultado en `firstFailing` (con valor inicial `"ninguno"`) antes de salir.'
+    solucion: |-
+      Código:
+
+      ```ts
+      const names = ["login", "logout", "checkout", "search"];
+      const outcomes = [true, true, false, false];
+      let firstFailing = "ninguno";
+      for (let i = 0; i < names.length; i++) {
+        if (!outcomes[i]) {
+          firstFailing = names[i];
+          break;
+        }
+      }
+      console.log(firstFailing);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      checkout
+      ```
+
+      El valor inicial cubre el caso en que ningún test falla.
+  - slug: ej-0-3-15-promedio-de-duraciones
+    tipo: guiado
+    titulo: "Suma y promedia duraciones"
+    pistas:
+      - "Acumula en una variable que empieza en 0."
+      - "`sum += d` es lo mismo que `sum = sum + d`."
+      - "El promedio es `sum / durations.length`."
+    solucion: |-
+      Código:
+
+      ```ts
+      const durations = [120, 80, 200, 100];
+      let sum = 0;
+      for (const d of durations) {
+        sum += d;
+      }
+      console.log(sum, sum / durations.length);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      500 125
+      ```
+
+      Dar la suma y el promedio juntos (`500 125`) permite comprobar mentalmente el resultado.
+  - slug: ej-0-3-16-funcion-de-validacion
+    tipo: guiado
+    titulo: "Escribe una función de validación"
+    pistas:
+      - "Una función recibe parámetros y devuelve un valor con `return`."
+      - "El tipo después de los paréntesis (`: boolean`) es el tipo de lo que devuelve."
+      - "La función puede devolver directamente la expresión `price > 0 && price <= 10000`."
+    solucion: |-
+      Código:
+
+      ```ts
+      function isValidPrice(price: number): boolean {
+        return price > 0 && price <= 10000;
+      }
+      console.log(isValidPrice(49.9), isValidPrice(-5));
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      true false
+      ```
+
+      Devolver la expresión booleana evita un `if` innecesario.
+  - slug: ej-0-3-17-funcion-flecha
+    tipo: guiado
+    titulo: "Usa una función flecha con una guarda"
+    pistas:
+      - "Una flecha se escribe `const f = (a: number): number => { ... };`."
+      - "Dividir entre 0 en JavaScript da `Infinity` o `NaN`, no un error."
+      - "Antes de dividir, `if (total === 0) { return 0; }`."
+    solucion: |-
+      Código:
+
+      ```ts
+      const percent = (passed: number, total: number): number => {
+        if (total === 0) {
+          return 0;
+        }
+        return (passed / total) * 100;
+      };
+      console.log(percent(18, 20), percent(0, 0));
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      90 0
+      ```
+
+      Las guardas al inicio ("early return") manejan los casos raros antes de la lógica principal.
+  - slug: ej-0-3-18-parametro-por-defecto
+    tipo: guiado
+    titulo: "Añade un parámetro por defecto"
+    pistas:
+      - "Un parámetro por defecto se escribe `ok: boolean = true`."
+      - "Para elegir el texto usa el operador ternario `condición ? a : b`."
+      - '`` `${name}: ${ok ? "PASS" : "FAIL"}` ``.'
+    solucion: |-
+      Código:
+
+      ```ts
+      function formatResult(name: string, ok: boolean = true): string {
+        return `${name}: ${ok ? "PASS" : "FAIL"}`;
+      }
+      console.log(formatResult("login"));
+      console.log(formatResult("checkout", false));
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      login: PASS
+      checkout: FAIL
+      ```
+
+      Con el valor por defecto, `formatResult("login")` y `formatResult("login", true)` son equivalentes.
+  - slug: ej-0-3-19-devolver-numero-o-null
+    tipo: guiado
+    titulo: "Devuelve un número o null"
+    pistas:
+      - '`number | null` significa "un número o null".'
+      - "Convierte con `Number(text)` y revisa con `Number.isNaN`."
+      - "Si `Number.isNaN(value) || value < 0`, devuelve `null`; si no, `value`."
+    solucion: |-
+      Código:
+
+      ```ts
+      function parseQuantity(text: string): number | null {
+        const value = Number(text);
+        if (Number.isNaN(value) || value < 0) {
+          return null;
+        }
+        return value;
+      }
+      console.log(parseQuantity("3"), parseQuantity("tres"), parseQuantity("-1"));
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      3 null null
+      ```
+
+      Devolver `null` obliga a quien llama a revisar el caso inválido, y TypeScript se lo recuerda.
+  - slug: ej-0-3-20-funcion-que-recibe-funcion
+    tipo: guiado
+    titulo: "Pasa una función como argumento"
+    pistas:
+      - "El parámetro `predicate` es una función: `(n: number) => boolean`."
+      - "Recorre con `for...of` y llama `predicate(v)` por cada valor."
+      - "Llámala así: `countWhere(times, (ms) => ms > 100)`."
+    solucion: |-
+      Código:
+
+      ```ts
+      function countWhere(values: number[], predicate: (n: number) => boolean): number {
+        let count = 0;
+        for (const v of values) {
+          if (predicate(v)) {
+            count++;
+          }
+        }
+        return count;
+      }
+      const slow = countWhere([120, 80, 200, 100], (ms) => ms > 100);
+      console.log(slow);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      2
+      ```
+
+      Pasar funciones permite reutilizar el recorrido y cambiar solo la condición.
+  - slug: ej-0-3-21-cola-de-pruebas
+    tipo: guiado
+    titulo: "Agrega y lee elementos de un arreglo"
+    pistas:
+      - "Un arreglo de textos se tipa `string[]`."
+      - "`queue.push(x)` agrega al final. El primer elemento es `queue[0]`."
+      - "El último se obtiene con `queue.at(-1)`."
+    solucion: |-
+      Código:
+
+      ```ts
+      const queue: string[] = ["login", "logout"];
+      queue.push("checkout");
+      console.log(queue.length, queue[0], queue.at(-1));
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      3 login checkout
+      ```
+
+      Los índices empiezan en 0; `.at(-1)` cuenta desde el final.
+  - slug: ej-0-3-22-filtrar-fallidos
+    tipo: guiado
+    titulo: "Filtra los tests que fallan"
+    pistas:
+      - "`filter` devuelve un arreglo nuevo con los elementos que cumplen una condición."
+      - "Recibe una función que devuelve `true` o `false` por elemento."
+      - "`runs.filter((r) => !r.passed)`."
+    solucion: |-
+      Código:
+
+      ```ts
+      const runs = [
+        { name: "login", passed: true },
+        { name: "logout", passed: false },
+        { name: "checkout", passed: false },
+      ];
+      const failingRuns = runs.filter((r) => !r.passed);
+      console.log(failingRuns.length);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      2
+      ```
+
+      `filter` no modifica el arreglo original.
+  - slug: ej-0-3-23-extraer-nombres
+    tipo: guiado
+    titulo: "Transforma con map"
+    pistas:
+      - "`map` crea un arreglo nuevo del mismo tamaño transformando cada elemento."
+      - "Para pasar a mayúsculas, un texto tiene el método `toUpperCase()`."
+      - "`suite.map((t) => t.name.toUpperCase())`."
+    solucion: |-
+      Código:
+
+      ```ts
+      const suite = [
+        { name: "login", passed: true },
+        { name: "logout", passed: false },
+      ];
+      const suiteNames = suite.map((t) => t.name.toUpperCase());
+      console.log(suiteNames);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      [ 'LOGIN', 'LOGOUT' ]
+      ```
+
+      `map` transforma, `filter` selecciona: no los confundas.
+  - slug: ej-0-3-24-buscar-y-comprobar
+    tipo: guiado
+    titulo: "Busca y comprueba con find, every y some"
+    pistas:
+      - "`find` devuelve el primer elemento que cumple, o `undefined` si no hay."
+      - "`every` pregunta si todos cumplen; `some` si al menos uno cumple."
+      - "Como `find` puede devolver `undefined`, lee con `second?.passed`."
+    solucion: |-
+      Código:
+
+      ```ts
+      const cases = [
+        { id: 1, passed: true },
+        { id: 2, passed: false },
+        { id: 3, passed: true },
+      ];
+      const second = cases.find((c) => c.id === 2);
+      const allPassed = cases.every((c) => c.passed);
+      const anyFailed = cases.some((c) => !c.passed);
+      console.log(second?.passed, allPassed, anyFailed);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      false false true
+      ```
+
+      El `?.` evita un error si `find` no encuentra nada.
+  - slug: ej-0-3-25-sumar-y-ordenar
+    tipo: guiado
+    titulo: "Suma con reduce y ordena sin alterar el original"
+    pistas:
+      - "`reduce` acumula un valor: recibe una función y el valor inicial."
+      - "`sort` modifica el arreglo; haz antes una copia con `[...times]`."
+      - "`[...times].sort((a, b) => b - a)` ordena de mayor a menor; `times.reduce((acc, t) => acc + t, 0)` suma."
+    solucion: |-
+      Código:
+
+      ```ts
+      const times = [120, 80, 200, 100];
+      const total2 = times.reduce((acc, t) => acc + t, 0);
+      const slowestFirst = [...times].sort((a, b) => b - a);
+      console.log(total2, slowestFirst, times);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      500 [ 200, 120, 100, 80 ] [ 120, 80, 200, 100 ]
+      ```
+
+      La salida muestra que `times` sigue igual: la copia protege los datos originales.
+  - slug: ej-0-3-26-caso-de-prueba-como-objeto
+    tipo: guiado
+    titulo: "Representa un caso de prueba como objeto"
+    pistas:
+      - "Un objeto se escribe `{ clave: valor, ... }`."
+      - "Se accede a una propiedad con punto: `testCase.name`."
+      - "Cambia con `testCase.passed = false;`. Aunque sea `const`, se pueden cambiar sus propiedades."
+    solucion: |-
+      Código:
+
+      ```ts
+      const testCase = { id: 1, name: "precio negativo", expected: false, passed: true };
+      testCase.passed = false;
+      console.log(testCase.name, testCase.passed);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      precio negativo false
+      ```
+
+      `const` impide reasignar la variable, no cambiar el contenido del objeto.
+  - slug: ej-0-3-27-define-un-tipo
+    tipo: guiado
+    titulo: "Define un tipo para tus casos"
+    pistas:
+      - "Un alias se declara con `type Nombre = { ... };`."
+      - "Cada propiedad lleva su tipo: `id: number;`."
+      - "`const priceCases: TestCase[] = [ { ... }, { ... } ];`. Si olvidas una propiedad, TypeScript lo marca."
+    solucion: |-
+      Código:
+
+      ```ts
+      type TestCase = {
+        id: number;
+        name: string;
+        input: number;
+        expected: boolean;
+      };
+      const priceCases: TestCase[] = [
+        { id: 1, name: "precio normal", input: 49.9, expected: true },
+        { id: 2, name: "precio negativo", input: -5, expected: false },
+      ];
+      console.log(priceCases.length, priceCases[1].name);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      2 precio negativo
+      ```
+
+      Un tipo describe la forma de los datos; si falta `expected`, el compilador dice `Property 'expected' is missing`.
+  - slug: ej-0-3-28-propiedad-opcional
+    tipo: guiado
+    titulo: "Maneja una propiedad opcional"
+    pistas:
+      - "`error?: string` significa que la propiedad puede no existir."
+      - "Si no existe, vale `undefined`, que cuenta como falso en un `if` o ternario."
+      - "`r.error ? A : B`, donde A y B son plantillas de texto."
+    solucion: |-
+      Código:
+
+      ```ts
+      type Result = { name: string; error?: string };
+      function describeResult(r: Result): string {
+        return r.error ? `${r.name} falló: ${r.error}` : `${r.name} pasó`;
+      }
+      console.log(describeResult({ name: "login" }));
+      console.log(describeResult({ name: "checkout", error: "timeout" }));
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      login pasó
+      checkout falló: timeout
+      ```
+
+      TypeScript sabe que dentro de la rama verdadera `r.error` es `string`.
+  - slug: ej-0-3-29-estados-posibles
+    tipo: guiado
+    titulo: "Limita los valores con una unión"
+    pistas:
+      - "Una unión de literales solo admite esos valores exactos."
+      - "Un objeto con una propiedad numérica por estado: `{ pass: number; fail: number; skip: number }`."
+      - "Empieza con `{ pass: 0, fail: 0, skip: 0 }` y haz `counts[item.status]++` en un bucle."
+    solucion: |-
+      Código:
+
+      ```ts
+      type Status = "pass" | "fail" | "skip";
+      type Counts = { pass: number; fail: number; skip: number };
+      function countByStatus(items: { status: Status }[]): Counts {
+        const counts: Counts = { pass: 0, fail: 0, skip: 0 };
+        for (const item of items) {
+          counts[item.status]++;
+        }
+        return counts;
+      }
+      console.log(countByStatus([{ status: "pass" }, { status: "fail" }, { status: "pass" }]));
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      { pass: 2, fail: 1, skip: 0 }
+      ```
+
+      Si escribes `"passed"` en vez de `"pass"`, TypeScript falla al compilar: se acabaron los errores de tipeo en estados.
+  - slug: ej-0-3-30-valida-una-tabla-de-casos
+    tipo: guiado
+    titulo: "Ejecuta una tabla de casos de prueba"
+    pistas:
+      - "Junta lo aprendido: un tipo, una función, un arreglo y un bucle."
+      - "Por cada caso compara `validatePrice(c.input)` con `c.expected` usando `!==`."
+      - "Cuenta en `failedCases` e imprime `` `${failedCases} casos fallidos de ${table.length}` ``."
+    solucion: |-
+      Código:
+
+      ```ts
+      type PriceCase = { name: string; input: number; expected: boolean };
+      function validatePrice(price: number): boolean {
+        return price > 0 && price <= 10000;
+      }
+      const table: PriceCase[] = [
+        { name: "precio normal", input: 49.9, expected: true },
+        { name: "cero", input: 0, expected: false },
+        { name: "negativo", input: -5, expected: false },
+        { name: "límite superior", input: 10000, expected: true },
+        { name: "sobre el límite", input: 10000.01, expected: false },
+      ];
+      let failedCases = 0;
+      for (const c of table) {
+        const actual = validatePrice(c.input);
+        if (actual !== c.expected) {
+          failedCases++;
+          console.log(`FALLA: ${c.name}`);
+        }
+      }
+      console.log(`${failedCases} casos fallidos de ${table.length}`);
+      ```
+
+      Salida al ejecutarlo con `node`:
+
+      ```text
+      0 casos fallidos de 5
+      ```
+
+      Es un mini-framework de pruebas: datos (tabla), código a probar y un comparador. Es la idea que usarás en Playwright y Vitest.

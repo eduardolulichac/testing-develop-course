@@ -1,0 +1,432 @@
+---
+modulo: "1.1"
+titulo: "Primer test con Playwright"
+fase: 1
+nivel: "Junior"
+duracion_min: 120
+prerequisitos: ["0.5"]
+escenario: "fase1-login"
+reto: "reto-1-1-login"
+version: "2026-11"
+herramientas:
+  ["Playwright 1.64.1", "Node 24 (verificado 24.14)", "Docker Compose v2", "QA Arena (local)"]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Al terminar habrás instalado Playwright, escrito y ejecutado tu primer test automático contra QA
+  Arena, sabrás leer un fallo y abrir el informe y la traza, y habrás comprobado que una suite sirve
+  de verdad solo si **falla cuando la aplicación tiene un defecto**.
+</Objetivo>
+
+Hasta ahora probabas a mano: abrías la tienda, escribías un correo, pulsabas «Entrar» y mirabas qué pasaba. Cada vez que cambia la aplicación hay que repetirlo todo. Un **test automático** es esa misma prueba escrita como código: una máquina la repite en segundos, siempre igual y sin cansarse.
+
+**Playwright** es la herramienta que usaremos. Abre un navegador real, hace lo que haría una persona (escribir, hacer clic) y comprueba lo que aparece en pantalla. Está hecha por Microsoft, es gratuita y funciona con Chromium, Firefox y WebKit. En el curso usamos la versión **1.64.1**.
+
+> En Windows sigues trabajando en tu terminal de Ubuntu (WSL2), como en la Fase 0. A partir de aquí escribiremos TypeScript de verdad, pero con poca sintaxis nueva: la iremos explicando cuando aparezca.
+
+Lo que necesitas antes de empezar:
+
+- Node 24 instalado (módulo 0.1: `node --version` debe decir `v24.x.x`).
+- QA Arena levantada en tu máquina (módulo 0.1) y respondiendo en `http://localhost:18080`.
+- Un editor con terminal integrada (VS Code).
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Crea un proyecto e instala Playwright">
+Un **proyecto** de Node es una carpeta con un archivo `package.json` que anota qué paquetes usa. Crea una carpeta nueva **fuera** del repositorio del curso. Es tu carpeta de práctica: aquí harás los pasos 1 a 9 y los ejercicios. El reto del final usa **otra** carpeta distinta, el repositorio `reto-1-1-login`, que se prepara en la sección 5.
+
+```bash
+mkdir practica-playwright
+cd practica-playwright
+npm init -y
+npm install --save-exact --save-dev @playwright/test@1.64.1 @types/node@24.19.2
+npx playwright install chromium
+```
+
+Qué hace cada línea:
+
+- `npm init -y` crea el `package.json` con valores por defecto.
+- `npm install --save-dev` instala paquetes que solo necesitas para desarrollar. `--save-exact` fija la versión exacta (1.64.1) en vez de permitir cambios futuros.
+- `@playwright/test` es el corredor de tests. `@types/node` solo le da a tu editor información sobre Node.
+- `npx playwright install chromium` descarga el navegador que Playwright controla. Es una descarga grande y se hace una sola vez.
+
+Si estás en Linux o WSL2 y el navegador no arranca porque faltan librerías del sistema, ejecuta `npx playwright install-deps chromium` (te pedirá tu contraseña de administrador).
+
+Existe también `npm init playwright@latest`, un asistente con preguntas que crea archivos de ejemplo. Aquí lo hacemos a mano para que entiendas cada pieza.
+
+</Paso>
+
+<Paso numero={2} titulo="La configuración y la estructura de carpetas">
+Playwright lee un archivo `playwright.config.ts`. Créalo en la raíz del proyecto con este contenido:
+
+```ts
+import { defineConfig } from "@playwright/test";
+
+export default defineConfig({
+  testDir: "./tests",
+  use: {
+    baseURL: process.env.ARENA_URL ?? "http://localhost:18080",
+    trace: "retain-on-failure",
+  },
+});
+```
+
+- `testDir` dice dónde viven los tests: la carpeta `tests`.
+- `baseURL` es la dirección base de la aplicación. Con ella, en los tests escribes `"/login"` en vez de la dirección completa. Si existe la variable de entorno `ARENA_URL` (la conoces del módulo 0.1) se usa esa; si no, `http://localhost:18080`. El `??` significa «si lo de la izquierda no existe, usa lo de la derecha».
+- `trace: "retain-on-failure"` guarda una grabación detallada, la **traza**, solo de los tests que fallan.
+
+Crea también la carpeta `tests`. Al trabajar, tu proyecto tendrá esta forma:
+
+```text
+practica-playwright/
+  package.json          paquetes del proyecto
+  playwright.config.ts  configuración
+  tests/                tus archivos *.spec.ts
+  test-results/         lo genera Playwright (trazas, capturas)
+  playwright-report/    lo genera Playwright (informe HTML)
+  node_modules/         los paquetes instalados
+```
+
+Las tres últimas se generan solas y **no se suben a Git**. Convierte la carpeta en un repositorio y crea su `.gitignore` (módulo 0.2):
+
+```bash
+git init
+printf 'node_modules/\ntest-results/\nplaywright-report/\n' > .gitignore
+```
+
+`git init` crea el repositorio (sin él, Git no sabe si un archivo está ignorado) y `printf` escribe en `.gitignore` una carpeta por línea.
+
+</Paso>
+
+<Paso numero={3} titulo="Anatomía de un test">
+Un test vive en un archivo cuyo nombre termina en `.spec.ts`. Crea `tests/primero.spec.ts`:
+
+```ts
+import { test, expect } from "@playwright/test";
+
+test("la página de login muestra su título", async ({ page }) => {
+  await page.goto("/login");
+  await expect(page.getByRole("heading", { name: "Iniciar sesion" })).toBeVisible();
+});
+```
+
+Línea por línea:
+
+- `import { test, expect } from "@playwright/test"` trae dos herramientas: `test` para declarar un test y `expect` para comprobar cosas.
+- `test("nombre", async ({ page }) => { ... })` declara un test. El texto es su nombre: que se entienda qué se prueba. La función recibe un objeto con herramientas; `{ page }` toma la **pestaña del navegador** que Playwright abre limpia para este test.
+- `await page.goto("/login")` abre la página `http://localhost:18080/login`.
+- `page.getByRole("heading", { name: "Iniciar sesion" })` es un **localizador**: describe un elemento como lo vería una persona (un encabezado con ese texto). En el módulo 1.2 verás todos los tipos.
+- `expect(...).toBeVisible()` es una **aserción**: comprueba que el encabezado se ve. Si no, el test falla.
+
+Fíjate en que la Arena escribe «Iniciar sesion» **sin tilde**. Los textos de tu test deben coincidir con los de la pantalla.
+
+**Sobre `async` y `await`.** Playwright habla con un navegador y eso tarda. Por eso cada acción devuelve una promesa de «terminaré en un momento», y `await` significa «espera a que termine antes de seguir». Como regla práctica: pon `await` delante de cada acción (`goto`, `fill`, `click`) y delante de cada `expect(...)`. Para poder usar `await`, la función del test se marca `async`.
+
+</Paso>
+
+<Paso numero={4} titulo="Acciones: escribir y hacer clic">
+Un test de login hace lo mismo que tú. Estas son las acciones que necesitas hoy:
+
+```ts
+await page.getByLabel("Correo").fill("ana@arena.test"); // escribe en el campo
+await page.getByLabel("Contrasena").fill("Cliente123!"); // también un campo
+await page.getByRole("button", { name: "Entrar" }).click(); // hace clic
+```
+
+- `getByLabel("Correo")` busca el campo por el texto de su etiqueta. Es la forma más parecida a como lo encuentra una persona.
+- `fill(texto)` escribe en el campo (borra lo que hubiera).
+- `getByRole("button", { name: "Entrar" })` busca un botón por su nombre visible.
+- `click()` hace clic.
+
+No hace falta esperar a que el campo exista ni a que el botón esté listo: Playwright **espera solo**, hasta unos segundos, a que el elemento aparezca y se pueda usar. Lo verás en detalle en el módulo 1.3.
+
+</Paso>
+
+<Paso numero={5} titulo="Aserciones: qué comprobar">
+Sin una aserción, un test solo «pasa por la pantalla»: no comprueba nada. Después de actuar, comprueba el **resultado**:
+
+```ts
+await expect(page.getByTestId("user-name")).toBeVisible(); // aparece el nombre
+await expect(page).toHaveURL("/login"); // seguimos en esta dirección
+await expect(page.getByRole("alert")).toHaveText("Invalid email or password"); // texto exacto
+```
+
+Las aserciones de Playwright **reintentan** hasta unos segundos antes de fallar: si el mensaje tarda 300 ms en aparecer, el test espera. Por eso conviene usar siempre `await expect(...)` y no comparar valores a mano. En el módulo 1.4 verás qué comprobar y qué no.
+
+</Paso>
+
+<Paso numero={6} titulo="Ejecutar los tests">
+Con QA Arena levantada, desde la carpeta del proyecto:
+
+```bash
+npx playwright test
+```
+
+Verás una línea por test con una marca de aprobado o fallo y el tiempo. Opciones que usarás mucho:
+
+- `npx playwright test tests/primero.spec.ts` ejecuta un solo archivo.
+- `npx playwright test -g "login"` ejecuta los tests cuyo nombre contiene «login».
+- `npx playwright test --headed` muestra el navegador mientras trabaja (por defecto va «invisible»).
+- `npx playwright test --ui` abre una ventana interactiva donde ves cada paso del test.
+- `npx playwright test --debug` ejecuta paso a paso con el Inspector.
+
+Las ventanas (`--headed`, `--ui`, `--debug`) dependen de que tu sistema pueda abrirlas. Si no puedes, el informe y la traza del paso 8 te sirven igual.
+
+Si la Arena no está en el puerto 18080, define la variable antes de ejecutar: `ARENA_URL=http://localhost:PUERTO npx playwright test`.
+
+</Paso>
+
+<Paso numero={7} titulo="Leer un fallo">
+Un fallo es información. Cambia en tu test «Iniciar sesion» por «Iniciar sesión» (con tilde) y ejecuta. Verás algo así (recortado):
+
+```text
+Error: expect(locator).toBeVisible() failed
+
+Locator: getByRole('heading', { name: 'Iniciar sesión' })
+Expected: visible
+Timeout: 5000ms
+Error: element(s) not found
+
+> 5 |   await expect(page.getByRole("heading", { name: "Iniciar sesión" })).toBeVisible();
+```
+
+Cómo leerlo, de arriba abajo:
+
+1. **Qué falló**: `toBeVisible() failed`. La aserción de visibilidad.
+2. **Sobre qué**: `Locator: getByRole('heading', ...)`. El elemento que buscaba.
+3. **Por qué**: `element(s) not found`. Esperó 5 segundos (`Timeout: 5000ms`) y no lo encontró.
+4. **Dónde**: la flecha `>` marca la línea exacta de tu código.
+
+Aquí el problema no era la aplicación, sino el texto con tilde. Antes de culpar a la Arena, revisa que escribes lo mismo que ves en pantalla. Vuelve a dejar «Iniciar sesion».
+
+</Paso>
+
+<Paso numero={8} titulo="El informe y la traza">
+Dos herramientas te cuentan qué pasó después de ejecutar:
+
+```bash
+npx playwright test --reporter=html   # genera el informe en playwright-report/
+npx playwright show-report            # lo abre en el navegador
+npx playwright test --trace on        # graba la traza de todos los tests
+npx playwright show-trace test-results/<carpeta-del-test>/trace.zip
+```
+
+- El **informe HTML** lista los tests, cuáles fallaron y el error de cada uno.
+- La **traza** es como una película del test: en cada paso ves la página tal como estaba, el localizador usado, las peticiones de red y los mensajes de la consola. Por la configuración que escribiste, se guarda sola cuando un test falla; con `--trace on` se guarda siempre.
+
+`show-report` y `show-trace` abren el navegador; la carpeta exacta del test aparece escrita en la salida del fallo (línea `npx playwright show-trace ...`). Cuando un test falla y no sabes por qué, abre la traza antes de tocar el código.
+
+</Paso>
+
+<Paso numero={9} titulo="Un test útil falla cuando hay un defecto">
+Un test que nunca falla no protege nada. Para comprobar tu suite, la Arena puede **simular versiones con defectos**: son los **escenarios**. En tu terminal, activa el de este módulo:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase1-login"}'
+curl -s http://localhost:18080/__arena/state
+```
+
+La respuesta del segundo comando debe contener `"scenario":"fase1-login"`. Ejecuta de nuevo tu suite. Después, **vuelve siempre a la versión sin defectos**:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"baseline"}'
+```
+
+El método que seguirás en todo el curso:
+
+1. Tu suite debe pasar entera contra `baseline` (la Arena correcta). Si falla ahí, el problema está en tu test.
+2. Con el escenario activo, debería fallar algún test. Si todos siguen pasando, tu suite no detecta ese defecto.
+
+El escenario `fase1-login` tiene algo escondido en el inicio de sesión. Para encontrarlo no basta con probar el camino feliz: hay que pensar qué variantes probaría un buen tester.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Ana inicia sesión y cierra sesión">
+Un test completo que prueba un recorrido de ida y vuelta. Guárdalo como `tests/sesion.spec.ts`:
+
+```ts
+import { test, expect } from "@playwright/test";
+
+test("ana inicia sesión y la cierra", async ({ page }) => {
+  // 1. Abrir el login
+  await page.goto("/login");
+
+  // 2. Rellenar el formulario con la cuenta de práctica
+  await page.getByLabel("Correo").fill("ana@arena.test");
+  await page.getByLabel("Contrasena").fill("Cliente123!");
+  await page.getByRole("button", { name: "Entrar" }).click();
+
+  // 3. Comprobar que entró: se ve su nombre
+  await expect(page.getByTestId("user-name")).toHaveText("Ana Cliente");
+
+  // 4. Cerrar sesión y comprobar que volvemos al login
+  await page.getByRole("button", { name: "Salir" }).click();
+  await expect(page).toHaveURL("/login");
+});
+```
+
+Al ejecutar `npx playwright test` contra `baseline` pasan los dos tests (`primero.spec.ts` y `sesion.spec.ts`). Si lo ejecutas con `fase1-login` activo, **también pasan**: la suite no sabe nada de ese defecto. Con ella no habrías detectado el problema, y por eso un buen reto pide más casos que el camino feliz.
+
+Los fallos típicos de este ejemplo, que debes reconocer:
+
+1. **Texto distinto al de la pantalla.** `toHaveText("Ana")` falla con `Received: "Ana Cliente"`: `toHaveText` compara el texto completo.
+2. **Un localizador que encuentra varios elementos.** `page.getByRole("button").click()` en el login falla con `strict mode violation: getByRole('button') resolved to 3 elements`. Playwright no adivina cuál quieres: añade el `name`.
+3. **Olvidar `await` en un `expect`.** Si escribes `expect(page.getByRole("heading", ...)).toBeVisible()` sin `await`, el test termina antes de la comprobación y falla con `Error: Test ended`. Todo `expect` lleva `await`.
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+Los ejercicios se hacen con la Arena en `baseline`, salvo que se indique lo contrario. El botón de abajo abre la Arena **alojada** del curso, solo para explorar: tus tests y tus `curl` van siempre contra tu Arena local en `http://localhost:18080`.
+
+<Ejercicio id="ej-1-1-instalar-y-primer-test">
+  Crea la carpeta `practica-playwright`, instala `@playwright/test` en la versión 1.64.1 y el
+  navegador Chromium, escribe `playwright.config.ts` y un test que abra `/login` y compruebe que se
+  ve el encabezado «Iniciar sesion». Ejecútalo y confirma que pasa.
+</Ejercicio>
+
+<Ejercicio id="ej-1-1-leer-un-fallo">
+  Rompe tu test a propósito: cambia el texto del encabezado por «Iniciar sesión» (con tilde) y
+  ejecútalo. Anota qué línea te dice qué falló, sobre qué elemento y cuánto esperó. Después
+  corrígelo y comprueba que vuelve a pasar.
+</Ejercicio>
+
+<Ejercicio id="ej-1-1-informe-y-traza">
+  Ejecuta tus tests generando el informe HTML y la traza de todos los tests. Abre el informe y
+  localiza el paso en que se hace clic en «Entrar» dentro de la traza de tu test de inicio de
+  sesión. Anota qué se ve en la página justo antes de ese clic.
+</Ejercicio>
+
+<Ejercicio id="ej-1-1-activar-escenario">
+  Activa el escenario `fase1-login` con `curl`, confirma con `/__arena/state` que quedó activo,
+  ejecuta tu suite y anota si algún test falla. Termina volviendo la Arena a `baseline` y
+  comprobando que el estado lo refleja.
+</Ejercicio>
+
+<AbrirArena escenario="fase1-login" />
+
+## 5. Reto sin guía
+
+<Reto titulo="Automatiza el inicio de sesión de la Arena">
+  Este reto sí se evalúa solo: lo corrige la plataforma ejecutando tu suite contra la Arena.
+
+**Consigue la plantilla y arráncala.** El reto no se hace en `practica-playwright`: se hace en tu propio repositorio, creado a partir de una plantilla pública. Sigue estos pasos:
+
+1. Abre `https://github.com/eduardolulichac/reto-1-1-login` y pulsa el botón verde **Use this template**, luego **Create a new repository**. Ponle el nombre `reto-1-1-login` y créalo en tu cuenta con visibilidad **Public** (el evaluador solo funciona con repositorios públicos; no guardes secretos en él).
+2. Clona tu copia (cambia `TU-USUARIO` por tu usuario de GitHub) y entra en la carpeta:
+
+   ```bash
+   git clone https://github.com/TU-USUARIO/reto-1-1-login.git
+   cd reto-1-1-login
+   ```
+
+3. Instala los paquetes y el navegador. Esta carpeta es nueva y no comparte nada con `practica-playwright`, así que hay que instalar de nuevo:
+
+   ```bash
+   npm ci
+   npx playwright install chromium
+   ```
+
+4. Con QA Arena levantada, ejecuta la suite de la plantilla:
+
+   ```bash
+   npx playwright test
+   ```
+
+   Debe terminar con `1 skipped`: el único test que trae está marcado como pendiente (`test.fixme`) hasta que lo completes.
+
+Ya tienes el reto en marcha. Parte de la plantilla (la carpeta con `README.md`, `playwright.config.ts` y `tests/login.spec.ts`). Completa `tests/login.spec.ts` con **al menos tres tests** del inicio de sesión: login correcto, contraseña incorrecta y el mismo correo escrito con otras mayúsculas.
+
+Tu suite debe cumplir tres cosas a la vez:
+
+- Pasa **entera** contra la Arena sin defectos (`baseline`).
+- **Falla** cuando el login tiene el defecto sembrado del escenario `fase1-login`. Si todos tus tests siguen pasando con ese escenario activo, piensa qué variantes del correo y qué mensajes de error revelarían un problema.
+- Usa localizadores accesibles (`getByRole`, `getByLabel`), sin esperas fijas (`waitForTimeout`) y sin llamar a los endpoints internos de la Arena (`/__arena`) desde los tests. Tú puedes activar el escenario desde tu terminal, pero el código de tus tests no.
+
+Entrega: sigue el `README.md` de la plantilla. Vinculas tu repositorio en la plataforma, que te muestra una clave una sola vez; la guardas como secreto de Actions y haces `push` a `main`. El resultado aparece en la pestaña **Actions** y en la página del reto.
+
+Antes de entregar, repasa esta lista con tu suite en local:
+
+- Contra `baseline`, `npx playwright test` termina sin fallos.
+- Con `fase1-login` activo, al menos un test falla y entiendes por qué.
+- No hay `waitForTimeout` ni selectores CSS cuando `getByRole` o `getByLabel` sirven.
+- Dejaste la Arena de nuevo en `baseline`.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+La IA es muy buena para producir un primer borrador de test y para explicar un error. Pero un test generado puede parecer correcto y no serlo: **tú** lo ejecutas y decides.
+
+**Qué pedirle:**
+
+- «Explícame este mensaje de error de Playwright, línea por línea» (pega el error completo).
+- «Dame un borrador de test de login para esta página» (pégale el HTML o describe los campos con sus etiquetas reales).
+- «¿Qué hace cada línea de mi `playwright.config.ts`?»
+
+**Qué revisar antes de aceptarlo:**
+
+- Que corra: ejecútalo contra `baseline` y mira que pase.
+- Que los textos existen de verdad en la pantalla. La IA suele inventar «Iniciar sesión» con tilde, «Email» o «Login» donde la Arena dice «Iniciar sesion», «Correo» y «Entrar».
+- Que lleva `await` en cada acción y cada `expect`.
+- Que **comprueba algo**: un test que solo hace clic y no verifica nada nunca falla.
+- Que usa la versión 1.64.1 y no te hace instalar otra cosa (`@playwright/test@latest`, paquetes desconocidos).
+
+**Qué rechazar:**
+
+- `page.waitForTimeout(3000)` y esperas fijas: ralentizan y fallan por azar.
+- Opciones como `force: true` o `{ timeout: 60000 }` puestas para «hacer pasar» un test sin entender por qué falla.
+- Selectores CSS largos copiados del navegador cuando existe `getByRole` o `getByLabel`.
+- Comandos que borran carpetas, usan `sudo` o descargan un script y lo ejecutan.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Escribir los textos de memoria en vez de copiar los de la pantalla">
+  La Arena escribe «Iniciar sesion», «Contrasena» y «Catalogo» sin tilde. Si pones «Iniciar sesión»
+  el localizador no encuentra nada. Abre la página y copia el texto tal cual.
+</ErrorComun>
+
+<ErrorComun titulo="Olvidar el await">
+  Sin `await` el test sigue sin esperar el resultado. Con `expect` termina antes de comprobar y
+  falla con «Test ended»; con una acción, los pasos se pisan. Pon `await` delante de cada acción y
+  de cada `expect`.
+</ErrorComun>
+
+<ErrorComun titulo="Un test que pasa sin comprobar nada">
+  Hacer clic en «Entrar» y terminar no demuestra que el login funcione. Termina siempre con una
+  aserción sobre el resultado: el nombre del usuario, la dirección o el mensaje de error.
+</ErrorComun>
+
+<ErrorComun titulo="Dejar la Arena con un escenario activo">
+  Si te olvidas de volver a `baseline`, tus tests posteriores fallan por un defecto que ya no
+  recuerdas. Al terminar una práctica, activa `baseline` y revisa `/__arena/state`.
+</ErrorComun>
+
+<ErrorComun titulo="Culpar a la aplicación antes de leer el error">
+  Muchos fallos son del propio test: un texto distinto, un localizador ambiguo o la Arena apagada.
+  Lee el error de arriba abajo y abre la traza antes de reportar un defecto.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Un test automático repite una prueba manual sin cansarse; Playwright controla un navegador real.
+- Se instala con `npm install --save-exact --save-dev @playwright/test@1.64.1` y `npx playwright install chromium`.
+- `playwright.config.ts` define dónde están los tests, la `baseURL` y cuándo guardar la traza.
+- Un test usa `test` para declararlo, `page` para actuar y `expect` para comprobar; cada acción y cada `expect` llevan `await`.
+- Los localizadores `getByRole` y `getByLabel` buscan elementos como los vería una persona.
+- `npx playwright test` ejecuta la suite; `--headed`, `--ui` y `--debug` ayudan a verla; el informe HTML y la traza explican los fallos.
+- Un fallo se lee de arriba abajo: qué aserción, sobre qué elemento, por qué y en qué línea.
+- Una suite es útil si pasa contra `baseline` y falla cuando el escenario activa un defecto.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

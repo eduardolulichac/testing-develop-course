@@ -1,0 +1,789 @@
+---
+modulo: "2.2"
+titulo: "Page Object y componentes"
+fase: 2
+nivel: "Semi Senior"
+duracion_min: 120
+prerequisitos: ["2.1"]
+escenario: "fase1-aserciones"
+reto: "reto-2-2-pom"
+version: "2026-11"
+herramientas: ["Playwright 1.64.1", "Node 24 (verificado 24.14)"]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+
+Al terminar este módulo sabrás:
+
+- Explicar qué es un Page Object y qué problema resuelve frente a las ayudas sueltas.
+- Escribir Page Objects para las pantallas de QA Arena, con localizadores y acciones con nombre de negocio.
+- Extraer los elementos que se repiten en varias pantallas (la cabecera, una fila del carrito) como componentes.
+- Crear fixtures personalizados con `test.extend` que entreguen tus Page Objects a cada test.
+- Migrar una suite a Page Objects sin perder nada de lo que detectaba.
+
+</Objetivo>
+
+En el módulo 2.1 sacaste la mecánica repetida a ayudas (`iniciarSesion`, `agregarProducto`). Funciona, pero el diseño todavía tiene una grieta: **los localizadores siguen dentro de los tests**. Mira cuántas veces aparece esto en una suite mediana:
+
+```ts
+await expect(page.getByTestId("cart-discount")).toHaveText("-$5.00");
+```
+
+Si el equipo de desarrollo cambia ese `data-testid`, hay que editar todos los tests que lo usan. Y quien lee el test ve detalles de la pantalla (identificadores, roles, textos de botones) en lugar de la intención.
+
+El **Page Object** (POM, por _Page Object Model_) resuelve esto: es una clase que representa una pantalla. Guarda sus localizadores y sus acciones en un solo lugar, y el test habla con ella en lenguaje de negocio: `carrito.aplicarCupon("SAVE5")`. Si la pantalla cambia, tocas la clase y no los tests.
+
+En este módulo migras la suite de cupones y carrito del módulo 2.1 a Page Objects y fixtures. Trabajas con el escenario `fase1-aserciones`, el mismo de la Fase 1: el refactor debe **seguir detectando** lo que detectaba, y lo comprobarás.
+
+Lo que necesitas antes de empezar:
+
+- El proyecto `practica-playwright` con la suite `tests/carrito.spec.ts` del módulo 2.1 y `tests/support/datos.ts`.
+- QA Arena levantada en `http://localhost:18080`.
+- Tu `.env.local` del módulo 1.5, con `USUARIO_EMAIL` y `USUARIO_CLAVE` (tu `playwright.config.ts` ya lo carga con `dotenv`).
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Ayudas sueltas frente a Page Objects">
+Una ayuda como `iniciarSesion(page)` es un **verbo**: hace algo. Un Page Object es un **sustantivo**: representa una pantalla y sabe hacer cosas en ella. La diferencia es dónde viven los localizadores:
+
+- Con ayudas, las acciones están en un solo lugar, pero para comprobar algo el test sigue escribiendo `page.getByTestId(...)`.
+- Con un Page Object, el localizador también está en la clase, y el test comprueba `carrito.descuento`.
+
+```ts
+// Antes (ayudas): el test conoce el identificador
+await expect(page.getByTestId("cart-discount")).toHaveText("-$5.00");
+
+// Después (Page Object): el test conoce el concepto
+await expect(carrito.descuento).toHaveText("-$5.00");
+```
+
+La regla práctica del módulo, que también aplica el evaluador del reto: **los archivos de test (`*.spec.ts`) no llaman a `page.getByRole(...)`, `page.locator(...)`, `page.click(...)` ni similares**. Se permiten `page.goto` y `expect(page)`, porque son navegación y no un detalle de la pantalla.
+
+</Paso>
+
+<Paso numero={2} titulo="Prepara el proyecto">
+Los Page Objects y los fixtures van en dos carpetas nuevas en la raíz del proyecto, junto a `tests/`:
+
+```text
+practica-playwright/
+  pages/
+    componentes/       # piezas que se repiten en varias pantallas
+  fixtures/            # lo que Playwright entrega a cada test
+  tests/
+    support/           # tus ayudas y datos de los módulos anteriores
+```
+
+Crea las carpetas `pages/componentes` y `fixtures`. Es la misma estructura que usa la plantilla del reto de este módulo, así que lo que construyas aquí te sirve allí.
+
+Antes de escribir clases, resuelve dos cosas.
+
+**Las credenciales ya no se escriben en el código.** En la Fase 1 tu `tienda.ts` tenía un valor por defecto para la clave de Ana. Desde ahora (y el evaluador de la Fase 2 lo comprueba) las credenciales llegan **solo** por variables de entorno. Tu `tienda.ts` conserva su valor por defecto hasta el paso 1 del módulo 2.4; mientras tanto, el código nuevo de este módulo no lo usa. Crea `fixtures/credenciales.ts`:
+
+```ts
+/** Lee las credenciales de práctica del entorno. Nunca se escriben en el código. */
+export function credenciales(): { email: string; clave: string } {
+  const email = process.env.USUARIO_EMAIL;
+  const clave = process.env.USUARIO_CLAVE;
+  if (!email || !clave) {
+    throw new Error("Faltan USUARIO_EMAIL y USUARIO_CLAVE: define esas variables en tu .env.local");
+  }
+  return { email, clave };
+}
+```
+
+Si faltan, el error dice exactamente qué hacer. En tu máquina las variables vienen de `.env.local`; en CI y en el evaluador las pone el sistema.
+
+**La espera de la barra de escenario.** Como en el módulo 1.4, todo test que lea la pantalla espera primero a `arena-ready`, un marcador oculto que la Arena pinta cuando ya cargó el estado del escenario. Esa espera vivirá una sola vez, en `pages/navegacion.ts`:
+
+```ts
+import { expect, type Page } from "@playwright/test";
+
+/**
+ * Abre una ruta y espera a que la Arena haya cargado el estado del escenario.
+ * Así, con un escenario activo, los elementos ya tienen su forma final.
+ */
+export async function abrir(page: Page, ruta: string): Promise<void> {
+  await page.goto(ruta);
+  await expect(page.getByTestId("arena-ready")).toBeAttached();
+}
+```
+
+Es la misma función `abrir` de `tests/support/tienda.ts`. Durante la migración conviven las dos; cuando hayas migrado todos tus tests, `tienda.ts` desaparece.
+
+</Paso>
+
+<Paso numero={3} titulo="Anatomía de un Page Object">
+Este es el Page Object de la pantalla de inicio de sesión, `pages/LoginPage.ts`:
+
+```ts
+import type { Locator, Page } from "@playwright/test";
+import { abrir } from "./navegacion";
+
+export class LoginPage {
+  readonly titulo: Locator;
+  readonly error: Locator;
+  private readonly campoCorreo: Locator;
+  private readonly campoClave: Locator;
+  private readonly botonEntrar: Locator;
+
+  constructor(private readonly page: Page) {
+    this.titulo = page.getByRole("heading", { name: "Iniciar sesion" });
+    this.error = page.getByRole("alert");
+    this.campoCorreo = page.getByLabel("Correo");
+    this.campoClave = page.getByLabel("Contrasena");
+    this.botonEntrar = page.getByRole("button", { name: "Entrar" });
+  }
+
+  async abrir(): Promise<void> {
+    await abrir(this.page, "/login");
+  }
+
+  /** Escribe las credenciales y pulsa «Entrar». No comprueba el resultado: eso lo decide el test. */
+  async entrar(correo: string, clave: string): Promise<void> {
+    await this.campoCorreo.fill(correo);
+    await this.campoClave.fill(clave);
+    await this.botonEntrar.click();
+  }
+}
+```
+
+Cómo leerlo:
+
+- **Una clase por pantalla.** El constructor recibe la `page` de Playwright. `private readonly page` en el constructor es un atajo de TypeScript: declara y guarda la propiedad en un solo paso.
+- **Los localizadores se crean una vez, en el constructor.** Un localizador no busca nada hasta que lo usas, así que crearlo no cuesta.
+- **Públicos los que un test necesita comprobar** (`titulo`, `error`) y **privados los que solo usa la propia clase** (los campos y el botón). Así el test no puede escribir `login.botonEntrar.click()` y saltarse la acción.
+- **Los métodos tienen nombres de negocio**: `entrar`, no `rellenarCamposYHacerClic`. Describen lo que hace la persona.
+- **Las acciones no comprueban el resultado.** `entrar` no verifica que el login salió bien, porque un test de contraseña incorrecta usa el mismo método y espera lo contrario.
+
+Hay una excepción razonable: una **espera de sincronización**. Si una acción deja la pantalla en un estado que el siguiente paso necesita (por ejemplo, agregar al carrito y esperar el aviso «Agregado al carrito»), esa espera sí pertenece al método.
+
+</Paso>
+
+<Paso numero={4} titulo="Componentes: lo que se repite en varias pantallas">
+La cabecera (nombre de usuario, contador del carrito, botón «Salir») aparece en **todas** las pantallas. Si la copiaras en cada Page Object, volverías a tener duplicación. La solución es un **componente**: un pequeño Page Object para una parte de la pantalla. `pages/componentes/CabeceraTienda.ts`:
+
+```ts
+import type { Locator, Page } from "@playwright/test";
+
+/** La cabecera que aparece en todas las pantallas: usuario, contador del carrito y «Salir». */
+export class CabeceraTienda {
+  readonly nombreDeUsuario: Locator;
+  readonly contadorDelCarrito: Locator;
+  private readonly botonSalir: Locator;
+
+  constructor(page: Page) {
+    this.nombreDeUsuario = page.getByTestId("user-name");
+    this.contadorDelCarrito = page.getByTestId("cart-count");
+    this.botonSalir = page.getByRole("button", { name: "Salir" });
+  }
+
+  async cerrarSesion(): Promise<void> {
+    await this.botonSalir.click();
+  }
+}
+```
+
+Cada pantalla **tiene** una cabecera, no **es** una cabecera. Eso se llama **composición**: una clase guarda otra como propiedad (`readonly cabecera: CabeceraTienda`). Es más flexible que la herencia (una clase base `PaginaBase` de la que heredan todas), porque una pantalla puede combinar varios componentes y no arrastra nada que no use.
+
+Hay un segundo tipo de componente: el que se crea a partir de **un elemento concreto** y no de la página entera. Es el caso de una fila de la tabla del carrito. `pages/componentes/LineaDeCarrito.ts` recibe la fila (`root`) y busca todo **dentro de ella**:
+
+```ts
+import type { Locator } from "@playwright/test";
+
+/** Una fila de la tabla del carrito. Se crea a partir de la fila (`root`), no de la página entera. */
+export class LineaDeCarrito {
+  readonly cantidad: Locator;
+  readonly total: Locator;
+  private readonly botonQuitar: Locator;
+
+  constructor(private readonly root: Locator) {
+    this.cantidad = root.getByLabel(/^Cantidad de/);
+    this.total = root.getByTestId(/^cart-line-total-/);
+    this.botonQuitar = root.getByRole("button", { name: "Quitar" });
+  }
+
+  /** La fila entera, para comprobar que existe o que ya no está. */
+  get fila(): Locator {
+    return this.root;
+  }
+
+  async cambiarCantidad(unidades: number): Promise<void> {
+    await this.cantidad.fill(String(unidades));
+    await this.cantidad.blur();
+  }
+
+  async quitar(): Promise<void> {
+    await this.botonQuitar.click();
+  }
+}
+```
+
+Encadenar `root.getByRole(...)` limita la búsqueda a esa fila. Así `Quitar` nunca se confunde con el «Quitar» de otra línea ni con «Quitar cupon». Las expresiones `/^Cantidad de/` son expresiones regulares: la `^` significa «empieza por», así que encuentra «Cantidad de Auriculares BT» sin importar el producto.
+
+</Paso>
+
+<Paso numero={5} titulo="Los Page Objects de producto y de carrito">
+Siguiendo el mismo patrón, crea dos más. `pages/ProductoPage.ts`:
+
+```ts
+import { expect, type Locator, type Page } from "@playwright/test";
+import { CabeceraTienda } from "./componentes/CabeceraTienda";
+import { abrir } from "./navegacion";
+
+export class ProductoPage {
+  readonly cabecera: CabeceraTienda;
+  readonly nombre: Locator;
+  readonly precio: Locator;
+  private readonly campoCantidad: Locator;
+  private readonly botonAgregar: Locator;
+  private readonly aviso: Locator;
+
+  constructor(private readonly page: Page) {
+    this.cabecera = new CabeceraTienda(page);
+    this.nombre = page.getByTestId("product-name");
+    this.precio = page.getByTestId("product-price");
+    this.campoCantidad = page.getByLabel("Cantidad");
+    this.botonAgregar = page.getByRole("button", { name: "Agregar al carrito" });
+    this.aviso = page.getByRole("status");
+  }
+
+  async abrir(productoId: number): Promise<void> {
+    await abrir(this.page, `/products/${productoId}`);
+  }
+
+  /** Agrega unidades desde la ficha y espera el aviso de la tienda. */
+  async agregar(productoId: number, cantidad = 1): Promise<void> {
+    await this.abrir(productoId);
+    await this.campoCantidad.fill(String(cantidad));
+    await this.botonAgregar.click();
+    await expect(this.aviso).toHaveText("Agregado al carrito");
+  }
+}
+```
+
+`agregar` espera el aviso porque el siguiente paso de cualquier test (abrir el carrito) necesita que el producto ya esté agregado: es una espera de sincronización.
+
+`pages/CarritoPage.ts` incluye el método `vaciar`, el mismo `vaciarCarrito` del módulo 1.4 convertido en método, y `linea(productoId)` que devuelve el componente de una fila:
+
+```ts
+import { expect, type Locator, type Page } from "@playwright/test";
+import { CabeceraTienda } from "./componentes/CabeceraTienda";
+import { LineaDeCarrito } from "./componentes/LineaDeCarrito";
+import { abrir } from "./navegacion";
+
+export class CarritoPage {
+  readonly cabecera: CabeceraTienda;
+  readonly subtotal: Locator;
+  readonly descuento: Locator;
+  readonly total: Locator;
+  readonly vacio: Locator;
+  private readonly campoCupon: Locator;
+  private readonly botonAplicar: Locator;
+  private readonly botonQuitarCupon: Locator;
+  private readonly botonesQuitarLinea: Locator;
+
+  constructor(private readonly page: Page) {
+    this.cabecera = new CabeceraTienda(page);
+    this.subtotal = page.getByTestId("cart-subtotal");
+    this.descuento = page.getByTestId("cart-discount");
+    this.total = page.getByTestId("cart-total");
+    this.vacio = page.getByTestId("cart-empty");
+    this.campoCupon = page.getByLabel("Cupon");
+    this.botonAplicar = page.getByRole("button", { name: "Aplicar" });
+    this.botonQuitarCupon = page.getByRole("button", { name: "Quitar cupon" });
+    this.botonesQuitarLinea = page.getByRole("button", { name: "Quitar", exact: true });
+  }
+
+  async abrir(): Promise<void> {
+    await abrir(this.page, "/cart");
+  }
+
+  async aplicarCupon(codigo: string): Promise<void> {
+    await this.campoCupon.fill(codigo);
+    await this.botonAplicar.click();
+  }
+
+  /** La fila de un producto del carrito. */
+  linea(productoId: number): LineaDeCarrito {
+    return new LineaDeCarrito(this.page.getByTestId(`cart-item-${productoId}`));
+  }
+
+  /** Deja el carrito vacío, como lo haría una persona: quita el cupón y cada línea. */
+  async vaciar(): Promise<void> {
+    await this.abrir();
+    await expect(this.botonesQuitarLinea.first().or(this.vacio)).toBeVisible();
+    if (await this.botonQuitarCupon.isVisible()) {
+      await this.botonQuitarCupon.click();
+      await expect(this.botonQuitarCupon).toHaveCount(0);
+    }
+    const lineas = await this.botonesQuitarLinea.count();
+    for (let i = 0; i < lineas; i++) {
+      await this.botonesQuitarLinea.first().click();
+      await expect(this.botonesQuitarLinea).toHaveCount(lineas - i - 1);
+    }
+    await expect(this.vacio).toBeVisible();
+  }
+}
+```
+
+`LoginPage` también debe tener su `cabecera`: añade `readonly cabecera: CabeceraTienda;` y créala en el constructor con `new CabeceraTienda(page)`, como en las otras dos. Así `login.cabecera.nombreDeUsuario` funciona y el componente se escribe una sola vez.
+
+</Paso>
+
+<Paso numero={6} titulo="Fixtures personalizados: Playwright te entrega los Page Objects">
+Hasta aquí cada test tendría que escribir `const carrito = new CarritoPage(page)`. Un **fixture** (módulo 1.5) evita esa línea: es algo que Playwright prepara y entrega a cada test. Creas los tuyos con `test.extend`. `fixtures/index.ts`:
+
+```ts
+import { test as base, expect } from "@playwright/test";
+import { CabeceraTienda } from "../pages/componentes/CabeceraTienda";
+import { CarritoPage } from "../pages/CarritoPage";
+import { LoginPage } from "../pages/LoginPage";
+import { ProductoPage } from "../pages/ProductoPage";
+import { credenciales } from "./credenciales";
+
+type Paginas = {
+  cabecera: CabeceraTienda;
+  login: LoginPage;
+  producto: ProductoPage;
+  carrito: CarritoPage;
+};
+
+type Opciones = {
+  /** Con quién empieza cada test: nadie (por defecto) o Ana, con el carrito vacío. */
+  sesion: "ninguna" | "ana";
+};
+
+export const test = base.extend<Paginas & Opciones & { prepararSesion: void }>({
+  cabecera: async ({ page }, use) => {
+    await use(new CabeceraTienda(page));
+  },
+  login: async ({ page }, use) => {
+    await use(new LoginPage(page));
+  },
+  producto: async ({ page }, use) => {
+    await use(new ProductoPage(page));
+  },
+  carrito: async ({ page }, use) => {
+    await use(new CarritoPage(page));
+  },
+
+  sesion: ["ninguna", { option: true }],
+
+  // Se ejecuta antes de cada test (auto: true) y solo actúa si el test pidió la sesión de Ana.
+  prepararSesion: [
+    async ({ sesion, login, carrito, cabecera }, use) => {
+      if (sesion === "ana") {
+        const { email, clave } = credenciales();
+        await login.abrir();
+        await login.entrar(email, clave);
+        await expect(cabecera.nombreDeUsuario).toBeVisible();
+        await carrito.vaciar();
+      }
+      await use();
+    },
+    { auto: true },
+  ],
+});
+
+export { expect };
+```
+
+Qué hace cada pieza:
+
+- **`base.extend<...>`** crea un `test` nuevo que conoce tus fixtures. El tipo entre `<>` le dice a TypeScript cuáles son y qué entregan.
+- **`async ({ page }, use) => { await use(new CarritoPage(page)); }`**: un fixture recibe otros fixtures (`page`) y los usa para construir lo suyo. `use(...)` es el momento en que se «entrega» al test. Lo que iría después sería la limpieza.
+- **Los fixtures son perezosos:** Playwright solo crea los que el test pide en su lista de parámetros. Un test de login no crea `carrito`.
+- **`sesion` es un fixture de opción** (`{ option: true }`): su valor se configura desde el test con `test.use({ sesion: "ana" })`. Por defecto es `"ninguna"`.
+- **`prepararSesion` es un fixture automático** (`auto: true`): se ejecuta antes de **cada** test sin que nadie lo pida. Si la opción es `"ana"`, inicia sesión con las credenciales del entorno y vacía el carrito; si es `"ninguna"`, no hace nada. Así un test de login empieza sin sesión y uno de carrito empieza con Ana dentro.
+- **`export { expect }`**: reexporta `expect` para que los tests importen `test` y `expect` del mismo lugar.
+
+Desde ahora, **todos tus specs importan `test` de tu fixture** (`"../fixtures"`) y no de `@playwright/test`. Si olvidas este cambio, Playwright no conoce tus fixtures y falla así:
+
+```text
+Test has unknown parameter "carrito".
+```
+
+</Paso>
+
+<Paso numero={7} titulo="Qué va dentro de un Page Object y qué no">
+Un Page Object bien hecho es aburrido. Estas reglas lo mantienen así:
+
+**Sí va:**
+
+- Los localizadores de la pantalla.
+- Las acciones que hace una persona (`aplicarCupon`, `entrar`, `agregar`), con nombres de negocio.
+- Las esperas de sincronización que la acción necesita.
+
+**No va:**
+
+- **Las aserciones de negocio.** «El descuento es `-$5.00`» es lo que el test verifica, y se queda en el test. Si el Page Object comprueba el descuento, el test deja de decir qué prueba (módulo 2.1, paso 2).
+- **Los datos de prueba** (precios, cupones): viven en `datos.ts`.
+- **Condicionales que dependen del test** (`if (esAdmin) ...`). Si una pantalla se comporta distinto, son dos métodos.
+- **Un método que hace todo** (`comprarYPagar`): mezcla pantallas y responsabilidades.
+
+Dos señales de que un Page Object creció demasiado: pasa de unas 150 líneas, o tiene secciones de la pantalla que no se usan juntas. Divídelo en componentes.
+
+</Paso>
+
+<Paso numero={8} titulo="Cómo migrar una suite sin romperla">
+Migrar es un refactor (módulo 2.1, paso 7), así que se hace con red de seguridad:
+
+1. **Antes de empezar**, ejecuta la suite con `baseline` y con `fase1-aserciones`, y anota qué tests fallan y con qué mensaje.
+2. **Migra una pantalla por vez.** Crea su Page Object, cambia los tests que la usan, ejecuta.
+3. **Mantén verde la suite en cada paso.** Si algo falla, el último cambio es el culpable.
+4. **Al final, repite la comparación** con `fase1-aserciones`: los mismos fallos, con los mismos mensajes.
+5. **Busca localizadores sueltos** en los specs: `grep -rnE "page\.(getBy|locator)" tests/*.spec.ts` no debe encontrar nada (salvo `page.goto`).
+
+Un test sin `await` delante de una acción del Page Object es un error frecuente: la acción empieza, el test sigue adelante y el fallo aparece más tarde, en una aserción que parece no tener relación.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Migrar la suite de cupones y carrito a Page Objects">
+Partimos de `tests/carrito.spec.ts` del módulo 2.1. Con `baseline` pasan sus cuatro tests; con `fase1-aserciones` fallan tres: el descuento de `BIGSPEND` y los dos del contador. Esa es la red de seguridad.
+
+Crea los archivos de los pasos 2 a 6: `fixtures/credenciales.ts`, `pages/navegacion.ts`, los dos componentes, `ProductoPage.ts`, `CarritoPage.ts` y `fixtures/index.ts`. Para `LoginPage.ts` usa la versión del paso 3 con la cabecera que acabas de añadir. Resumido, son tres cambios:
+
+```ts
+// 1. Importa el componente, junto a los otros imports
+import { CabeceraTienda } from "./componentes/CabeceraTienda";
+
+// 2. Declara la propiedad pública, encima de `titulo`
+readonly cabecera: CabeceraTienda;
+
+// 3. Créala la primera en el constructor
+this.cabecera = new CabeceraTienda(page);
+```
+
+Ahora el spec. Crea `tests/carrito-pom.spec.ts`:
+
+```ts
+import { test, expect } from "../fixtures";
+import { AURICULARES, BOTELLA, DESCUENTO_BIGSPEND_SOBRE_BOTELLA } from "./support/datos";
+
+test.use({ sesion: "ana" });
+
+test.describe("cupones", () => {
+  test("BIGSPEND descuenta el 15 % de la botella", async ({ producto, carrito }) => {
+    await producto.agregar(BOTELLA.id);
+    await carrito.abrir();
+    await expect(carrito.subtotal).toHaveText(BOTELLA.precio);
+
+    await carrito.aplicarCupon("BIGSPEND");
+
+    await expect(carrito.descuento).toHaveText(DESCUENTO_BIGSPEND_SOBRE_BOTELLA);
+  });
+
+  test("SAVE5 descuenta $5.00 de dos auriculares", async ({ producto, carrito }) => {
+    await producto.agregar(AURICULARES.id, 2);
+    await carrito.abrir();
+
+    await carrito.aplicarCupon("SAVE5");
+
+    await expect(carrito.descuento).toHaveText("-$5.00");
+  });
+});
+
+test.describe("líneas del carrito", () => {
+  test("cambiar la cantidad a 3 actualiza el total de la línea", async ({ producto, carrito }) => {
+    await producto.agregar(AURICULARES.id, 2);
+    await carrito.abrir();
+
+    await carrito.linea(AURICULARES.id).cambiarCantidad(3);
+
+    await expect(carrito.linea(AURICULARES.id).total).toHaveText("$29.70");
+  });
+});
+
+test.describe("contador del carrito", () => {
+  test("baja a 0 al quitar la única línea", async ({ producto, carrito, cabecera }) => {
+    await producto.agregar(BOTELLA.id);
+    await carrito.abrir();
+
+    await carrito.linea(BOTELLA.id).quitar();
+
+    await expect(cabecera.contadorDelCarrito).toHaveText("0");
+    await expect(carrito.vacio).toBeVisible();
+  });
+
+  test("baja a 1 al quitar una de dos líneas", async ({ producto, carrito, cabecera }) => {
+    await producto.agregar(AURICULARES.id);
+    await producto.agregar(BOTELLA.id);
+    await expect(cabecera.contadorDelCarrito).toHaveText("2");
+    await carrito.abrir();
+
+    await carrito.linea(AURICULARES.id).quitar();
+
+    await expect(cabecera.contadorDelCarrito).toHaveText("1");
+  });
+});
+```
+
+Y un test de login, para ver el fixture sin sesión. `tests/login-pom.spec.ts`:
+
+```ts
+import { test, expect } from "../fixtures";
+import { credenciales } from "../fixtures/credenciales";
+
+test.describe("inicio de sesión", () => {
+  test.beforeEach(async ({ login }) => {
+    await login.abrir();
+  });
+
+  test("con credenciales correctas muestra el nombre de la persona", async ({ login }) => {
+    const { email, clave } = credenciales();
+
+    await login.entrar(email, clave);
+
+    await expect(login.cabecera.nombreDeUsuario).toHaveText("Ana Cliente");
+  });
+
+  test("con una clave incorrecta muestra un error y no entra", async ({ login }) => {
+    const { email } = credenciales();
+
+    await login.entrar(email, "clave-incorrecta");
+
+    await expect(login.error).toBeVisible();
+    await expect(login.cabecera.nombreDeUsuario).toHaveCount(0);
+  });
+});
+```
+
+**Ejecuta con `baseline`.** Pasan los siete tests (cinco de carrito y dos de login):
+
+```bash
+npx playwright test tests/carrito-pom.spec.ts tests/login-pom.spec.ts
+```
+
+**Ejecuta con `fase1-aserciones`:**
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase1-aserciones"}'
+npx playwright test tests/carrito-pom.spec.ts
+```
+
+```text
+  ✘  tests/carrito-pom.spec.ts › cupones › BIGSPEND descuenta el 15 % de la botella
+  ✓  tests/carrito-pom.spec.ts › cupones › SAVE5 descuenta $5.00 de dos auriculares
+  ✓  tests/carrito-pom.spec.ts › líneas del carrito › cambiar la cantidad a 3 actualiza el total de la línea
+  ✘  tests/carrito-pom.spec.ts › contador del carrito › baja a 0 al quitar la única línea
+  ✘  tests/carrito-pom.spec.ts › contador del carrito › baja a 1 al quitar una de dos líneas
+    Expected: "-$7.63"
+    Received: "-$7.64"
+    Expected: "0"
+    Received: "1"
+    Expected: "1"
+    Received: "2"
+```
+
+Los mismos tres fallos y los mismos mensajes que antes de migrar. El refactor no perdió nada. Vuelve a `baseline` cuando termines:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"baseline"}'
+```
+
+**Comprueba el resultado.** Los specs ya no tocan la página:
+
+```bash
+grep -rnE "page\.(getBy|locator)" tests/carrito-pom.spec.ts tests/login-pom.spec.ts
+```
+
+No debe imprimir nada. Y la clave de Ana ya no está en tu código nuevo: `grep -rn "Cliente123" pages fixtures tests/carrito-pom.spec.ts tests/login-pom.spec.ts` tampoco imprime nada.
+
+Qué cambió y por qué:
+
+1. **Los specs hablan de negocio.** `carrito.aplicarCupon("SAVE5")` y `producto.agregar(BOTELLA.id)` se leen sin conocer un solo identificador.
+2. **Los localizadores viven en un solo lugar.** Si cambia `cart-discount`, se edita `CarritoPage.ts`.
+3. **La cabecera se escribe una vez** y todas las pantallas la reutilizan por composición.
+4. **La sesión de Ana es configuración**, no código repetido: `test.use({ sesion: "ana" })`.
+5. **Las aserciones siguen en los tests**, a la vista. El Page Object solo expone los localizadores para que el test los compruebe.
+
+Los errores típicos de esta práctica:
+
+- **Importar `test` de `@playwright/test` en un spec que usa tus fixtures:** falla con `Test has unknown parameter "carrito"`.
+- **Olvidar el `await` en una acción del Page Object:** el test sigue antes de que la acción termine y falla después, lejos de la causa.
+- **Poner aserciones dentro del Page Object:** el método deja de servir para el caso contrario (el login incorrecto).
+- **Dejar un localizador público que solo usa la propia clase:** el test acaba usando `login.botonEntrar` y se salta la acción.
+- **Un Page Object por cada elemento:** los componentes son para lo que se repite o se compone, no para cada botón.
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+Los ejercicios parten del proyecto del ejemplo (carpetas `pages/` y `fixtures/` y los specs que acabas de crear). Los que necesitan un escenario lo indican. El botón abre la Arena **alojada**, solo para explorar; tus tests van contra tu Arena local. Vuelve a `baseline` al terminar cada ejercicio que active un escenario.
+
+<Ejercicio id="ej-2-2-pagina-de-pago">
+  Escribe `pages/CheckoutPage.ts` con la dirección, la tarjeta, el botón de pago y el mensaje de
+  error. Añádela al fixture y escribe un test que pague con la tarjeta rechazada `4000 0000 0000
+  0002` y compruebe el mensaje de error y que sigues en `/checkout`.
+</Ejercicio>
+
+<Ejercicio id="ej-2-2-linea-del-carrito">
+  Escribe un test que agregue dos productos distintos, cambie la cantidad de uno y compruebe que el
+  total de la otra línea no cambia. Después añade a `LineaDeCarrito` un localizador para el nombre
+  del producto y úsalo en el test para comprobar que cada fila corresponde al producto esperado.
+</Ejercicio>
+
+<Ejercicio id="ej-2-2-sesion-de-administrador">
+  Amplía la opción `sesion` de tu fixture con un tercer valor, `"admin"`, que inicie sesión con
+  `ADMIN_EMAIL` y `ADMIN_CLAVE`. Añade a la cabecera el enlace «Admin» y escribe dos tests: el
+  administrador lo ve y Ana no.
+</Ejercicio>
+
+<Ejercicio id="ej-2-2-cerrar-sesion">
+  Con la cabecera como componente, escribe un test de «cerrar sesión devuelve al login» que use
+  `cabecera.cerrarSesion()` y compruebe el título de `LoginPage`. Fíjate en qué cambiarías si el
+  botón se llamara «Salir de la cuenta».
+</Ejercicio>
+
+<Ejercicio id="ej-2-2-sigue-detectando">
+  Con `fase1-aserciones` activo, ejecuta tu suite migrada y la anterior, y compara los fallos. Luego
+  borra a propósito una aserción de la migrada y comprueba que la comparación lo delata.
+</Ejercicio>
+
+<AbrirArena escenario="fase1-aserciones" />
+
+## 5. Reto sin guía
+
+<Reto titulo="Refactoriza la suite heredada a Page Objects">
+  Este reto sí se evalúa solo: lo corrige la plataforma ejecutando tu suite contra la Arena, igual
+  que el reto del módulo 1.1.
+
+**Consigue la plantilla y arráncala.** El reto no se hace en `practica-playwright`: se hace en tu propio repositorio, creado a partir de una plantilla pública.
+
+1. Abre `https://github.com/eduardolulichac/reto-2-2-pom`, pulsa **Use this template** y luego **Create a new repository**. Nómbralo `reto-2-2-pom` y créalo en tu cuenta con visibilidad **Public** (el evaluador solo funciona con repositorios públicos; no guardes secretos en él).
+2. Clónalo (cambia `TU-USUARIO` por tu usuario de GitHub) y entra en la carpeta:
+
+   ```bash
+   git clone https://github.com/TU-USUARIO/reto-2-2-pom.git
+   cd reto-2-2-pom
+   ```
+
+3. Instala los paquetes y el navegador:
+
+   ```bash
+   npm ci
+   npx playwright install chromium
+   ```
+
+4. Con la Arena levantada, ejecuta la suite de la plantilla. Debe terminar con `10 passed`: la suite que trae es correcta, solo está mal organizada.
+
+   ```bash
+   npx playwright test
+   ```
+
+**Qué entregas.** La plantilla trae **diez tests de la tienda** en `tests/heredada/`, con el login copiado en cada uno, localizadores dentro de los tests y esperas fijas. Tu trabajo es refactorizarlos a Page Objects y fixtures, **sin perder cobertura**, y ampliar la suite.
+
+Lo que se evalúa, en lenguaje de este módulo:
+
+- Todos los tests pasan contra la Arena sin defectos.
+- Conservas los diez tests con su título y su verificación.
+- Tu suite sigue detectando el defecto de precios y del carrito que detectaba la heredada, con el escenario `fase1-aserciones`.
+- Los specs no tocan la página directamente: sin `page.getByRole(...)`, `page.locator(...)` ni `page.click(...)`. Se permiten `page.goto` y `expect(page)`.
+- Hay al menos tres Page Objects en `pages/` (en la raíz del repositorio), cada uno con una clase que recibe `page` en el constructor.
+- Hay un fixture con `test.extend` que entrega tus Page Objects, y **todos** los specs importan `test` de él.
+- No quedan bloques de código repetidos (el evaluador busca trozos de unas ocho líneas idénticos).
+- No quedan esperas fijas (`waitForTimeout`).
+- Ampliaste la suite con al menos dos tests tuyos, sobre una pantalla que la heredada no cubre, con su propio Page Object.
+- No llamas a los endpoints internos de la Arena (`/__arena`).
+
+Son obligatorios: que la suite pase con `baseline`, que conserves los diez títulos, que los specs no toquen la página y que no uses `/__arena`. Con el resto de criterios sumas hasta superar el umbral de **70** puntos.
+
+Recomendaciones para el camino:
+
+- Migra una pantalla por vez y ejecuta tras cada cambio, como en el paso 8.
+- Antes de empezar, ejecuta la suite heredada con `fase1-aserciones` y anota qué falla. Es tu referencia.
+- Lee las credenciales del entorno (`USUARIO_EMAIL` y `USUARIO_CLAVE`) con la misma idea del paso 2. Copia `.env.example` como `.env`; el evaluador define las variables solo.
+
+**Cómo entregar.** Abre el reto en la plataforma y vincula tu repositorio: te muestra una clave **una sola vez**. En **Settings → Secrets and variables → Actions** crea el secreto `COURSE_CHALLENGE_KEY` con la clave y la variable `COURSE_KEY_ID` con el identificador. Haz `push` a `main`. No edites `.github/workflows/evaluar.yml`: si lo cambias, la plataforma rechaza la entrega. El resultado aparece en la pestaña **Actions** y en la página del reto.
+
+Antes de entregar, repasa esta lista con tu suite en local:
+
+- Con `baseline`, `npx playwright test` termina sin fallos.
+- Con `fase1-aserciones`, fallan los mismos tests heredados que fallaban antes de refactorizar.
+- `grep -rnE "page\.(getBy|locator|click|fill)" tests` no encuentra nada (salvo lo permitido).
+- Todos los specs importan `test` de tu fixture.
+- No hay `waitForTimeout` ni bloques repetidos.
+- Tienes al menos dos tests propios con su Page Object.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+La IA es buena escribiendo Page Objects de aspecto limpio. El riesgo es que invente localizadores o que, al migrar, pierda aserciones sin avisar.
+
+**Qué pedirle:**
+
+- «Crea un Page Object en TypeScript para esta pantalla, con constructor que reciba `page`, localizadores como propiedades y un método por acción. No pongas aserciones en la clase».
+- «Pásame esta lista de pasos repetidos a un fixture de Playwright con `test.extend`».
+- «Revisa este Page Object y dime si mezcla responsabilidades o tiene localizadores sin usar».
+
+**Qué revisar antes de aceptarlo:**
+
+- Que cada localizador exista en la Arena: cópialos de la pantalla real, sin tildes («Iniciar sesion»), y ejecuta.
+- Que el número de aserciones del test migrado sea el mismo o mayor. Cuéntalas antes y después.
+- Que no haya aserciones ni datos de prueba dentro del Page Object.
+- Que la suite siga fallando con `fase1-aserciones` con los mismos mensajes.
+- Que no escriba la clave de Ana en el código.
+
+**Qué rechazar:**
+
+- Una clase base gigante (`BasePage`) con todo lo común «por si acaso».
+- Métodos que hacen un flujo completo (`comprarYPagar`) y esconden lo que el test verifica.
+- `waitForTimeout` o `force: true` para que «pase».
+- Aserciones que desaparecen porque la IA las consideró redundantes.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Poner aserciones dentro del Page Object">
+  Si `entrar()` comprueba que el login salió bien, no sirve para el test de la contraseña
+  incorrecta. El Page Object actúa y expone localizadores; el test decide qué verificar.
+</ErrorComun>
+
+<ErrorComun titulo="Un Page Object gigante para toda la tienda">
+  Una sola clase con cuarenta métodos es el mismo desorden en otro archivo. Una clase por pantalla y
+  un componente por cada parte que se repite.
+</ErrorComun>
+
+<ErrorComun titulo="Heredar de una BasePage para ahorrar cuatro líneas">
+  La herencia arrastra todo lo de la clase base. La composición (`this.cabecera = new
+  CabeceraTienda(page)`) deja que cada pantalla tome solo lo que usa.
+</ErrorComun>
+
+<ErrorComun titulo="Dejar localizadores en los specs «solo este»">
+  Un `page.getByTestId(...)` suelto en un test rompe la regla y vuelve el problema original. Si
+  falta un localizador, añádelo a la clase.
+</ErrorComun>
+
+<ErrorComun titulo="Olvidar el await en las acciones del Page Object">
+  `carrito.aplicarCupon("SAVE5")` sin `await` deja la acción en el aire y el fallo aparece después,
+  en una aserción sin relación aparente.
+</ErrorComun>
+
+<ErrorComun titulo="Migrar y no volver a ejecutar con el escenario">
+  Una suite migrada que pasa con `baseline` puede haber perdido una aserción. Compara siempre con
+  `fase1-aserciones`.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Un Page Object es una clase que representa una pantalla: guarda sus localizadores y sus acciones, y el test habla en lenguaje de negocio.
+- Los specs no llaman a `page.getByRole`, `page.locator` ni `page.click`; solo `page.goto` y `expect(page)`.
+- Los localizadores se crean una vez en el constructor; son públicos los que el test comprueba y privados los que solo usa la clase.
+- Las acciones no comprueban el resultado: las aserciones de negocio se quedan en el test.
+- Un componente representa una parte que se repite (la cabecera) o una fila (la línea del carrito); las pantallas lo componen en lugar de heredar.
+- Un fixture con `test.extend` entrega los Page Objects a cada test; una opción con `test.use` y un fixture automático preparan la sesión.
+- Todos los specs importan `test` de tu fixture, no de `@playwright/test`.
+- Migrar es refactorizar: una pantalla por vez, y al final se comprueba que con `fase1-aserciones` fallan los mismos tests con los mismos mensajes.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

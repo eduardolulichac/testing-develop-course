@@ -1,0 +1,84 @@
+preguntas:
+  - id: ia2-riesgo-framework
+    enunciado: "¿Por qué un error de una IA en un Page Object es más grave que en un test suelto?"
+    opciones:
+      [
+        "Porque un Page Object suele tener muchas más líneas que un test, y es más difícil de leer",
+        "Porque el framework se reutiliza y el error se multiplica en todos los tests que lo usan",
+        "Porque un Page Object no se puede ejecutar solo, así que el error se nota tarde",
+        "Porque Playwright desactiva su comprobación de tipos en los archivos de pages/",
+      ]
+    correcta: 1
+    explicacion: "Un localizador inventado en una clase afecta a todos los specs que la usan, y un refactor que debilita una aserción lo hace en todos los sitios. Por eso se revisa con más cuidado."
+  - id: ia2-tsc
+    enunciado: "La IA usa `page.waitForLoadComplete()`. ¿Qué filtro lo detecta sin abrir el navegador?"
+    opciones:
+      [
+        "Ejecutar el test con `--headed` y ver en el navegador qué paso falla",
+        "Mirar el informe HTML, que lista los métodos desconocidos antes de ejecutar",
+        "`npx tsc`, que marca que el método no existe en el tipo `Page`",
+        "Subir el `timeout` del test, para que la llamada tenga tiempo de resolverse",
+      ]
+    correcta: 2
+    explicacion: "TypeScript conoce la API de Playwright y señala los métodos inexistentes (TS2339). Playwright no comprueba los tipos al ejecutar, y el fallo solo aparecería al llegar a esa línea."
+  - id: ia2-compila
+    enunciado: "Un Page Object compila sin errores. ¿Qué puedes concluir?"
+    opciones:
+      [
+        "Que sus localizadores existen en la pantalla de la tienda",
+        "Que el test detecta los defectos que tenga la tienda de práctica",
+        "Que todo está correcto y puede pasar a la revisión final",
+        "Que usa métodos que existen, pero no que sus localizadores apunten a algo real",
+      ]
+    correcta: 3
+    explicacion: 'Un localizador es un texto: `getByRole("button", { name: "Filtrar" })` compila aunque ese botón no exista. Hay que ejecutarlo contra la tienda y mirar la pantalla real.'
+  - id: ia2-datos
+    enunciado: "La IA te entrega un archivo de datos de productos con precios. ¿Qué haces antes de usarlo en un test?"
+    opciones:
+      [
+        "Confiar en él si los precios y los nombres tienen buen aspecto",
+        "Compararlo con la fuente de verdad (la API o la pantalla) con un script",
+        "Pedirle a la misma IA que confirme que los datos son correctos",
+        "Usar los valores tal cual y corregir solo cuando falle un test",
+      ]
+    correcta: 1
+    explicacion: "Los valores inventados parecen reales. La IA no puede confirmar lo que no ve; la API de la tienda sí. Verificar al generarlos evita fallos confusos más tarde."
+  - id: ia2-refactor
+    enunciado: "Un refactor de la IA hace pasar en verde el test con `baseline` y con el escenario del defecto. El original fallaba con el escenario. ¿Qué significa?"
+    opciones:
+      [
+        "Que el refactor mejoró el test: ahora pasa también donde el original fallaba",
+        "Que el escenario dejó de tener el defecto: ya se comporta como `baseline`",
+        "Que el refactor perdió poder de detección: ya no comprueba lo que el original",
+        "Que el original era frágil y fallaba en el escenario por una causa ajena al defecto",
+      ]
+    correcta: 2
+    explicacion: "Un refactor cambia dónde está el código, no lo que comprueba. Si el original detectaba el defecto y el refactor no, hay una acción o aserción que se perdió, aunque el título y la forma sigan igual."
+  - id: ia2-ahorro
+    enunciado: "Si el manual son 20 minutos, pedir 2, revisar 14 y corregir 6, ¿cuál es el tiempo ahorrado?"
+    opciones:
+      ["-2 minutos: la IA costó más de lo que ahorró", "2 minutos", "18 minutos", "20 minutos"]
+    correcta: 0
+    explicacion: "Ahorro = manual - (pedir + revisar + corregir) = 20 - (2 + 14 + 6) = -2. Un resultado negativo es información valiosa, no un fracaso: te dice que esa tarea no compensaba."
+  - id: ia2-escapados
+    enunciado: "De las métricas de errores, ¿cuáles son las que más importan para decidir si la IA te compensa?"
+    opciones:
+      [
+        "Los errores hallados en la revisión, porque se corrigen enseguida",
+        "El número de líneas generadas, porque indica cuánto trabajo se ahorró",
+        "Los errores escapados, los que se descubren más tarde y cuestan más",
+        "El número de prompts escritos hasta obtener un resultado aceptable",
+      ]
+    correcta: 2
+    explicacion: "Los hallados son el trabajo de la revisión; los escapados son los que llegan a otra ejecución, a un compañero o a producción, y su costo es el mayor. Sin contarlos, el ahorro de tiempo da una cuenta falsa."
+  - id: ia2-registro
+    enunciado: "¿Qué debe decir el `motivo` de una entrada `modifico` en `ia/registro.yaml`?"
+    opciones:
+      [
+        "Solo «lo modifiqué» y la fecha en que lo hiciste",
+        "Qué estaba mal y cómo lo comprobaste",
+        "La contraseña con la que probaste el código, para poder repetirlo",
+        "El nombre de la herramienta de IA y la versión que usaste",
+      ]
+    correcta: 1
+    explicacion: "Un motivo útil dice qué fallaba y con qué evidencia lo comprobaste (compilador, escenario, script). Nunca incluye claves ni datos personales. El registro lo lee la persona que revisa tu trabajo."

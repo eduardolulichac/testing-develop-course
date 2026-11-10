@@ -1,0 +1,13 @@
+{
+  "name": "reto-2-8-docker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reto 2.8: dockeriza la suite de QA Arena con un solo comando",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.19.2"
+  }
+}

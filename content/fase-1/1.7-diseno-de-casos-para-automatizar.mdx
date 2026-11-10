@@ -1,0 +1,449 @@
+---
+modulo: "1.7"
+titulo: "Diseño de casos para automatizar"
+fase: 1
+nivel: "Junior"
+duracion_min: 180
+prerequisitos: ["1.6"]
+version: "2026-11"
+herramientas: ["Playwright 1.64.1", "Hoja de cálculo"]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Al terminar sabrás decidir qué casos de prueba conviene automatizar primero y cuáles no. Usarás
+  cuatro criterios (riesgo, frecuencia, costo de mantenimiento y estabilidad), un puntaje simple y
+  una frase de justificación. Al final elegirás 25 de 80 casos reales de QA Arena (los de interfaz,
+  que implementarás al cerrar la Fase 1) y explicarás tu elección.
+</Objetivo>
+
+Hasta ahora aprendiste a **escribir** tests. Ahora viene una pregunta anterior: **¿qué vale la pena escribir?**
+
+Un QA manual conoce el producto y sabe dónde duele cuando algo falla. Esa experiencia es justo lo que hace falta aquí. Automatizar todo es imposible y casi siempre una mala idea: cada test que escribes también hay que **mantenerlo**, ejecutarlo y entender sus fallos. Un conjunto de tests mal elegido se vuelve lento, frágil y nadie confía en él.
+
+En este módulo no programarás mucho. Trabajarás como lo hace un equipo real: con una lista de casos, criterios claros y decisiones que puedas defender ante otra persona. La lista es QA Arena, la tienda en línea de práctica. No necesitas levantarla para leer el módulo, pero sí para comprobar cualquier caso por tu cuenta (módulo 0.1).
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Automatizar es una inversión">
+Un test automático tiene un **costo** y un **beneficio**.
+
+- **Costo**: escribirlo una vez, mantenerlo cada vez que la aplicación cambia, ejecutarlo y revisar sus fallos (también los falsos).
+- **Beneficio**: cada ejecución es casi gratis. Detecta rápido si algo que funcionaba dejó de funcionar. A eso se le llama **regresión**.
+
+Un test se paga solo cuando se ejecuta muchas veces y casi nunca da falsos avisos. Una prueba que se hace una sola vez, o que cambia cada semana, casi nunca compensa.
+
+</Paso>
+
+<Paso numero={2} titulo="Qué sí y qué no se automatiza">
+Primero, un filtro rápido.
+
+**Buenos candidatos:**
+
+- Pasos repetitivos que se hacen en cada versión (iniciar sesión, comprar).
+- Flujos críticos: si fallan se pierde dinero, datos o acceso.
+- Reglas con resultado exacto y comprobable (un total, un descuento, un mensaje).
+- Casos cuyos datos puedes controlar.
+
+**Malos candidatos (al menos por ahora):**
+
+- Exploración: buscar problemas sin saber cuáles. Eso es trabajo humano.
+- Juicios subjetivos: «se ve bien», «se siente rápido».
+- Pantallas que cambian cada semana.
+- Casos que dependen de esperar horas o de que pase algo al mismo tiempo (carreras entre usuarios).
+- Respuestas de texto libre, como las de un asistente con IA.
+
+Que un caso sea mal candidato **no significa que se abandone**: se sigue probando a mano o con otra técnica.
+
+</Paso>
+
+<Paso numero={3} titulo="Cuatro criterios">
+Cada caso recibe una nota en cuatro criterios. Se explican con tres niveles.
+
+| Criterio                                                          | Alto o Alta                                                                      | Medio o Media                                              | Bajo o Baja                           |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------- |
+| **Riesgo**: qué pasa si el caso falla                             | Se pierde dinero, datos o acceso (pagos, cupones, stock, permisos)               | El usuario no puede completar una tarea, pero hay un rodeo | Molestia o detalle visual             |
+| **Frecuencia**: cuánta gente lo usa                               | Casi todos, en cada visita (entrar, ver el catálogo, comprar)                    | Algunos, a veces                                           | Muy pocos, rara vez                   |
+| **Costo** de mantenimiento: cuánto cuesta escribirlo y mantenerlo | Depende del tiempo, de varios usuarios a la vez o de datos difíciles de preparar | Necesita preparar datos o recorrer varias pantallas        | Pocos pasos y datos fijos             |
+| **Estabilidad**: cuánto cambian la regla y la pantalla            | Reglas y textos estables                                                         | Cambian de vez en cuando                                   | Cambian a menudo o el resultado varía |
+
+Cuidado con el costo: **un costo Alto es malo**, al revés que en los otros tres criterios, donde Alto o Alta es bueno para automatizar.
+
+</Paso>
+
+<Paso numero={4} titulo="Un puntaje simple">
+Convierte cada nivel en un número: **Alto o Alta = 3, Medio o Media = 2, Bajo o Baja = 1**. Después calcula:
+
+```text
+puntaje = riesgo x frecuencia + estabilidad - costo
+```
+
+- Riesgo por frecuencia mide **cuánto valor** tiene el caso (de 1 a 9).
+- Sumar la estabilidad premia los tests que durarán.
+- Restar el costo castiga los que serán caros de mantener.
+
+El puntaje va de -1 a 11. Como guía, no como ley:
+
+| Puntaje   | Qué hacer                                       |
+| --------- | ----------------------------------------------- |
+| 8 o más   | Candidato fuerte: automatiza                    |
+| 5 a 7     | Automatiza si ayuda a cubrir un flujo que falta |
+| 4 o menos | No ahora: pruébalo a mano o con otra técnica    |
+
+Hazlo en una hoja de cálculo: escribe una columna con el número de cada criterio y una con la fórmula. Así puedes cambiar un valor y ver cómo cambia el orden.
+
+</Paso>
+
+<Paso numero={5} titulo="Capa: interfaz o API">
+Un mismo caso se puede comprobar en distintos niveles. La columna **Capa** del catálogo indica el nivel más bajo que detecta el problema:
+
+- **UI** (interfaz): se abre el navegador y se hace lo que haría una persona. Es lento y sensible a cambios de pantalla, pero prueba lo que el usuario ve de verdad.
+- **API**: se pide el dato directamente al servidor. Es rápido y estable. Las reglas de negocio (mínimo de un cupón, límite de unidades) se comprueban mejor aquí.
+
+Regla práctica: **usa la capa más baja que detecte el defecto** y deja la interfaz para los flujos de principio a fin y lo que solo se ve en pantalla. Los tests de API los escribirás en la Fase 2. En este módulo solo marcas la capa y decides.
+
+El catálogo de la sección 5 mezcla las dos capas: 50 de los 80 casos son de UI y 30 son de API. Los de API no se implementan en la Fase 1. Por eso, en el reto de este módulo eliges **solo casos de capa UI**: serán los 25 tests de la suite con la que cierras la fase (módulo 1.8).
+
+</Paso>
+
+<Paso numero={6} titulo="El puntaje no basta: cobertura">
+Si eliges solo los 25 puntajes más altos pueden quedar todos del mismo tema. Antes de cerrar la lista, revisa:
+
+- **Cobertura de flujos**: ¿hay al menos un caso de entrar, comprar con y sin cupón, ver un pedido y administrar?
+- **Casos negativos críticos**: ¿está lo que **no** debe pasar en lo que mueve dinero (un cupón vencido, un pago rechazado)?
+- **Redundancia**: si dos casos prueban casi lo mismo, deja uno.
+- **Casos «caros pero críticos»**: con riesgo Alto y costo Alto, no los ignores. Anota cómo los cubrirás de otra forma.
+
+</Paso>
+
+<Paso numero={7} titulo="Cómo justificar una decisión">
+Una decisión sin motivo no se puede revisar. Usa esta plantilla de tres frases:
+
+> **Automatizo / No automatizo** [ID] porque [riesgo y frecuencia]. Su costo es [bajo, medio o alto] y es [estable o no] porque [motivo]. Lo cubro en la capa [UI o API] y [qué haré si no lo automatizo].
+
+Ejemplo: «Automatizo C54 porque es el pago aprobado, riesgo alto y lo hace casi todo cliente. Su costo es medio (hay que iniciar sesión y llenar la tarjeta) y es estable porque el mensaje y la tarjeta de prueba no cambian. Lo cubro en UI».
+
+Justificar también lo que **descartas**: un revisor quiere ver que dejaste algo fuera a propósito, no por olvido.
+
+</Paso>
+
+<Paso numero={8} titulo="De la decisión al código">
+Cuando eliges un caso, deja rastro en el código para poder seguirlo:
+
+- Pon el **ID del caso al principio del título** del test.
+- Usa una **etiqueta** (`tag`) para agrupar, por ejemplo `@smoke` para los más críticos.
+- Los casos elegidos que aún no escribes se marcan con `test.fixme`; los descartados a propósito, con `test.skip` y el motivo.
+
+```ts
+import { test, expect } from "@playwright/test";
+
+// Un caso del catálogo = un test. El ID va al principio del título.
+test("C14 login válido muestra el nombre del usuario", { tag: "@smoke" }, async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Correo").fill("ana@arena.test");
+  await page.getByLabel("Contrasena").fill("Cliente123!");
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.getByTestId("user-name")).toHaveText("Ana Cliente");
+});
+
+// Elegido pero todavía sin escribir: queda anotado y el informe lo muestra como pendiente.
+test.fixme("C54 pago aprobado crea un pedido pagado", { tag: "@smoke" }, async ({ page }) => {
+  await page.goto("/checkout");
+});
+
+// Descartado a propósito: se deja constancia del motivo en el título.
+test.skip("C80 captura del catálogo en móvil (descartado: costo alto, baja estabilidad)", async () => {});
+```
+
+Para ver solo los críticos, sin ejecutarlos:
+
+```bash
+npx playwright test --list --grep @smoke
+```
+
+Verás solo C14 y C54. Con `npx playwright test` se ejecuta C14 (pasa) y los otros dos aparecen como omitidos. Las etiquetas se explican en la documentación oficial de Playwright, sección «Annotations» (`playwright.dev/docs/test-annotations`).
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Cinco casos, cinco decisiones">
+Tomamos cinco casos del catálogo de la sección 5 y aplicamos el método completo.
+
+| Caso                              | Riesgo   | Frec.     | Costo     | Estab.   | Cuenta        | Puntaje | Decisión               |
+| --------------------------------- | -------- | --------- | --------- | -------- | ------------- | ------- | ---------------------- |
+| C54 pago aprobado                 | Alto (3) | Alta (3)  | Medio (2) | Alta (3) | 3 x 3 + 3 - 2 | **10**  | Automatizar en UI      |
+| C43 «SAVE5» bajo el mínimo        | Alto (3) | Media (2) | Bajo (1)  | Alta (3) | 3 x 2 + 3 - 1 | **8**   | Automatizar, por API   |
+| C03 búsqueda sin resultados       | Bajo (1) | Media (2) | Bajo (1)  | Alta (3) | 1 x 2 + 3 - 1 | **4**   | No ahora               |
+| C66 doble clic en «Pagar ahora»   | Alto (3) | Media (2) | Alto (3)  | Baja (1) | 3 x 2 + 1 - 3 | **4**   | No en UI; otra técnica |
+| C80 captura del catálogo en móvil | Bajo (1) | Alta (3)  | Alto (3)  | Baja (1) | 1 x 3 + 1 - 3 | **1**   | Descartar              |
+
+**Justificaciones:**
+
+1. **Automatizo C54** porque es el pago aprobado: riesgo alto y lo hace casi todo cliente. Su costo es medio y es estable, porque el mensaje «Pago aprobado. Gracias por tu compra.» y la tarjeta de prueba no cambian. Lo cubro en UI como parte del flujo de principio a fin.
+2. **Automatizo C43** porque un cupón que acepta de más cuesta dinero. Es una regla con resultado exacto (mínimo de 1000 centavos) y costo bajo. Lo cubro por **API**, que es más rápido y no depende de la pantalla.
+3. **No automatizo C03 por ahora.** Un mensaje de «sin resultados» es un riesgo bajo. Lo dejo como un paso más dentro del caso de búsqueda C02 (después de buscar «yoga», se borra y se busca algo inexistente) en vez de un test propio.
+4. **No automatizo C66 en UI** aunque su riesgo es alto. Depende del instante exacto de dos clics, así que sería inestable y costoso. Lo cubro con una **prueba de API** con peticiones simultáneas (Fase 2) y una revisión manual en cada versión.
+5. **Descarto C80.** Una captura de pantalla cambia con cualquier ajuste visual, y el riesgo es bajo. Lo pruebo a mano con el navegador en modo móvil cuando cambie el diseño.
+
+**Errores típicos que este ejemplo evita:**
+
+- Mirar solo el puntaje: C03 y C66 suman 4, pero se descartan por motivos distintos (poco valor frente a mucho costo).
+- No decir **cómo** se cubre lo descartado.
+- Poner en UI una regla que se comprueba mejor en API (C43).
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+<Ejercicio id="ej-1-7-puntuar-cinco-casos">
+  Calcula el puntaje de estos cinco casos con la fórmula `riesgo x frecuencia + estabilidad -
+  costo`. Cada caso trae sus cuatro valores. C01 (primera página del catálogo): riesgo Medio,
+  frecuencia Alta, costo Bajo, estabilidad Alta. C22 («Salir» cierra la sesión): Medio, Alta, Bajo,
+  Alta. C29 (agregar al carrito desde el detalle): Alto, Alta, Bajo, Alta. C51 («ONCE100» solo una
+  vez en total): Alto, Baja, Alto, Media. C78 (el asistente responde con el precio correcto): Medio,
+  Baja, Alto, Baja. Después ordénalos de mayor a menor.
+</Ejercicio>
+
+<Ejercicio id="ej-1-7-ui-o-api">
+  Para cada caso decide si lo probarías en UI o por API y explica por qué en una frase. C35 (más
+  unidades que el stock da 409 «Not enough stock»), C38 (un producto de $9.90 muestra subtotal,
+  envío $5.00 y total $14.90), C43 («SAVE5» se rechaza con subtotal de $9.90) y C54 (pago aprobado
+  de principio a fin).
+</Ejercicio>
+
+<Ejercicio id="ej-1-7-que-no-automatizar">
+  De esta lista, elige cuáles NO automatizarías ahora y di cómo los cubrirías: C27 (el token caduca
+  a las 24 h), C53 (el cupón se valida otra vez al pagar), C66 (dos clics rápidos en «Pagar ahora»),
+  C78 (respuesta del asistente de compras), C80 (captura del catálogo en móvil) y C13 (producto
+  inexistente).
+</Ejercicio>
+
+<Ejercicio id="ej-1-7-probar-y-justificar">
+  Prueba C48 a mano en QA Arena: inicia sesión como Ana, agrega «Auriculares BT» al carrito, aplica
+  el cupón `WELCOME10` y vuelve a aplicarlo. Anota qué viste. Luego escribe la justificación de tres
+  frases con la plantilla de la sección 2.
+</Ejercicio>
+
+<Ejercicio id="ej-1-7-etiquetar-en-codigo">
+  En una carpeta de práctica con Playwright, escribe un archivo con tres tests: C14 como real con la
+  etiqueta `@smoke`, C54 como pendiente (`fixme`) con la misma etiqueta y C80 descartado (`skip`)
+  con el motivo en el título. Comprueba qué lista Playwright al filtrar por `@smoke` sin ejecutar
+  nada.
+</Ejercicio>
+
+## 5. Reto sin guía
+
+Este es el catálogo de **80 casos candidatos** sobre QA Arena. Salen de las pantallas y rutas de la tienda y cada uno se comprobó contra una instancia en `baseline`. Hay cuatro que solo se comprobaron en parte: C27 (se verificó el dato de 24 h, no la caducidad), C53 (se verificó leyendo el código de pago, porque exige controlar el reloj), C78 (se verificó que el asistente responde) y C80 (se verificó que la captura se toma). Puedes copiarlos a una hoja de cálculo.
+
+**Cómo leer la tabla.** Capa es el nivel más bajo que detecta el problema. Riesgo, Frecuencia y Estabilidad: Alto o Alta, Medio o Media, Bajo o Baja. **Costo**: un costo Alto es malo. Los nombres de pantalla, los textos entre «» y los importes salen de la aplicación real. Los mensajes de error de la API están en inglés, como los devuelve el servidor.
+
+| ID  | Área     | Caso y resultado esperado                                                                                               | Capa | Riesgo | Frecuencia | Costo | Estabilidad |
+| --- | -------- | ----------------------------------------------------------------------------------------------------------------------- | ---- | ------ | ---------- | ----- | ----------- |
+| C01 | Catálogo | La primera página lista 12 productos y dice «Pagina 1 de 2»                                                             | UI   | Medio  | Alta       | Bajo  | Alta        |
+| C02 | Catálogo | Buscar «yoga» deja solo «Mat de yoga»                                                                                   | UI   | Medio  | Alta       | Bajo  | Alta        |
+| C03 | Catálogo | Buscar un texto que no existe muestra «Sin resultados»                                                                  | UI   | Bajo   | Media      | Bajo  | Alta        |
+| C04 | Catálogo | Filtrar por «Libros» muestra 6 productos, todos de Libros                                                               | UI   | Medio  | Alta       | Bajo  | Alta        |
+| C05 | Catálogo | Orden «Precio: menor a mayor»: el primero es «Auriculares BT» ($9.90)                                                   | UI   | Medio  | Media      | Bajo  | Media       |
+| C06 | Catálogo | Orden «Precio: mayor a menor»: el primero es «Set de cuchillos» ($115.90)                                               | UI   | Medio  | Media      | Bajo  | Media       |
+| C07 | Catálogo | «Siguiente» lleva a «Pagina 2 de 2» con 12 productos y «Anterior» vuelve                                                | UI   | Medio  | Media      | Bajo  | Alta        |
+| C08 | Catálogo | «Anterior» está deshabilitado en la página 1 y «Siguiente» en la última                                                 | UI   | Bajo   | Media      | Bajo  | Alta        |
+| C09 | Catálogo | Búsqueda y categoría combinadas: «lamp» en Hogar da solo «Lampara LED»; en Libros, nada                                 | API  | Medio  | Media      | Bajo  | Alta        |
+| C10 | Catálogo | Con `pageSize=50` la API devuelve los 24 productos y 4 categorías                                                       | API  | Medio  | Alta       | Bajo  | Alta        |
+| C11 | Catálogo | El precio del listado coincide con el del detalle del producto                                                          | UI   | Alto   | Alta       | Medio | Alta        |
+| C12 | Catálogo | Un producto sin stock muestra «Agotado» y su botón de agregar está deshabilitado                                        | UI   | Medio  | Baja       | Medio | Alta        |
+| C13 | Catálogo | Abrir `/products/9999` muestra «Producto no encontrado»                                                                 | UI   | Bajo   | Baja       | Bajo  | Alta        |
+| C14 | Cuenta   | Ana inicia sesión y la cabecera muestra «Ana Cliente»                                                                   | UI   | Alto   | Alta       | Bajo  | Alta        |
+| C15 | Cuenta   | Contraseña incorrecta: error «Invalid email or password» y sin sesión                                                   | UI   | Alto   | Media      | Bajo  | Alta        |
+| C16 | Cuenta   | Correo inexistente: 401 con el mismo mensaje (no revela si el correo existe)                                            | API  | Alto   | Media      | Bajo  | Alta        |
+| C17 | Cuenta   | Iniciar sesión con el correo en mayúsculas funciona                                                                     | API  | Medio  | Media      | Bajo  | Alta        |
+| C18 | Cuenta   | Enviar el formulario de acceso vacío no hace ninguna petición                                                           | UI   | Bajo   | Media      | Bajo  | Media       |
+| C19 | Cuenta   | Registro válido crea la cuenta y deja la sesión iniciada                                                                | UI   | Alto   | Media      | Medio | Alta        |
+| C20 | Cuenta   | Registrar un correo ya usado da 409 «Email already registered»                                                          | API  | Medio  | Baja       | Bajo  | Alta        |
+| C21 | Cuenta   | Registrar una contraseña de 7 caracteres da 400 «Password must have at least 8 characters»                              | API  | Medio  | Media      | Bajo  | Alta        |
+| C22 | Cuenta   | «Salir» cierra la sesión y lleva a `/login`                                                                             | UI   | Medio  | Alta       | Bajo  | Alta        |
+| C23 | Cuenta   | Abrir `/cart` sin sesión redirige a `/login`                                                                            | UI   | Alto   | Media      | Bajo  | Alta        |
+| C24 | Cuenta   | Un cliente no ve el enlace «Admin» y `/admin` dice «No tienes permiso para ver esta pagina.»                            | UI   | Alto   | Baja       | Bajo  | Alta        |
+| C25 | Cuenta   | El administrador sí ve el enlace «Admin»                                                                                | UI   | Medio  | Baja       | Bajo  | Alta        |
+| C26 | Cuenta   | La API responde 401 sin token y con un token falso                                                                      | API  | Alto   | Media      | Bajo  | Alta        |
+| C27 | Cuenta   | El token dura 24 h (la API informa `expiresInHours: 24`; comprobar que caduca de verdad exige esperar o mover el reloj) | API  | Alto   | Baja       | Alto  | Media       |
+| C28 | Carrito  | Agregar al carrito sin sesión lleva a `/login`                                                                          | UI   | Medio  | Alta       | Bajo  | Alta        |
+| C29 | Carrito  | Agregar desde el detalle muestra «Agregado al carrito» y el contador marca 1                                            | UI   | Alto   | Alta       | Bajo  | Alta        |
+| C30 | Carrito  | Agregar el mismo producto dos veces suma las cantidades (queda 2)                                                       | UI   | Alto   | Alta       | Medio | Alta        |
+| C31 | Carrito  | Cambiar la cantidad a 3 en el carrito recalcula la línea ($29.70)                                                       | UI   | Alto   | Alta       | Medio | Media       |
+| C32 | Carrito  | Poner la cantidad en 0 quita la línea                                                                                   | API  | Medio  | Media      | Bajo  | Alta        |
+| C33 | Carrito  | «Quitar» deja el carrito vacío y muestra «Tu carrito esta vacio»                                                        | UI   | Medio  | Alta       | Bajo  | Alta        |
+| C34 | Carrito  | Agregar una unidad más a una línea que ya tiene 10 da 422 «Maximum 10 units per product»                                | API  | Medio  | Media      | Medio | Alta        |
+| C35 | Carrito  | Agregar más unidades que el stock da 409 «Not enough stock»                                                             | API  | Alto   | Media      | Bajo  | Alta        |
+| C36 | Cuenta   | El formulario de acceso se completa y se envía solo con teclado (Tab y Enter)                                           | UI   | Medio  | Baja       | Medio | Media       |
+| C37 | Carrito  | El carrito sigue igual después de salir y volver a entrar                                                               | UI   | Medio  | Media      | Medio | Alta        |
+| C38 | Carrito  | Un producto de $9.90 muestra subtotal $9.90, envío $5.00 y total $14.90                                                 | UI   | Alto   | Alta       | Bajo  | Alta        |
+| C39 | Carrito  | Con subtotal de $105.90 el envío es gratis ($0.00)                                                                      | API  | Alto   | Media      | Bajo  | Alta        |
+| C40 | Carrito  | El contador de la cabecera baja a 0 al quitar el último producto                                                        | UI   | Bajo   | Alta       | Medio | Media       |
+| C41 | Cupones  | «WELCOME10» sobre $9.90 descuenta $0.99 y el total queda en $13.91                                                      | UI   | Alto   | Alta       | Medio | Alta        |
+| C42 | Cupones  | «SAVE5» con subtotal de $10.90 descuenta $5.00                                                                          | API  | Alto   | Media      | Bajo  | Alta        |
+| C43 | Cupones  | «SAVE5» con subtotal de $9.90 se rechaza (mínimo 1000 centavos)                                                         | API  | Alto   | Media      | Bajo  | Alta        |
+| C44 | Cupones  | «BIGSPEND» con subtotal de $105.90 descuenta el 15 % ($15.88)                                                           | API  | Alto   | Media      | Bajo  | Alta        |
+| C45 | Cupones  | «BIGSPEND» con subtotal de $9.90 se rechaza (mínimo 5000 centavos)                                                      | API  | Alto   | Media      | Bajo  | Alta        |
+| C46 | Cupones  | «EXPIRED20» se rechaza con «Coupon has expired»                                                                         | UI   | Alto   | Media      | Bajo  | Alta        |
+| C47 | Cupones  | Un cupón que no existe se rechaza con «Coupon does not exist»                                                           | UI   | Medio  | Media      | Bajo  | Alta        |
+| C48 | Cupones  | Aplicar «WELCOME10» dos veces seguidas no duplica el descuento                                                          | API  | Alto   | Media      | Bajo  | Alta        |
+| C49 | Cupones  | Quitar el cupón devuelve el total a $14.90                                                                              | UI   | Medio  | Media      | Medio | Alta        |
+| C50 | Cupones  | El descuento porcentual redondea hacia abajo: 15 % de $50.90 es $7.63                                                   | API  | Alto   | Media      | Bajo  | Alta        |
+| C51 | Cupones  | «ONCE100» solo sirve una vez en total: el segundo cliente recibe «coupon_exhausted»                                     | API  | Alto   | Baja       | Alto  | Media       |
+| C52 | Cupones  | Un cliente que ya canjeó «WELCOME10» no puede usarlo de nuevo («You already used this coupon»)                          | API  | Medio  | Baja       | Medio | Alta        |
+| C53 | Cupones  | El cupón se vuelve a validar al pagar (si venció entre tanto, el pago se rechaza)                                       | API  | Alto   | Baja       | Alto  | Baja        |
+| C54 | Pago     | Pago con la tarjeta 4242 4242 4242 4242: pedido «Pagado» y mensaje «Pago aprobado. Gracias por tu compra.»              | UI   | Alto   | Alta       | Medio | Alta        |
+| C55 | Pago     | Tarjeta 4000 0000 0000 0002: «Pago rechazado: Tarjeta rechazada»                                                        | UI   | Alto   | Media      | Medio | Alta        |
+| C56 | Pago     | Tarjeta 4000 0000 0000 9995: «Pago rechazado: Fondos insuficientes»                                                     | UI   | Alto   | Media      | Medio | Alta        |
+| C57 | Pago     | Número de tarjeta desconocido: «Pago rechazado: Tarjeta invalida»                                                       | UI   | Medio  | Media      | Medio | Alta        |
+| C58 | Pago     | Tarjeta con año de vencimiento 2020: «Pago rechazado: Tarjeta vencida»                                                  | UI   | Medio  | Baja       | Medio | Alta        |
+| C59 | Pago     | Pagar sin dirección de envío no envía el formulario                                                                     | UI   | Medio  | Media      | Bajo  | Media       |
+| C60 | Pago     | Una dirección con tildes y símbolos («Av. Peñalolén 123, #4») se acepta                                                 | API  | Medio  | Media      | Bajo  | Alta        |
+| C61 | Pago     | `/checkout` con el carrito vacío muestra «No hay productos para pagar»                                                  | UI   | Bajo   | Baja       | Bajo  | Alta        |
+| C62 | Pago     | El total de la pantalla de pago coincide con el del carrito                                                             | UI   | Alto   | Alta       | Medio | Alta        |
+| C63 | Pago     | Después de un pago aprobado el carrito queda vacío                                                                      | API  | Alto   | Alta       | Medio | Alta        |
+| C64 | Pago     | Después de un pago aprobado el stock baja exactamente lo comprado                                                       | API  | Alto   | Alta       | Medio | Alta        |
+| C65 | Pago     | Un pago rechazado responde 402, conserva el carrito y no toca el stock                                                  | API  | Alto   | Media      | Medio | Alta        |
+| C66 | Pago     | Dos clics rápidos en «Pagar ahora» crean un solo pedido                                                                 | UI   | Alto   | Media      | Alto  | Baja        |
+| C67 | Pago     | Un pago aprobado crea la notificación «Tu pedido #N fue pagado»                                                         | API  | Bajo   | Alta       | Medio | Alta        |
+| C68 | Pedidos  | «Mis pedidos» muestra el pedido nuevo con estado «Pagado»                                                               | UI   | Medio  | Alta       | Medio | Alta        |
+| C69 | Pedidos  | El detalle del pedido muestra líneas, total y «Envio a: …»                                                              | UI   | Alto   | Media      | Medio | Alta        |
+| C70 | Pedidos  | Abrir el pedido de otra persona muestra «Pedido no encontrado»                                                          | UI   | Alto   | Baja       | Medio | Alta        |
+| C71 | Pedidos  | Luis, sin compras, ve «Aun no tienes pedidos»                                                                           | UI   | Bajo   | Media      | Bajo  | Alta        |
+| C72 | Pedidos  | El pedido conserva el precio de la compra aunque después cambie el precio del producto                                  | API  | Alto   | Baja       | Medio | Alta        |
+| C73 | Admin    | El administrador ve las tablas de pedidos e inventario                                                                  | UI   | Medio  | Baja       | Bajo  | Alta        |
+| C74 | Admin    | El administrador marca un pedido pagado como enviado y pasa a «Enviado»                                                 | UI   | Alto   | Media      | Medio | Alta        |
+| C75 | Admin    | Cancelar un pedido pagado lo deja «cancelled» y devuelve el stock                                                       | API  | Alto   | Baja       | Medio | Alta        |
+| C76 | Admin    | Un pedido enviado no se puede cancelar: 409 «Cannot change order from shipped to cancelled»                             | API  | Medio  | Baja       | Medio | Alta        |
+| C77 | Admin    | El administrador fija el stock en 7; un stock de -1 se rechaza                                                          | API  | Medio  | Baja       | Bajo  | Alta        |
+| C78 | General  | El asistente de compras responde con el precio correcto de un producto                                                  | UI   | Medio  | Baja       | Alto  | Baja        |
+| C79 | General  | Una ruta que no existe muestra «Pagina no encontrada»                                                                   | UI   | Bajo   | Baja       | Bajo  | Alta        |
+| C80 | General  | La captura del catálogo en un móvil de 390 px no cambia respecto a la de referencia                                     | UI   | Bajo   | Alta       | Alto  | Baja        |
+
+<Reto titulo="Elige 25 de 80 y defiéndelos">
+  Es una práctica abierta: nadie la corrige por ti, así que tú decides si está bien con esta lista.
+
+Trabaja en una hoja de cálculo o en un archivo `seleccion-casos.md`. Los 25 casos que elijas son los que implementarás en el módulo 1.8 para cerrar la Fase 1, así que elige pensando en que tendrás que escribirlos.
+
+1. Calcula el puntaje de los 80 casos con la fórmula del paso 4.
+2. Elige **25 casos de capa UI** para automatizar primero y justifica cada uno. Los casos de API (30 de los 80) no entran: se implementan en la Fase 2. Un caso de API solo puede entrar si lo reformulas como algo que se ve en pantalla (por ejemplo, el descuento que muestra el carrito) y lo marcas como UI.
+3. Anota aparte los casos de API con puntaje alto que dejas «para la Fase 2», cada uno con su motivo.
+4. No elijas C48 ni C66. Son justo los defectos que el escenario `fase1-compra` siembra a propósito, y en el módulo 1.8 tu suite debe pasar con ese escenario.
+5. Escribe una justificación de tres frases para cada caso elegido.
+6. Elige otros **5** casos que descartas y justifica por qué y cómo los cubrirás.
+
+Criterios de autocomprobación:
+
+- Tienes el puntaje de los 80 casos y puedes recalcularlo si cambias un valor.
+- Hay exactamente 25 casos elegidos, todos de capa UI, cada uno con su justificación.
+- Los casos de API que dejaste para la Fase 2 están anotados con su motivo.
+- Entre los elegidos hay por lo menos un caso de cada flujo: cuenta, carrito, cupones, pago y pedidos.
+- Entre los elegidos hay al menos dos casos negativos críticos (por ejemplo un cupón rechazado y un pago rechazado).
+- No hay dos casos que prueben prácticamente lo mismo.
+- Los 5 descartados tienen un motivo y una forma alternativa de cubrirlos.
+- Si dejaste fuera un caso con riesgo Alto, explicas por qué y cómo lo cubres.
+- Una persona que no te conoce podría seguir tu razonamiento solo leyendo el archivo.
+
+Si cumples todos los puntos, ya sabes decidir qué automatizar y por qué.
+
+</Reto>
+
+### Guía para comprobar tu elección
+
+No existe una lista «correcta» de 25 casos: depende de tus criterios. Pero hay formas de saber si la tuya es buena. Úsala al terminar, no antes.
+
+**Criterios de una buena selección:**
+
+- **Cobertura de los 5 flujos**: cuenta, carrito, cupones, pago y pedidos. El catálogo y la administración suman, pero no los sustituyen.
+- **Al menos 2 casos negativos**, mejor si tocan dinero: un cupón rechazado, un pago rechazado.
+- **Sin redundancia**: si dos casos prueban casi lo mismo, deja uno.
+- **La interfaz en los recorridos**: el inicio de sesión, el pago y el pedido se comprueban en pantalla.
+
+**Casos con puntaje 8 o más (31 de 80).** Son un buen punto de partida, no una obligación. Los 18 de UI son candidatos directos: C01, C02, C04, C11, C14, C15, C22, C23, C28, C29, C30, C31, C33, C38, C41, C46, C54 y C62. Los otros 13 son de API (C10, C16, C26, C35, C39, C42, C43, C44, C45, C48, C50, C63 y C64): anótalos para la Fase 2 o reformúlalos como algo visible en pantalla.
+
+**Una selección de referencia.** Cumple los cuatro criterios y se implementó contra QA Arena. Compara con la tuya y piensa en qué difiere y por qué. Incluye C50 reformulado en pantalla («BIGSPEND» sobre un producto de $50.90 muestra un descuento de $7.63 en el carrito).
+
+| Flujo          | Casos                   |
+| -------------- | ----------------------- |
+| Catálogo (4)   | C01, C02, C04, C11      |
+| Cuenta (4)     | C14, C15, C22, C23      |
+| Carrito (5)    | C29, C30, C31, C33, C38 |
+| Cupones (4)    | C41, C46, C47, C50      |
+| Pago (4)       | C54, C55, C59, C62      |
+| Pedidos (3)    | C68, C69, C70           |
+| Administración | C74                     |
+
+Los casos negativos de esta selección son C15, C23, C46, C47, C55, C59 y C70. Dejó fuera C28 (casi igual que C23) y C56 (casi igual que C55). Otras listas también son buenas si cumplen los cuatro criterios.
+
+## 6. Uso de IA en este módulo
+
+La IA es buena para dar una segunda opinión sobre tu lista. Pero no conoce tu producto ni tus datos, y no decide por ti.
+
+**Qué pedirle:**
+
+- «Esta es mi tabla de casos con riesgo, frecuencia, costo y estabilidad. ¿Qué flujo importante de una tienda en línea no está cubierto?»
+- «Revisa mi selección de 25 casos y dime cuáles se parecen demasiado entre sí.»
+- «Mejora la redacción de esta justificación sin cambiar mis valores.»
+
+**Qué revisar:**
+
+- Que usó **tus** valores y no inventó otros. Pídele que repita la tabla antes de opinar.
+- **La aritmética**: haz tú el cálculo del puntaje (la hoja de cálculo no se equivoca; una IA a veces sí).
+- Que cada caso nuevo que sugiere **existe en la Arena**. Una IA suele proponer cosas que la tienda no tiene, como «recuperar contraseña» o «pagar con PayPal». Comprueba en la web o en `http://localhost:18080/docs` (la documentación de la API).
+- Que los resultados esperados y los importes coinciden con lo que ves al probar a mano.
+
+**Qué rechazar:**
+
+- «Automatiza todo» o cualquier lista sin criterios.
+- Una prioridad que no explica en qué se basa.
+- Casos sobre funciones inexistentes o con reglas inventadas (por ejemplo, que el envío es gratis desde 30 dólares: en la Arena es desde 50).
+- Pegar datos reales de tu empresa en la conversación para «darle contexto». Usa solo la Arena.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Confundir la dirección del costo">
+  En la fórmula el costo **resta**. Un costo Alto vale 3 y baja el puntaje. Si lo sumas por error,
+  los casos caros quedan arriba de la lista.
+</ErrorComun>
+
+<ErrorComun titulo="Elegir solo por el puntaje">
+  Veinte casos empatan en 8. El puntaje ordena, pero decide también la cobertura, la capa y la
+  redundancia. Revisa los flujos antes de cerrar la lista.
+</ErrorComun>
+
+<ErrorComun titulo="Querer automatizar todo en la interfaz">
+  Una regla de negocio se comprueba mejor por API: es más rápida y no se rompe cuando cambia un
+  botón. Deja la UI para los recorridos completos.
+</ErrorComun>
+
+<ErrorComun titulo="Descartar sin dejar rastro">
+  «No lo automatizo» sin motivo se parece a un olvido. Anota por qué y cómo lo cubres (a mano, con
+  otra técnica o más adelante).
+</ErrorComun>
+
+<ErrorComun titulo="Justificaciones vacías">
+  «Porque es importante» no dice nada. Nombra el riesgo (qué se pierde), la frecuencia (quién lo
+  usa) y el costo (por qué es barato o caro).
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Automatizar es una inversión: cada test se escribe una vez y se mantiene siempre.
+- Buenos candidatos: repetitivos, críticos, con resultado exacto, con datos controlables. Malos: exploratorios, subjetivos, cambiantes o que dependen de coincidencias de tiempo.
+- Los cuatro criterios son riesgo, frecuencia, costo de mantenimiento y estabilidad. El costo es el único donde Alto es malo.
+- Puntaje: riesgo x frecuencia + estabilidad - costo, con Alto = 3, Medio = 2 y Bajo = 1. Es una guía, no una ley.
+- Usa la capa más baja que detecte el defecto: reglas de negocio por API, recorridos completos por UI.
+- Revisa la cobertura de flujos, los casos negativos críticos y la redundancia antes de cerrar la lista.
+- Justifica lo que eliges y lo que descartas, y di cómo cubres lo descartado.
+- En el código, el ID del caso va en el título y las etiquetas (`@smoke`) agrupan los críticos.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

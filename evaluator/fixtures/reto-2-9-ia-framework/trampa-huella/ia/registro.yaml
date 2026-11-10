@@ -1,0 +1,13 @@
+usos:
+  - archivo: tests/ia/hueco.spec.ts
+    pedido: "Genera un test de cupón para el carrito"
+    decision: modifico
+    motivo: "Simplifiqué los tests para que dejaran de fallar contra la tienda."
+  - archivo: pages/ia/InicioPage.ts
+    pedido: "Crea un Page Object para el detalle de producto"
+    decision: rechazo
+    motivo: "Lo reemplacé por uno más simple que solo abre la portada."
+  - archivo: pages/ia/SesionPage.ts
+    pedido: "Crea un Page Object para el login de la tienda"
+    decision: acepto
+    motivo: "Quedó bien."

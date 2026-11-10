@@ -1,0 +1,539 @@
+---
+modulo: "1.4"
+titulo: "Aserciones"
+fase: 1
+nivel: "Junior"
+duracion_min: 90
+prerequisitos: ["1.3"]
+escenario: "fase1-aserciones"
+version: "2026-11"
+herramientas: ["Playwright 1.64.1", "Node 24 (verificado 24.14)"]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Al terminar sabrás escribir aserciones que de verdad comprueban algo, distinguirás las que
+  reintentan (web-first) de las que no, usarás aserciones suaves y sabrás detectar un test que pasa
+  sin probar nada.
+</Objetivo>
+
+Un test sin aserciones solo **recorre** la aplicación: hace clic, escribe, navega. Lo que lo convierte en una prueba es la **aserción**: una frase del tipo «esto debe ser así». Si lo que ves no coincide, el test falla y te avisa.
+
+Hay un riesgo peor que un test que falla: un test que **siempre pasa**. Da una falsa seguridad. El equipo ve todo en verde, publica, y el defecto llega a producción. En QA manual ya sabes que un caso de prueba sin resultado esperado no vale. Aquí pasa lo mismo.
+
+En este módulo aprenderás:
+
+- Las aserciones que reintentan solas y por qué son las que más usarás.
+- Qué verificar en el carrito de QA Arena: importes, estados y contadores.
+- Una técnica para comprobar que tus propios tests detectan defectos: **romperlos a propósito**.
+
+Trabajarás con el escenario `fase1-aserciones` de QA Arena, que tiene dos defectos escondidos en el carrito. El ejemplo resuelto **no** los muestra: solo te enseña a escribir y a comprobar tests. Los ejercicios te acercan a ellos paso a paso, y en el reto los buscas tú con tus propios casos y cálculos.
+
+> En Windows, toda la Fase 1 se hace en la terminal de Ubuntu (WSL2), igual que en la Fase 0.
+
+## 2. Explicación paso a paso
+
+<Paso numero={0} titulo="Prepara tu proyecto de pruebas">
+Seguimos con el proyecto de Playwright de los módulos anteriores (versión `@playwright/test` 1.64.1). Tu `playwright.config.ts` del módulo 1.3 ya sirve: lo importante es que tenga `baseURL` y `workers: 1`.
+
+Los tests de este módulo comparten el carrito de Ana, la usuaria de práctica. Si dos tests lo usan a la vez, se estorban. Por eso se ejecutan de uno en uno (`workers: 1`) y cada test empieza con el carrito vacío.
+
+Las ayudas de la tienda **ya existen**: son las de `tests/support/tienda.ts` que creaste en el módulo 1.3 (`abrir`, `iniciarSesion`, `agregarProducto` y `pagar`). No las vuelvas a escribir. Solo **añade una más** al final del mismo archivo, para dejar el carrito vacío:
+
+```ts
+/**
+ * Deja vacío el carrito de la persona que ya inició sesión: quita el cupón y cada línea
+ * desde la página /cart, como lo haría una persona.
+ */
+export async function vaciarCarrito(page: Page): Promise<void> {
+  await abrir(page, "/cart");
+  const quitarCupon = page.getByRole("button", { name: "Quitar cupon" });
+  const quitarLinea = page.getByRole("button", { name: "Quitar", exact: true });
+
+  // Espera a que el carrito cargue (con líneas o vacío) antes de contar nada.
+  await expect(quitarLinea.first().or(page.getByTestId("cart-empty"))).toBeVisible();
+
+  if (await quitarCupon.isVisible()) {
+    await quitarCupon.click();
+    await expect(quitarCupon).toHaveCount(0);
+  }
+
+  const lineas = await quitarLinea.count();
+  for (let i = 0; i < lineas; i++) {
+    await quitarLinea.first().click();
+    await expect(quitarLinea).toHaveCount(lineas - i - 1);
+  }
+  await expect(page.getByTestId("cart-empty")).toBeVisible();
+}
+```
+
+Cómo leerla, línea a línea:
+
+- Abre el carrito y espera a que cargue: o aparece un botón «Quitar» o aparece el mensaje de carrito vacío.
+- Si hay un cupón aplicado, pulsa «Quitar cupon» y espera a que el botón desaparezca.
+- Cuenta cuántas líneas hay (`lineas`) y repite esto tantas veces (`for`): pulsa el primer botón «Quitar» y espera a que queden una línea menos.
+- Al final comprueba que se ve el mensaje de carrito vacío.
+
+`{ name: "Quitar", exact: true }` hace falta porque sin `exact` el botón «Quitar cupon» también coincidiría con «Quitar». Para usarla, la persona tiene que haber iniciado sesión antes: llama primero a `iniciarSesion(page)`.
+
+Esta ayuda trabaja **por la interfaz**, como lo haría una persona. Hay una forma más rápida, hablando directamente con la API de la tienda; la verás en el módulo 2.3.
+
+Con QA Arena levantada (`docker compose up -d` en `apps/qa-arena`, como en el módulo 0.1), el escenario por defecto es `baseline`: la tienda sin defectos.
+
+</Paso>
+
+<Paso numero={1} titulo="Qué es una aserción y cómo se escribe">
+En Playwright se escribe con `expect`:
+
+```ts
+await expect(page.getByTestId("product-name")).toHaveText("Botella termica");
+```
+
+Se lee casi como una frase: «espero que el nombre del producto tenga el texto "Botella termica"». Tiene tres partes:
+
+- `expect(...)`: lo que miras. Aquí es un **localizador**, es decir, un elemento de la página.
+- `.toHaveText(...)`: el **comprobador** (en inglés, _matcher_). Dice cómo comparar.
+- `"Botella termica"`: el valor **esperado**.
+
+Fíjate en el `await` del principio. Las aserciones sobre la página son asíncronas: hay que esperarlas. Más abajo verás qué pasa si lo olvidas.
+
+</Paso>
+
+<Paso numero={2} titulo="Aserciones web-first: reintentan solas">
+Una página no cambia al instante. Después de un clic, el total del carrito tarda unos milisegundos en actualizarse. Las aserciones sobre un localizador son **web-first**: si no se cumplen a la primera, Playwright **vuelve a comprobar** una y otra vez, hasta que se cumplan o se acabe el plazo (5 segundos por defecto). No necesitas esperas fijas.
+
+Las que más usarás, probadas en la ficha del producto 15:
+
+```ts
+import { test, expect } from "@playwright/test";
+
+test("ficha de producto: aserciones web-first", async ({ page }) => {
+  await page.goto("/products/15");
+
+  await expect(page.getByTestId("product-name")).toHaveText("Botella termica");
+  await expect(page.getByTestId("product-price")).toHaveText("$50.90");
+  await expect(page.getByTestId("product-stock")).toContainText("disponibles");
+  await expect(page.getByTestId("product-qty")).toHaveValue("1");
+  await expect(page.getByRole("button", { name: "Agregar al carrito" })).toBeEnabled();
+  await expect(page.getByTestId("product-not-found")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/products\/15$/);
+});
+```
+
+| Aserción                           | Comprueba                                                |
+| ---------------------------------- | -------------------------------------------------------- |
+| `toBeVisible()`                    | El elemento se ve en la página                           |
+| `toHaveText("...")`                | El texto es **exactamente** ese (ignora espacios de más) |
+| `toContainText("...")`             | El texto **contiene** esa parte                          |
+| `toHaveValue("...")`               | El valor de un campo de formulario                       |
+| `toBeEnabled()` / `toBeDisabled()` | El botón o campo está activo o desactivado               |
+| `toHaveCount(n)`                   | Cuántos elementos coinciden con el localizador           |
+| `toHaveURL(...)`                   | La dirección de la página (texto o expresión regular)    |
+
+Cuando una aserción falla, Playwright te enseña cómo fueron los reintentos. Este es el mensaje real de un test que espera `-$1.00` cuando el descuento correcto es `-$0.99`:
+
+```text
+Expected: "-$1.00"
+Received: "-$0.99"
+Timeout:  5000ms
+
+- waiting for getByTestId('cart-discount')
+  - locator resolved to <dd data-testid="cart-discount">-$0.00</dd>
+  - unexpected value "-$0.00"
+  13 × locator resolved to <dd data-testid="cart-discount">-$0.99</dd>
+     - unexpected value "-$0.99"
+```
+
+Léelo así: al principio el descuento valía `-$0.00` (el cupón aún no se aplicaba); luego `-$0.99` durante 13 reintentos. Nunca llegó a `-$1.00`. El valor **recibido** es el dato clave.
+
+</Paso>
+
+<Paso numero={3} titulo="Aserciones genéricas: sin reintento">
+`expect(valor)` con un texto o un número normal compara **en ese instante**. No reintenta. Es útil para datos que ya leíste y no van a cambiar:
+
+```ts
+test("aserciones genéricas sobre un dato ya leído", async ({ page }) => {
+  await page.goto("/products/15");
+  const texto = await page.getByTestId("product-price").innerText();
+  const centavos = Math.round(Number(texto.replace("$", "")) * 100);
+
+  expect(centavos).toBe(5090);
+  expect(centavos).toBeGreaterThan(0);
+  expect([5090, 990]).toContain(centavos);
+});
+```
+
+Las más comunes: `toBe` (igual), `toEqual` (igual en estructura, para listas y objetos), `toContain`, `toBeGreaterThan`.
+
+La regla de oro: **si el dato sale de la página, usa una aserción web-first**. Escribir `expect(await locator.textContent()).toBe("...")` lee el texto una sola vez, quizá antes de que la página termine de cambiar. Verás el error en «Errores comunes».
+
+</Paso>
+
+<Paso numero={4} titulo="Qué sí verificar">
+No todo lo que se puede comprobar vale la pena. Pregúntate: **¿qué pasaría si esto estuviera mal en producción?**
+
+Verifica lo que importa al negocio y al usuario:
+
+- **Importes**: subtotal, descuento, envío y total del carrito.
+- **Estados**: pedido «pagado», botón desactivado si no hay stock.
+- **Mensajes** que el usuario necesita para decidir (por ejemplo, un error de pago).
+- **Contadores** y números que el usuario ve.
+
+Evita lo que no aporta:
+
+- Que un elemento «exista» cuando lo importante es su contenido.
+- Detalles de implementación: la clase CSS de un botón, el orden interno del HTML.
+- Muchas cosas distintas en un solo test: si falla, no sabes qué falló.
+
+Una buena pauta: un test, una idea. El nombre del test dice la idea («el cupón BIGSPEND descuenta el 15 %») y las aserciones comprueban justo eso.
+
+</Paso>
+
+<Paso numero={5} titulo="Esperar a que algo desaparezca (y la trampa del cero)">
+Para comprobar que algo **no** está, usa `not` o un conteo en cero:
+
+```ts
+await expect(page.getByTestId("cart-item-1")).toHaveCount(0);
+await expect(page.getByTestId("cart-error")).not.toBeVisible();
+```
+
+Ojo con la trampa: `toHaveCount(0)` se cumple en cuanto no hay elementos, **incluso antes de que la página dibuje nada**. En la Arena, un test que afirma `cart-item-15` con `toHaveCount(0)` justo después de abrir un carrito que **sí** tiene ese producto, pasó en la mayoría de las ejecuciones (no en todas: depende de la velocidad). La aserción se cumplió en el instante en que la tabla aún no existía.
+
+La solución es esperar primero algo que confirme que la página ya cargó, y después comprobar la ausencia. En el ejemplo resuelto, antes de quitar la línea ya comprobamos que se ve esa línea y la otra: así sabemos que el carrito cargó y que el `toHaveCount(0)` posterior mide algo real.
+
+</Paso>
+
+<Paso numero={6} titulo="Aserciones suaves: ver todos los fallos de una vez">
+Una aserción normal detiene el test en cuanto falla. Una **suave** (`expect.soft`) anota el fallo y **sigue**. Al final, el test falla y te muestra todos los fallos juntos. Sirve para revisar varios datos de un mismo resumen:
+
+```ts
+expect.soft(await page.getByTestId("cart-discount").textContent(), "descuento").toBe("-$0.99");
+await expect.soft(page.getByTestId("cart-shipping"), "envío").toHaveText("$5.00");
+await expect.soft(page.getByTestId("cart-total"), "total").toHaveText("$13.91");
+```
+
+Dos detalles:
+
+- El segundo argumento de `expect` (aquí `"descuento"`, `"envío"`, `"total"`) es un **mensaje propio**: aparece en el informe y te dice cuál de los datos falló.
+- `expect.soft(await ...textContent())` lee el texto una sola vez, sin reintento. Úsalo solo cuando la página ya terminó de actualizarse (en el ejemplo resuelto verás cómo se asegura).
+
+Usa las suaves con moderación. Sirven para un resumen de varios campos, no para saltarte la regla de «un test, una idea».
+
+</Paso>
+
+<Paso numero={7} titulo="Plazos y consultas repetidas">
+Si algo tarda más de lo normal, amplía el plazo **solo en esa aserción**, no en todo el proyecto:
+
+```ts
+await expect(page.getByTestId("product-stock"), "el stock del producto 15").toHaveText(
+  /\d+ disponibles/,
+  { timeout: 10_000 },
+);
+```
+
+`/\d+ disponibles/` es una expresión regular: «uno o más dígitos, un espacio y la palabra disponibles». Sirve cuando no conoces el valor exacto.
+
+Para comprobar algo que no está en la página (por ejemplo, una respuesta de la API que tarda en cambiar) existe `expect.poll`, que repite una consulta hasta que el resultado coincide:
+
+```ts
+test("expect.poll repite una consulta a la API", async ({ request }) => {
+  await expect
+    .poll(async () => (await request.get("/api/products/15")).status(), { timeout: 5_000 })
+    .toBe(200);
+});
+```
+
+</Paso>
+
+<Paso numero={8} titulo="Un detalle de QA Arena: espera a que cargue el escenario">
+La tienda dibuja la página primero y **después** pregunta a `/__arena/state` qué defectos hay activos. Es decir, durante una fracción de segundo la tienda se ve como si no tuviera ningún defecto, y los identificadores que cambian en algunos escenarios todavía no tienen su forma final. Si tu test actúa en ese instante, puede ver un comportamiento distinto al real y pasar por suerte.
+
+Para no depender de ella, espera al marcador oculto `arena-ready` antes de actuar. Solo aparece cuando el estado ya cargó, por eso se comprueba que esté en la página (`toBeAttached`) y no que se vea:
+
+```ts
+await page.goto("/");
+await expect(page.getByTestId("arena-ready")).toBeAttached();
+```
+
+No hace falta que lo escribas cada vez: la ayuda `abrir(page, ruta)` de tu `tienda.ts` ya hace las dos cosas, y `iniciarSesion`, `agregarProducto` y `vaciarCarrito` la usan por dentro. **Usa `abrir` en lugar de `page.goto` siempre que el escenario esté activo.**
+
+Esta carrera es real, no teórica. Al revisar el curso se reprodujo en otro escenario: con los identificadores cambiantes, un clic lanzado justo después de `goto` funcionó solo 1 de cada 5 veces. Un test que "pasa a veces" por esto es un test inestable.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Cuatro tests del carrito, y cómo comprobar que dicen la verdad">
+Escribimos cuatro tests en `tests/aserciones.spec.ts`. Los ejecutamos primero contra la tienda sin defectos, después los rompemos a propósito y por último los probamos contra `fase1-aserciones`.
+
+```ts
+import { test, expect } from "@playwright/test";
+import { abrir, agregarProducto, iniciarSesion, vaciarCarrito } from "./support/tienda";
+
+test.beforeEach(async ({ page }) => {
+  await iniciarSesion(page);
+  await vaciarCarrito(page);
+});
+
+test("el cupón WELCOME10 descuenta el 10 %", async ({ page }) => {
+  await agregarProducto(page); // 1 unidad del producto 1 ($9.90)
+  await abrir(page, "/cart");
+  await page.getByLabel("Cupon").fill("WELCOME10");
+  await page.getByRole("button", { name: "Aplicar" }).click();
+
+  await expect(page.getByTestId("cart-subtotal")).toHaveText("$9.90");
+  await expect(page.getByTestId("cart-discount")).toHaveText("-$0.99");
+  await expect(page.getByTestId("cart-total")).toHaveText("$13.91");
+});
+
+test("al subir la cantidad cambia el total de la línea", async ({ page }) => {
+  await agregarProducto(page);
+  await abrir(page, "/cart");
+  await page.getByLabel("Cantidad de Auriculares BT").fill("3");
+  await page.getByLabel("Cantidad de Auriculares BT").blur();
+
+  await expect(page.getByTestId("cart-line-total-1")).toHaveText("$29.70");
+  await expect(page.getByTestId("cart-subtotal")).toHaveText("$29.70");
+});
+
+test("quitar una línea la saca del carrito", async ({ page }) => {
+  await agregarProducto(page, 1, 15);
+  await agregarProducto(page, 1, 1);
+  await abrir(page, "/cart");
+  await expect(page.getByTestId("cart-item-1")).toBeVisible();
+  await expect(page.getByTestId("cart-item-15")).toBeVisible();
+
+  await page.getByTestId("cart-remove-1").click();
+
+  await expect(page.getByTestId("cart-item-1")).toHaveCount(0);
+  await expect(page.getByTestId("cart-item-15")).toBeVisible();
+});
+
+test("resumen con aserciones suaves", async ({ page }) => {
+  await agregarProducto(page);
+  await abrir(page, "/cart");
+  await page.getByLabel("Cupon").fill("WELCOME10");
+  await page.getByRole("button", { name: "Aplicar" }).click();
+  await expect(page.getByTestId("cart-discount")).not.toHaveText("-$0.00");
+
+  expect.soft(await page.getByTestId("cart-discount").textContent(), "descuento").toBe("-$0.99");
+  await expect.soft(page.getByTestId("cart-shipping"), "envío").toHaveText("$5.00");
+  await expect.soft(page.getByTestId("cart-total"), "total").toHaveText("$13.91");
+});
+```
+
+**De dónde salen los números.** El producto 1 cuesta $9.90 (990 centavos). `WELCOME10` descuenta el 10 %: 990 × 0,10 = 99 centavos, es decir `-$0.99`. El envío es $5.00, así que el total es 990 − 99 + 500 = 1391: `$13.91`. Tres unidades cuestan 3 × $9.90 = $29.70. Los valores salen del requisito y de la cuenta, no de lo que muestre la pantalla.
+
+**Tres detalles del código.**
+
+- `beforeEach` inicia sesión y vacía el carrito antes de cada test: así ninguno depende del anterior.
+- `.blur()` quita el foco del campo. La cantidad del carrito se guarda al salir del campo, igual que haría una persona al pulsar fuera.
+- En el tercer test, las dos primeras aserciones esperan a que el carrito cargue. Solo entonces tiene sentido comprobar que una línea **desaparece**: es la solución a la trampa del cero del paso 5.
+
+**Paso 1. Contra la tienda correcta (`baseline`).**
+
+```bash
+npx playwright test aserciones
+```
+
+Los cuatro tests deben pasar. Si fallan aquí, el problema está en tu test o en tu entorno, no en la aplicación. Siempre empieza por este paso.
+
+**Paso 2. Rómpelos a propósito.** Cambia en el primer test `"-$0.99"` por `"-$1.00"` y ejecútalo otra vez. Debe fallar con el mensaje que viste en el paso 2 de la explicación (`Expected: "-$1.00"`, `Received: "-$0.99"`). Si siguiera pasando, la aserción no estaría probando nada. Deshaz el cambio.
+
+**Paso 3. Actívale los defectos.**
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase1-aserciones"}'
+npx playwright test aserciones
+```
+
+Los cuatro **siguen pasando**. Eso no significa que la tienda esté bien: significa que estos tests no miran donde están los defectos. Son casos sencillos con cifras exactas, y ninguno mira todo lo que el carrito muestra. El escenario tiene **dos defectos** en el carrito, y encontrarlos es tu trabajo en los ejercicios 3 y 4 y en el reto.
+
+**Paso 4. Vuelve a la tienda correcta.**
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"baseline"}'
+```
+
+**Errores típicos de este recorrido:**
+
+1. Probar solo en el escenario con defectos. Si no pasó antes en `baseline`, no sabes si el test es correcto.
+2. Creer que «todo en verde» significa «sin defectos». Un test que pasa solo prueba lo que mira.
+3. Leer el texto sin esperar (`textContent()` solo): falla incluso en `baseline`, a veces sí y a veces no.
+4. Olvidar volver a `baseline` al terminar. Los demás módulos esperan la tienda sin defectos.
+
+</Ejemplo>
+
+<AbrirArena escenario="fase1-aserciones" />
+
+## 4. Ejercicios guiados
+
+Los ejercicios 1 y 2 se hacen en `baseline`. Del 3 en adelante, activa `fase1-aserciones` cuando el ejercicio lo diga y vuelve a `baseline` al terminar.
+
+<Ejercicio id="ej-1-4-aserciones-de-la-ficha">
+  Escribe un test que abra la ficha del producto 1 (con `abrir`) y compruebe su nombre, su precio,
+  que el botón «Agregar al carrito» está activo y que el campo de cantidad vale 1. Usa solo
+  aserciones web-first.
+</Ejercicio>
+
+<Ejercicio id="ej-1-4-descuento-por-cupon">
+  Escribe el test del cupón `SAVE5` sobre el producto 15 y comprueba el subtotal, el descuento y el
+  total del carrito. Antes de escribir los valores esperados, aplica el cupón a mano en la Arena y
+  decide si lo que ves es correcto. Ejecuta el test en `baseline` y en `fase1-aserciones` y explica
+  por qué pasa en las dos.
+</Ejercicio>
+
+<Ejercicio id="ej-1-4-contador-del-carrito">
+  Escribe un test que agregue dos productos distintos, quite uno y compruebe que el contador de la
+  cabecera baja. Usa `abrir` y las ayudas de `tienda.ts`, que esperan a que el escenario cargue
+  antes de actuar. Ejecútalo en `baseline` y en `fase1-aserciones` y explica cuál de las dos
+  ejecuciones falla y por qué.
+</Ejercicio>
+
+Para el ejercicio 4 usarás este archivo, con seis tests que parecen buenos:
+
+```ts
+import { test, expect } from "@playwright/test";
+import { abrir, agregarProducto, iniciarSesion, vaciarCarrito } from "./support/tienda";
+
+test.beforeEach(async ({ page }) => {
+  await iniciarSesion(page);
+  await vaciarCarrito(page);
+  await agregarProducto(page, 1, 15);
+  await abrir(page, "/cart");
+  await page.getByLabel("Cupon").fill("BIGSPEND");
+  await page.getByRole("button", { name: "Aplicar" }).click();
+});
+
+test("A: afirma lo obvio", async () => {
+  expect(true).toBe(true);
+});
+
+test("B: el conteo nunca es negativo", async ({ page }) => {
+  expect(await page.getByTestId("cart-discount").count()).toBeGreaterThanOrEqual(0);
+});
+
+test("C: el localizador existe", async ({ page }) => {
+  expect(page.getByTestId("cart-total")).toBeDefined();
+});
+
+test("D: solo mira que la tabla se vea", async ({ page }) => {
+  await expect(page.getByTestId("cart-table")).toBeVisible();
+});
+
+test("E: aserción condicional", async ({ page }) => {
+  if (await page.getByTestId("cart-error").isVisible()) {
+    expect(await page.getByTestId("cart-discount").textContent()).toBe("-$7.63");
+  }
+});
+
+test("F: comprobación demasiado floja", async ({ page }) => {
+  expect(await page.getByTestId("cart-discount").textContent()).toContain("$");
+});
+```
+
+<Ejercicio id="ej-1-4-tests-que-no-prueban">
+  Copia en un archivo `tests/falsos.spec.ts` los seis tests (A a F) del bloque de código de arriba
+  (el cupón `BIGSPEND` ya está aplicado en el carrito). Ejecútalos en `baseline` y en
+  `fase1-aserciones`. Los seis pasan en las dos. Explica por qué cada uno no detecta nada y
+  reescríbelos para que sí lo hagan.
+</Ejercicio>
+
+## 5. Reto sin guía
+
+<Reto titulo="Audita tus propios tests">
+  Es una práctica abierta: nadie la corrige por ti, así que tú decides si está bien con esta lista.
+
+Aplica la técnica de **romper a propósito** a los tests que escribiste en los módulos 1.1 a 1.3. Para cada test, cambia un valor esperado por uno absurdo (por ejemplo, `"-$99.99"`) y ejecútalo. Si **sigue pasando**, ese test no prueba lo que dice. Después, busca los dos defectos de `fase1-aserciones`: escribe tests nuevos del carrito con casos que elijas tú (otro producto, otra cantidad, un cupón porcentual) y **calcula a mano el valor esperado antes de mirar la pantalla**. Acuérdate de que un test que pasa en `baseline` y en el escenario con defectos aún no mira donde está el defecto.
+
+Criterios de autocomprobación:
+
+- Probaste el «romper a propósito» en cada test de tu suite y anotaste cuáles seguían pasando.
+- Corregiste al menos un test que pasaba sin probar nada, o justificaste por escrito por qué el que sigue pasando es solo una verificación de que la página carga.
+- Ninguno de tus tests usa `expect(true)`, `toBeDefined()` sobre un localizador, ni una aserción dentro de un `if`.
+- Todas las aserciones de datos que salen de la página son web-first (`await expect(localizador)...`).
+- Tienes al menos un test nuevo del carrito que pasa en `baseline` y **falla** en `fase1-aserciones`, con un valor esperado que calculaste tú, no que copiaste de la pantalla.
+- Anotaste, para cada fallo, qué esperabas, qué recibiste y por qué lo consideras un defecto de la tienda y no un error de tu test.
+- Al terminar volviste a `baseline`.
+
+Si cumples todos los puntos, tus tests ya pueden decir la verdad sobre la aplicación.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+La IA escribe aserciones muy rápido. El problema es que a veces escribe las que **parecen** correctas y no prueban nada.
+
+**Qué pedirle:**
+
+- «Dado este fragmento de HTML y este requisito, sugiere qué aserciones web-first tendrían sentido».
+- «Explícame este mensaje de error de `expect`: ¿cuál es el valor esperado y cuál el recibido?»
+- «Revisa mi test y dime qué defectos NO detectaría».
+
+**Qué revisar:**
+
+- Que cada `expect` sobre la página tenga `await` y use un localizador (web-first).
+- Que los valores esperados salgan de los **requisitos o de la tienda correcta**, no de lo que la aplicación mostró. Si copias el valor de una aplicación con defectos, tu test dará por bueno el defecto.
+- Que el test pase en `baseline` y **falle** al romperlo a propósito.
+
+**Qué rechazar:**
+
+- `expect(true).toBe(true)`, `toBeDefined()` sobre un localizador, y aserciones dentro de un `if`.
+- `waitForTimeout(...)` para esperar un cambio: usa una aserción que reintente.
+- Esperas fijas o comprobaciones de «el elemento existe» cuando lo importante es su contenido.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Olvidar el await en una aserción">
+  `expect(page.getByTestId("cart-discount")).toHaveText("-$99.99")` sin `await` no detiene el test.
+  En Playwright 1.64 el fallo llega tarde, cuando el test ya siguió con otros pasos o terminó: el
+  registro dice «Test ended» y la página puede ser ya otra. Escribe siempre `await expect(...)`.
+</ErrorComun>
+
+<ErrorComun titulo="Leer el texto antes de que la página cambie">
+  `expect(await locator.textContent()).toBe("-$7.63")` lee una sola vez. Justo tras aplicar el cupón
+  el texto era `-$0.00`, así que el test falla incluso en la tienda correcta. Usa `await
+  expect(locator).toHaveText("-$7.63")`, que reintenta.
+</ErrorComun>
+
+<ErrorComun titulo="Afirmar una ausencia antes de que cargue la página">
+  `toHaveCount(0)` se cumple mientras no haya nada dibujado, aunque el elemento vaya a aparecer un
+  instante después. Espera primero algo que demuestre que la página cargó.
+</ErrorComun>
+
+<ErrorComun titulo="Poner la aserción dentro de un if">
+  `if (await x.isVisible()) { expect(...) }` solo comprueba si el elemento ya se ve en ese
+  instante. Si no se ve, se salta la aserción y el test pasa. Quita el `if` y deja que la
+  aserción espere.
+</ErrorComun>
+
+<ErrorComun titulo="Comprobar demasiado poco">
+  `toContain("$")` o `toBeVisible()` sobre la tabla del carrito pasan con cualquier importe. Compara
+  el valor exacto que esperas según el requisito.
+</ErrorComun>
+
+<ErrorComun titulo="Dejar la Arena en el escenario con defectos">
+  Si terminas con `fase1-aserciones` activo, tus otros tests fallarán sin que hayas cambiado nada.
+  Vuelve a `baseline` con `curl -X PUT ... -d '{"id":"baseline"}'`.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Una aserción (`expect`) compara lo que pasó con lo que debía pasar; sin ella no hay prueba.
+- Las aserciones sobre un localizador (`toHaveText`, `toBeVisible`, `toHaveCount`...) son web-first: reintentan hasta cumplirse o agotar el plazo, sin esperas fijas.
+- Las aserciones sobre un valor normal (`toBe`, `toEqual`) comparan una sola vez; úsalas con datos que ya no van a cambiar.
+- Verifica lo que importa al negocio (importes, estados, contadores, mensajes) y haz un test por idea.
+- `toHaveCount(0)` y `not.toBeVisible()` pueden cumplirse demasiado pronto: espera antes algo que muestre que la página cargó.
+- `expect.soft` muestra todos los fallos de un resumen juntos; los mensajes propios dicen cuál falló.
+- Un test debe pasar en `baseline` y fallar cuando rompes a propósito lo que verifica. Si sigue pasando, no prueba nada.
+- Con la IA, rechaza las aserciones vacías y revisa de dónde salen los valores esperados.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

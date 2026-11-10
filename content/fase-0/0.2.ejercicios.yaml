@@ -1,0 +1,33 @@
+ejercicios:
+  - slug: ej-0-2-primer-commit
+    tipo: guiado
+    titulo: "Crea un repositorio y haz tu primer commit"
+    pistas:
+      - "Un repositorio nuevo se crea con un comando de Git con nombre de inicio: `git ...`. Hazlo en una carpeta vacía."
+      - "Crea un archivo, mira qué opina `git status`, prepáralo con `git add` y confírmalo con `git commit -m`."
+      - "Con `git init -b main` empiezas en la rama `main`. Termina con `git log --oneline` para ver tu commit."
+    solucion: '`mkdir mi-repo-qa && cd mi-repo-qa`, `git init -b main`, crea `plan.md`, `git status` (aparece sin seguimiento), `git add plan.md`, `git commit -m "docs: add test plan"` y `git log --oneline` muestra una línea con tu commit.'
+  - slug: ej-0-2-gitignore
+    tipo: guiado
+    titulo: "Ignora un archivo secreto con .gitignore"
+    pistas:
+      - "Crea primero un archivo `.env` con cualquier valor falso y mira `git status`."
+      - "Crea un archivo llamado `.gitignore` y escribe dentro, una por línea, las rutas que Git debe ignorar."
+      - "Escribe `.env` y `node_modules/` en `.gitignore`. Vuelve a ejecutar `git status`: `.env` ya no debe aparecer, pero `.gitignore` sí (se versiona)."
+    solucion: "`echo SECRET=1 > .env`, `printf '.env\\nnode_modules/\\n' > .gitignore`, `git status --short` muestra solo `?? .gitignore`; haz `git add .gitignore` y `git commit -m \"chore: add gitignore\"`."
+  - slug: ej-0-2-rama-y-merge
+    tipo: guiado
+    titulo: "Trabaja en una rama y únela a main"
+    pistas:
+      - "Crea una rama y cámbiate a ella en un solo paso con `git switch -c`."
+      - "Haz un commit en la rama, vuelve a `main` con `git switch main` y une la rama con `git merge`."
+      - '`git switch -c feature/checkout`, edita y `git commit -am "..."`, `git switch main`, `git merge feature/checkout`; comprueba con `git log --oneline --graph`.'
+    solucion: '`git switch -c feature/checkout`, añade una línea a `plan.md`, `git commit -am "docs: add checkout cases"`, `git switch main`, `git merge feature/checkout` (sale `Fast-forward`) y `git branch -d feature/checkout`. El `main` ahora contiene el commit de la rama.'
+  - slug: ej-0-2-resolver-conflicto
+    tipo: guiado
+    titulo: "Provoca y resuelve un conflicto de merge"
+    pistas:
+      - "Para provocarlo, cambia la misma línea de un archivo de dos maneras distintas: una en `main` y otra en una rama."
+      - "Al ejecutar `git merge` aparecerá `CONFLICT`. Abre el archivo: verás las marcas `<<<<<<<`, `=======` y `>>>>>>>`."
+      - "Edita el archivo dejando el texto final y borrando las tres marcas; luego `git add archivo` y `git commit`."
+    solucion: 'Con `plan.md` con la línea `- login`: en `rama-a` cámbiala a `- login con correo` y haz commit; en `main` cámbiala a `- login con teléfono` y haz commit; `git merge rama-a` da conflicto. Deja `- login con correo o teléfono`, borra las marcas, `git add plan.md` y `git commit -m "docs: combine login cases"`.'

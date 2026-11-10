@@ -1,0 +1,89 @@
+preguntas:
+  - id: depuracion-metodo
+    enunciado: "Un test falla. ¿Cuál es el mejor primer paso?"
+    opciones:
+      [
+        "Subir el timeout a 60 segundos",
+        "Reproducirlo aislado (por ejemplo con `-g`) y leer el error completo",
+        "Borrar la aserción que falla",
+        "Añadir `retries: 3`",
+      ]
+    correcta: 1
+    explicacion: "Antes de cambiar nada hay que saber si el fallo se repite y qué dice el error. Las otras opciones esconden el problema sin entenderlo."
+  - id: depuracion-strict-mode
+    enunciado: "Un clic falla con `strict mode violation ... resolved to 2 elements`. ¿Qué significa?"
+    opciones:
+      [
+        "El navegador está en modo estricto y bloquea el clic",
+        "El localizador encontró más de un elemento y Playwright no adivina cuál usar",
+        "La aplicación tiene dos defectos",
+        "El elemento está desactivado",
+      ]
+    correcta: 1
+    explicacion: "Es un error del localizador, no de la aplicación. Se arregla con un localizador más específico, por ejemplo uno con el `data-testid` de la línea."
+  - id: depuracion-trace-viewer
+    enunciado: "¿Qué ves en el Trace Viewer que no ves en el mensaje de error?"
+    opciones:
+      [
+        "Solo el código del test",
+        "La página antes y después de cada acción, las peticiones de red y la consola",
+        "El código fuente de la aplicación",
+        "La base de datos",
+      ]
+    correcta: 1
+    explicacion: "La traza graba cada acción con una foto de la página, la red (estados `200`, `422`, `503`...) y la consola. Con ella ves lo que el test veía."
+  - id: depuracion-flaky
+    enunciado: "Un test de pago falla 1 de cada 10 veces. ¿Cuál es la mejor forma de investigar?"
+    opciones:
+      [
+        "Ponerle `retries: 2` para que el informe salga verde",
+        "Ejecutarlo muchas veces (`--repeat-each=10`), mirar la traza del fallo y ver qué respondió el servidor",
+        "Ignorarlo porque falla poco",
+        "Subir el timeout",
+      ]
+    correcta: 1
+    explicacion: "Repetir el test permite saber cuándo falla y capturar su traza. Si siempre falla por el mismo motivo (por ejemplo `503` del servidor), es un defecto de la aplicación. Los `retries` solo lo esconderían."
+  - id: depuracion-regresion
+    enunciado: "Un test pasa en la versión v1.4.0 y falla en v1.5.0. ¿Qué dato aporta eso al reporte?"
+    opciones:
+      [
+        "Nada, el reporte es el mismo",
+        "Que el defecto entró con v1.5.0, lo que acota dónde buscar",
+        "Que el test está mal escrito",
+        "Que hay que reiniciar Docker",
+      ]
+    correcta: 1
+    explicacion: "Una regresión se ubica comparando versiones. Saber desde cuál falla ahorra tiempo al equipo de desarrollo, que solo revisa lo que cambió en ese deploy."
+  - id: depuracion-sin-await
+    enunciado: "El mensaje de un test incluye `locator.click: Test ended`. ¿Qué causa sospechas primero?"
+    opciones:
+      [
+        "Una acción sin `await` que seguía en marcha cuando el test terminó",
+        "Que el navegador no está instalado",
+        "Un error de red del servidor",
+        "Que el producto no tiene stock",
+      ]
+    correcta: 0
+    explicacion: "`Test ended` indica que algo seguía pendiente cuando el test terminó. El culpable típico es una promesa sin `await`, como un `click()` sin esperar."
+  - id: depuracion-cantidad-pedidos
+    enunciado: "El test «mis pedidos muestra los 2 de siempre» pasa solo y falla dentro de la suite con `Received: 5`. ¿Por qué?"
+    opciones:
+      [
+        "Playwright cuenta mal los elementos",
+        "Otros tests de la suite crearon pedidos, y el test depende de un total que cambia",
+        "La aplicación duplica pedidos",
+        "El navegador guardó pedidos antiguos",
+      ]
+    correcta: 1
+    explicacion: "Es un test que depende de datos compartidos. Los pagos de otros tests agregaron pedidos. Se arregla comprobando los pedidos que importan, no el total."
+  - id: depuracion-reporte
+    enunciado: "¿Cuál de estas frases es un hecho que va en el reporte de defecto, y no una suposición?"
+    opciones:
+      [
+        "El servidor se cae por falta de memoria",
+        "`POST /api/checkout` respondió 503 en 1 de 10 ejecuciones",
+        "Seguro es un problema de la base de datos",
+        "Es un defecto de infraestructura",
+      ]
+    correcta: 1
+    explicacion: "Un hecho es lo que observaste y puedes demostrar con evidencia (la traza muestra el estado `503` y la frecuencia). Las otras opciones son hipótesis sobre la causa interna."

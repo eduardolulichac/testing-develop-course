@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "arena": {
+    "escenario": "fase2-api",
+    "release": null,
+    "semilla": 2301
+  },
+  "umbral": 70,
+  "obligatorios": [
+    "suite-verde-baseline",
+    "detecta-fase2-api",
+    "sin-arena-interna"
+  ],
+  "criterios": [
+    {
+      "id": "suite-ejecuta",
+      "titulo": "La suite tiene al menos 20 pruebas de API",
+      "peso": 5,
+      "competencia": "tecnica",
+      "feedback_fallo": "Escribe al menos 20 pruebas de API.",
+      "tipo": "suite_ejecuta",
+      "min": 20
+    },
+    {
+      "id": "suite-verde-baseline",
+      "titulo": "Todas las pruebas pasan contra la API correcta",
+      "peso": 15,
+      "competencia": "tecnica",
+      "feedback_fallo": "Alguna prueba falla contra la API correcta; revisa los datos que comparten tus pruebas (se acumulan).",
+      "tipo": "suite_pasa",
+      "escenario": "baseline"
+    },
+    {
+      "id": "detecta-fase2-api",
+      "titulo": "Tus pruebas detectan los defectos de la lección",
+      "peso": 10,
+      "competencia": "analisis",
+      "feedback_fallo": "Con los defectos de la lección activos, todas tus pruebas pasan.",
+      "tipo": "suite_detecta",
+      "escenario": "fase2-api",
+      "release": null
+    },
+    {
+      "id": "detecta-esquema",
+      "titulo": "Tus pruebas detectan un campo con el tipo equivocado",
+      "peso": 12,
+      "competencia": "analisis",
+      "feedback_fallo": "Tus pruebas no validan el tipo de los campos: usa un esquema para cada respuesta.",
+      "tipo": "suite_detecta",
+      "escenario": "eval-2-3-esquema",
+      "release": null
+    },
+    {
+      "id": "detecta-estado",
+      "titulo": "Tus pruebas detectan un código de estado incorrecto",
+      "peso": 10,
+      "competencia": "analisis",
+      "feedback_fallo": "Prueba los casos de error y su código exacto, no solo los caminos felices.",
+      "tipo": "suite_detecta",
+      "escenario": "eval-2-3-estado",
+      "release": null
+    },
+    {
+      "id": "detecta-sesion",
+      "titulo": "Tus pruebas detectan un fallo en el ciclo de la sesión",
+      "peso": 10,
+      "competencia": "analisis",
+      "feedback_fallo": "Prueba el ciclo completo del token: qué pasa después de cerrar sesión.",
+      "tipo": "suite_detecta",
+      "escenario": "eval-2-3-sesion",
+      "release": null
+    },
+    {
+      "id": "detecta-paginacion",
+      "titulo": "Tus pruebas detectan un fallo en la paginación",
+      "peso": 8,
+      "competencia": "analisis",
+      "feedback_fallo": "Recorre varias páginas y compara: ¿hay repetidos o faltantes?",
+      "tipo": "suite_detecta",
+      "escenario": "eval-2-3-paginacion",
+      "release": null
+    },
+    {
+      "id": "detecta-no-guiado",
+      "titulo": "Tus pruebas detectan un defecto que la lección no menciona",
+      "peso": 15,
+      "competencia": "autonomia",
+      "feedback_fallo": "Hay un defecto que la lección no menciona. Relee el contrato completo y cuestiona cada regla que describe: ¿tus pruebas la ejercitan?",
+      "tipo": "suite_detecta",
+      "escenario": "eval-2-3-limite",
+      "release": null
+    },
+    {
+      "id": "informe-defectos",
+      "titulo": "Documentas al menos dos defectos demostrados por un test",
+      "peso": 10,
+      "competencia": "comunicacion",
+      "feedback_fallo": "Documenta en `defectos.yaml` al menos dos defectos, cada uno ligado a un test que los demuestre.",
+      "tipo": "informe",
+      "formato": "defectos-v1",
+      "archivo": "defectos.yaml",
+      "min": 2
+    },
+    {
+      "id": "sin-credenciales-en-codigo",
+      "titulo": "Sin contraseñas escritas en el código",
+      "peso": 5,
+      "competencia": "tecnica",
+      "feedback_fallo": "No escribas contraseñas en el código: léelas de `USUARIO_CLAVE` (en CI las pone el evaluador).",
+      "tipo": "estatico",
+      "regla": "sin-credenciales-en-codigo"
+    },
+    {
+      "id": "sin-arena-interna",
+      "titulo": "La suite no usa los endpoints internos de la Arena",
+      "peso": 0,
+      "competencia": "autonomia",
+      "feedback_fallo": "Los tests no deben llamar a /__arena ni leer variables ARENA_*: prueba la API como lo haría un cliente.",
+      "tipo": "estatico",
+      "regla": "sin-arena-interna"
+    }
+  ]
+}

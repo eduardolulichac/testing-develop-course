@@ -1,0 +1,50 @@
+ejercicios:
+  - slug: ej-1-8-escanear-con-grep
+    tipo: guiado
+    titulo: "Revisa un test de IA con una búsqueda rápida"
+    pistas:
+      - "Guarda el test de la sección 3 en tests/cupon-ia.spec.ts, deja la Arena en baseline y ejecútalo con npx playwright test para ver que pasa."
+      - "Ejecuta el grep de la sección 3. Cada línea que devuelve es un sospechoso. Mira cuántas son y agrúpalas: direcciones, esperas, posiciones y aserciones."
+      - "Compara cada grupo con la lista de diez preguntas: las direcciones son la pregunta 5, las esperas la 4, las posiciones la 3 y la aserción que no puede fallar la 1."
+    solucion: "El grep devuelve 10 líneas. Líneas 4, 10 y 15 (http://localhost:18080 escrito a mano): pregunta 5. Líneas 8, 13 y 18 (waitForTimeout): pregunta 4. Líneas 11, 17 y 20 (nth-child y nth): pregunta 3. Línea 22 (toBeDefined sobre un locator): pregunta 1. El test pasa y tarda unos 7 segundos, y aun así incumple al menos las preguntas 1, 3, 4, 5 y 7."
+  - slug: ej-1-8-prueba-de-ruptura
+    tipo: guiado
+    titulo: "Rompe la aserción para ver si el test lo nota"
+    pistas:
+      - "Haz una copia del archivo antes de tocarlo. Después borra (o comenta) la línea que compara con $13.91."
+      - "En la última aserción cambia el data-testid cart-total por no-existe y ejecuta el test de nuevo."
+      - "Piensa en qué devuelve page.locator(...): un objeto que describe cómo buscar, no el elemento. Una aserción real lleva await y un matcher que consulta la página, como toBeVisible o toHaveText."
+    solucion: 'El test sigue en verde porque expect(page.locator("[data-testid=''no-existe'']")).toBeDefined() solo comprueba que existe el objeto Locator, que siempre existe, y nunca consulta la página. El cambio mínimo es await expect(page.getByTestId("cart-total")).toBeVisible(), y mejor aún await expect(page.getByTestId("cart-total")).toHaveText("$13.91"). Con no-existe esa aserción ya falla tras el tiempo de espera.'
+  - slug: ej-1-8-repetir-y-descubrir
+    tipo: guiado
+    titulo: "Descubre que el test no es repetible"
+    pistas:
+      - "Reinicia la Arena con curl -X POST http://localhost:18080/__arena/reset para partir de un carrito vacío."
+      - "Ejecuta npx playwright test --repeat-each=2. Playwright corre el mismo test dos veces seguidas."
+      - "Mira el valor recibido en la segunda ejecución y piensa dónde vive el carrito: en tu navegador o en el servidor."
+    solucion: 'La primera ejecución pasa y la segunda falla con Expected "$13.91" y Received "$22.82". El carrito de Ana vive en el servidor, así que en la segunda ejecución ya había una unidad (queda en 2 con el cupón aplicado). La corrección es partir de un estado conocido antes de cada test (iniciarSesion y vaciarCarrito de tests/support/tienda en un beforeEach) y no depender de lo que dejó otro test. El reinicio de la Arena con curl se hace en la terminal, no en el código.'
+  - slug: ej-1-8-escribir-el-prompt
+    tipo: guiado
+    titulo: "Escribe un prompt de cuatro partes"
+    pistas:
+      - "Empieza por el contexto: qué herramienta y versión usas, qué aplicación es y qué data-testid existen (cart-discount, cart-total, coupon-input)."
+      - "La tarea debe ser un solo comportamiento: aplicar WELCOME10 y comprobar el descuento y el total de un producto de $9.90."
+      - "En el formato impón tus reglas (sin esperas fijas, sin selectores CSS, datos como constantes) y en la verificación pide la lista de suposiciones."
+    solucion: "Un ejemplo: «Contexto: uso Playwright 1.64 con TypeScript y QA Arena, una tienda en línea. La dirección base está en playwright.config.ts, así que usa rutas relativas. Hay data-testid: coupon-input, cart-discount y cart-total. Tarea: escribe un test para este caso: con un solo producto de $9.90 en el carrito, aplicar el cupón WELCOME10 descuenta $0.99 y el total queda en $13.91 (el envío es de $5.00). El usuario es ana@arena.test. Formato: un solo archivo, localizadores por rol, etiqueta o data-testid, sin waitForTimeout ni selectores CSS, datos como constantes arriba y un test por comportamiento. Verificar: al final lista todas las suposiciones sobre la aplicación para que yo las compruebe.» No incluye ninguna clave real."
+  - slug: ej-1-8-detectar-el-defecto
+    tipo: guiado
+    titulo: "Haz que tu test descubra el cupón vencido"
+    escenario: fase1-ia-copiloto
+    pistas:
+      - 'Activa el escenario con curl -X PUT http://localhost:18080/__arena/scenario -H ''content-type: application/json'' -d ''{"id":"fase1-ia-copiloto"}'' y reinicia con curl -X POST http://localhost:18080/__arena/reset.'
+      - "Ejecuta la versión revisada del test (dos casos) con npx playwright test. Uno pasa y el otro falla; mira cuál y en qué línea."
+      - "Lee el mensaje: se esperaba ver un error visible en el carrito. Pregúntate qué hizo la Arena con el cupón EXPIRED20 en lugar de rechazarlo. Para terminar, activa baseline otra vez."
+    solucion: 'Pasa el test de WELCOME10 y falla el de EXPIRED20, en la aserción await expect(page.getByTestId("cart-error")).toBeVisible(): no aparece ningún error en 5 segundos. El defecto es coupon.expired_accepted: la Arena acepta el cupón vencido y aplica el descuento en lugar de responder 422 «Coupon has expired». Para restaurar: curl -X PUT http://localhost:18080/__arena/scenario -H ''content-type: application/json'' -d ''{"id":"baseline"}''.'
+  - slug: ej-1-8-aceptar-corregir-rechazar
+    tipo: guiado
+    titulo: "Decide: aceptar, corregir o rechazar"
+    pistas:
+      - "Para cada fragmento aplica las diez preguntas. Pregúntate si la aserción puede fallar, si la espera es fija y si lo que usa existe en la Arena."
+      - "El fragmento B compara un conteo con cero: ¿puede un conteo ser menor que cero? Y el C menciona una función que tienes que buscar en la Arena."
+      - "El fragmento D usa un testid real y un valor que puedes calcular: 990 menos 99 más 500 son 1391 centavos. Compruébalo ejecutando."
+    solucion: "A: corregir, porque una espera de 500 ms es fija; se sustituye por una aserción web-first que espera hasta que el total aparezca. B: corregir (o rechazar), porque un conteo nunca es menor que cero y la aserción nunca falla; se cambia por un conteo exacto con toHaveCount. C: rechazar, porque la Arena no tiene recuperación de contraseña (la pantalla de acceso solo ofrece entrar o crear cuenta); la IA inventó una función. D: aceptar tras ejecutarlo y hacer la prueba de ruptura: usa data-testid, el valor sale del cálculo 990 - 99 + 500 = 1391 centavos ($13.91) y parte de un estado reiniciado."

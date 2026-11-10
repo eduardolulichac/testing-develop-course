@@ -1,0 +1,16 @@
+name: reto-docker
+
+include:
+  - arena/compose.yml
+
+services:
+  tests:
+    # A1: no construye ni ejecuta Playwright; solo copia un informe real generado en local.
+    image: postgres:17-alpine
+    depends_on:
+      web:
+        condition: service_healthy
+    entrypoint:
+      ["sh", "-c", "mkdir -p /w/resultados && cp /w/.cache-informe.json /w/resultados/informe.json"]
+    volumes:
+      - .:/w

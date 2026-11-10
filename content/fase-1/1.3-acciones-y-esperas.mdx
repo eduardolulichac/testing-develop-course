@@ -1,0 +1,472 @@
+---
+modulo: "1.3"
+titulo: "Acciones y esperas"
+fase: 1
+nivel: "Junior"
+duracion_min: 120
+prerequisitos: ["1.2"]
+escenario: "fase1-compra"
+version: "2026-11"
+herramientas: ["Playwright 1.64.1", "Node 24 (verificado 24.14)", "QA Arena (local)"]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Al terminar sabrás automatizar un flujo completo (iniciar sesión, elegir un producto, usar un
+  cupón, pagar), usar las acciones de formularios, entender cómo esperan solas las acciones y las
+  aserciones de Playwright, escribir esperas explícitas cuando hacen falta y evitar las esperas
+  fijas, que son la causa más común de tests inestables.
+</Objetivo>
+
+Una persona sabe esperar: si la página tarda en cargar, mira la pantalla y espera a que aparezca el botón. Un script ingenuo no: hace clic antes de que el botón exista y falla. Y si le pones una pausa fija («espera 3 segundos»), a veces sobra y a veces falta.
+
+Un test que falla unas veces sí y otras no, sin que cambie nada, es un test **inestable** (en inglés, _flaky_). Es peor que un test que falla siempre: nadie sabe si el fallo es real, la gente aprende a ignorarlo y los defectos reales pasan. La mayoría de los tests inestables vienen de las esperas.
+
+En este módulo automatizas el flujo de compra de QA Arena y trabajas con un escenario, `fase1-compra`, en el que la tienda tarda en mostrar el contenido y hay una trampa en los cupones.
+
+Lo que necesitas antes de empezar:
+
+- El proyecto `practica-playwright` de los módulos anteriores.
+- QA Arena levantada en `http://localhost:18080`.
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Preparar el proyecto: una sola tarea, tienda limpia y ayudas">
+Un flujo de compra **cambia datos**: el carrito guarda productos, el pago crea un pedido. En tu Arena local todos los tests comparten los mismos datos, así que dos tests corriendo a la vez se estorban. Dos ajustes lo evitan, y un tercer paso te ahorra repetir código.
+
+Primero, en `playwright.config.ts` pide que los tests se ejecuten de uno en uno y sube un poco el tiempo de espera de las aserciones (en el escenario de este módulo la tienda tarda varios segundos en mostrar datos):
+
+```ts
+import { defineConfig } from "@playwright/test";
+
+export default defineConfig({
+  testDir: "./tests",
+  workers: 1,
+  expect: { timeout: 10_000 },
+  use: {
+    baseURL: process.env.ARENA_URL ?? "http://localhost:18080",
+    trace: "retain-on-failure",
+  },
+});
+```
+
+`workers: 1` ejecuta un test a la vez y `expect: { timeout: 10_000 }` permite 10 segundos a cada aserción (el `_` en `10_000` es solo un separador para leer mejor).
+
+Segundo, **cada test debe empezar con la tienda limpia**, para que no dependa de lo que hizo el anterior. La Arena ofrece un reinicio de tu sesión. Desde tu terminal lo haces así:
+
+```bash
+curl -X POST http://localhost:18080/__arena/reset
+```
+
+y desde el propio test, antes de cada uno, así:
+
+```ts
+test.beforeEach(async ({ request }) => {
+  const respuesta = await request.post("/__arena/reset");
+  expect(respuesta.ok()).toBe(true);
+});
+```
+
+`beforeEach` ejecuta ese bloque antes de cada test, y `request` es una herramienta de Playwright para enviar peticiones HTTP sin abrir la página. Este truco es **solo para tus prácticas locales**: el reinicio conserva el escenario activo, y los retos con evaluador (como el 1.1) rechazan los tests que llaman a `/__arena`. En el módulo 1.5 verás cómo preparar datos de forma más limpia.
+
+Tercero, **las ayudas de la tienda**. Casi todos los tests de este módulo y de los siguientes empiezan igual: iniciar sesión y agregar un producto. En vez de copiar esos pasos en cada archivo, créalos una sola vez en `tests/support/tienda.ts` (crea también la carpeta `support` dentro de `tests`):
+
+```ts
+import { expect, type Page } from "@playwright/test";
+
+/**
+ * Abre una ruta y espera a que la barra de escenario de la Arena esté lista.
+ * Así, con un escenario activo, los elementos ya tienen su forma final (módulo 1.2, paso 9).
+ */
+export async function abrir(page: Page, ruta: string) {
+  await page.goto(ruta);
+  await expect(page.getByTestId("arena-ready")).toBeAttached();
+}
+
+/** Entra con una cuenta de práctica. Por defecto: Ana. */
+export async function iniciarSesion(page: Page, correo = "ana@arena.test", clave = "Cliente123!") {
+  await abrir(page, "/login");
+  await page.getByLabel("Correo").fill(correo);
+  await page.getByLabel("Contrasena").fill(clave);
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.getByTestId("user-name")).toBeVisible();
+}
+
+/** Agrega un producto al carrito desde su ficha. Por defecto: 1 unidad de Auriculares BT (id 1). */
+export async function agregarProducto(page: Page, cantidad = 1, productoId = 1) {
+  await abrir(page, `/products/${productoId}`);
+  await page.getByLabel("Cantidad").fill(String(cantidad));
+  await page.getByRole("button", { name: "Agregar al carrito" }).click();
+  await expect(page.getByRole("status")).toHaveText("Agregado al carrito");
+}
+
+/**
+ * Paga desde /checkout con la tarjeta precargada (aprobada).
+ * Pasa `tarjeta` para usar otra, por ejemplo la rechazada "4000 0000 0000 0002".
+ */
+export async function pagar(page: Page, direccion = "Calle Falsa 123", tarjeta?: string) {
+  await abrir(page, "/checkout");
+  await page.getByLabel("Direccion de envio").fill(direccion);
+  if (tarjeta) await page.getByLabel("Numero de tarjeta").fill(tarjeta);
+  await page.getByRole("button", { name: "Pagar ahora" }).click();
+}
+```
+
+Fíjate en que solo usa localizadores por rol y etiqueta, los que aprendiste en el módulo 1.2: no cambian con los escenarios. Las firmas, para que las recuerdes:
+
+```text
+abrir(page, ruta)
+iniciarSesion(page, correo = "ana@arena.test", clave = "Cliente123!")
+agregarProducto(page, cantidad = 1, productoId = 1)
+pagar(page, direccion = "Calle Falsa 123", tarjeta?)
+```
+
+Cada test importa lo que necesita con `import { iniciarSesion, agregarProducto } from "./support/tienda";`. Este es **el único archivo de ayudas del curso**: los módulos 1.4 a 1.8 lo importan y lo amplían, sin escribir otra versión.
+
+</Paso>
+
+<Paso numero={2} titulo="Las acciones que más usarás">
+Estas acciones cubren casi todo lo que hace una persona en la tienda:
+
+```ts
+await page.getByLabel("Direccion de envio").fill("Calle Falsa 123"); // escribe (reemplaza el contenido)
+await page.getByLabel("Direccion de envio").clear(); // borra el contenido
+await page.getByRole("button", { name: "Pagar ahora" }).click(); // clic
+await page.getByRole("button", { name: "Aplicar" }).dblclick(); // doble clic
+await page.getByLabel("Orden").selectOption({ label: "Precio: menor a mayor" }); // lista desplegable
+await page.getByRole("link", { name: "Atlas mundial" }).hover(); // pasar el cursor
+await page.getByRole("searchbox", { name: "Buscar productos" }).press("Enter"); // una tecla
+await page.getByRole("searchbox", { name: "Buscar productos" }).pressSequentially("Atl"); // tecla a tecla
+```
+
+- `fill` es lo habitual para escribir: pone el texto de una vez. Si el campo ya tenía algo (en el pago, el número de tarjeta viene precargado), lo reemplaza.
+- `pressSequentially` escribe letra a letra y se usa solo si la página reacciona a cada tecla.
+- `selectOption` elige una opción de una lista, por su valor o por su texto visible (`{ label: "..." }`).
+- `press("Enter")` envía una tecla; `keyboard.press` lo hace a nivel de página.
+- Para casillas de verificación existen `check()` y `uncheck()`, que además comprueban que quedó marcada o desmarcada.
+
+</Paso>
+
+<Paso numero={3} titulo="Subir un archivo">
+Para subir un archivo Playwright no abre el diálogo del sistema: le entregas la ruta directamente al campo con `setInputFiles`. QA Arena no tiene un campo de archivo, así que aquí practicamos con una página pequeña que creamos dentro del propio test con `page.setContent`:
+
+```ts
+import { writeFileSync } from "node:fs";
+
+test("adjuntar un archivo", async ({ page }, testInfo) => {
+  await page.setContent(`<label>Adjunto <input type="file"></label>
+    <p role="status"></p>
+    <script>
+      document.querySelector("input").addEventListener("change", (e) => {
+        document.querySelector("p").textContent = e.target.files[0].name;
+      });
+    </script>`);
+
+  // Un archivo de prueba, creado en la carpeta temporal del propio test.
+  const ruta = testInfo.outputPath("evidencia.txt");
+  writeFileSync(ruta, "captura de prueba");
+
+  await page.getByLabel("Adjunto").setInputFiles(ruta);
+  await expect(page.getByRole("status")).toHaveText("evidencia.txt");
+});
+```
+
+- `setContent` carga el HTML que le des, útil para practicar sin depender de la Arena.
+- `testInfo.outputPath("nombre")` devuelve una ruta dentro de la carpeta de resultados de ese test, para no ensuciar tu proyecto.
+- `setInputFiles(ruta)` simula la selección del archivo. Con una lista de rutas, sube varios; con una lista vacía, quita el archivo.
+
+</Paso>
+
+<Paso numero={4} titulo="Las esperas automáticas">
+En el módulo 1.1 viste que Playwright «espera solo». Ahora sabes cómo. Antes de actuar sobre un elemento, comprueba que cumple todo esto:
+
+- está **en la página** (el localizador lo encuentra y es único),
+- es **visible**,
+- está **estable** (no se está moviendo por una animación),
+- está **habilitado** (no es un botón desactivado),
+- **recibe los clics** (no lo tapa otro elemento).
+
+Si no lo cumple, reintenta durante unos segundos. Si pasa el tiempo, falla con un mensaje que dice qué no se cumplió. Gracias a esto, `await page.getByRole("button", { name: "Pagar ahora" }).click()` funciona aunque el botón tarde en aparecer, sin que escribas ninguna espera.
+
+Las aserciones `await expect(...)` hacen lo mismo: **reintentan** hasta que se cumplen o se agota su tiempo. Los plazos por defecto son:
+
+- cada aserción: 5 segundos (en nuestra configuración, 10),
+- cada test completo: 30 segundos.
+
+Si una espera concreta necesita más, se lo dices a esa línea: `await expect(localizador).toBeVisible({ timeout: 15_000 })`.
+
+</Paso>
+
+<Paso numero={5} titulo="Lo que NO espera">
+Algunas funciones devuelven lo que hay **en ese instante** y no esperan:
+
+```ts
+const visible = await page.getByTestId("cart-subtotal").isVisible(); // sin esperar
+const cuantos = await page.getByRole("listitem").count(); // sin esperar
+```
+
+Si llamas a `isVisible()` justo después de cargar una página, el resultado puede ser `false` aunque el elemento aparezca un instante después. Un test que hace `expect(visible).toBe(true)` falla, y falla de forma intermitente según la velocidad de la máquina. La solución casi siempre es una aserción de Playwright, que sí espera:
+
+```ts
+// MAL: toma una foto del momento y compara
+expect(await page.getByTestId("cart-subtotal").isVisible()).toBe(true);
+
+// BIEN: espera hasta que se cumpla
+await expect(page.getByTestId("cart-subtotal")).toBeVisible();
+```
+
+Regla práctica: compara con `await expect(localizador).toHaveText(...)`, `toBeVisible()`, `toHaveCount(...)`, etc. y no con valores sueltos leídos antes.
+
+</Paso>
+
+<Paso numero={6} titulo="Esperas explícitas: cuando de verdad hacen falta">
+A veces quieres esperar algo que no es un elemento de la pantalla. Estas son las esperas **explícitas** más útiles:
+
+```ts
+await page.getByText("Cargando...").waitFor({ state: "hidden" }); // un elemento desaparece
+await expect(page.getByText("Cargando...")).toBeHidden(); // lo mismo, como aserción
+await page.waitForURL("/cart"); // la dirección cambia
+const respuesta = page.waitForResponse(
+  (r) => r.url().endsWith("/api/cart/coupon") && r.request().method() === "POST",
+);
+await page.getByRole("button", { name: "Aplicar" }).click();
+expect((await respuesta).status()).toBe(200); // la API respondió 200
+```
+
+La espera de respuesta tiene un orden importante: primero **empiezas a escuchar** (`waitForResponse` sin `await`), luego haces la acción que dispara la petición y por último esperas el resultado. Si escuchas después del clic, la respuesta puede haber llegado ya y la espera nunca termina.
+
+Elige siempre la espera que corresponde a la **condición real** («el esqueleto desapareció», «la API respondió») y no a un tiempo.
+
+</Paso>
+
+<Paso numero={7} titulo="Lo que nunca debes usar: waitForTimeout">
+`await page.waitForTimeout(3000)` detiene el test 3 segundos, pase lo que pase. Es la espera fija. Tiene dos problemas:
+
+- Si la página tarda 3,5 segundos, el test falla de todos modos.
+- Si la página tarda 200 ms, pierdes casi 3 segundos. Con cien tests, la suite se vuelve lenta.
+
+La documentación de Playwright desaconseja esta espera, y el evaluador del curso la penaliza. Si estás tentado de usarla, pregúntate qué estás esperando de verdad y busca una condición: un elemento, un texto, una respuesta de red.
+
+</Paso>
+
+<Paso numero={8} titulo="El escenario fase1-compra">
+Este escenario modela una tienda lenta y con descuentos poco fiables. Actívalo en tu Arena local:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase1-compra"}'
+```
+
+Cuando termines, vuelve a la versión correcta:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"baseline"}'
+```
+
+Lo que cambiará para tus tests: el catálogo y el carrito aparecen tras un mensaje «Cargando...» durante unos segundos, y hay algo escondido en los cupones. Un buen test automático debe **seguir pasando** con la lentitud (porque no es un defecto de lógica) y **detectar** lo que está mal en los cupones.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Un flujo de compra completo con esperas correctas">
+Guarda este archivo como `tests/compra.spec.ts`. Inicia sesión, agrega dos unidades de «Auriculares BT», aplica el cupón `SAVE5` (descuento de $5.00 en compras desde $10.00) y paga con la tarjeta de prueba aprobada que ya viene precargada:
+
+```ts
+import { test, expect } from "@playwright/test";
+import { iniciarSesion, agregarProducto } from "./support/tienda";
+
+// Cada test empieza con la tienda limpia (solo para práctica local).
+test.beforeEach(async ({ request }) => {
+  const respuesta = await request.post("/__arena/reset");
+  expect(respuesta.ok()).toBe(true);
+});
+
+test("compra completa con cupón", async ({ page }) => {
+  await iniciarSesion(page);
+  await agregarProducto(page, 2);
+
+  await page.getByRole("link", { name: "Carrito" }).click();
+  await expect(page.getByTestId("cart-subtotal")).toHaveText("$19.80");
+
+  await page.getByLabel("Cupon").fill("SAVE5");
+  await page.getByRole("button", { name: "Aplicar" }).click();
+  await expect(page.getByTestId("cart-discount")).toHaveText("-$5.00");
+
+  await page.getByRole("link", { name: "Ir a pagar" }).click();
+  await page.getByLabel("Direccion de envio").fill("Calle Falsa 123");
+  await page.getByRole("button", { name: "Pagar ahora" }).click();
+
+  await expect(page.getByRole("status")).toHaveText("Pago aprobado. Gracias por tu compra.");
+  await expect(page.getByTestId("order-status")).toHaveText("Pagado");
+});
+
+test("el cupón responde 200 y se puede quitar", async ({ page }) => {
+  await iniciarSesion(page);
+  await agregarProducto(page, 2);
+  await page.goto("/cart");
+
+  await page.getByLabel("Cupon").fill("SAVE5");
+  const respuesta = page.waitForResponse(
+    (r) => r.url().endsWith("/api/cart/coupon") && r.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Aplicar" }).click();
+  expect((await respuesta).status()).toBe(200);
+
+  await page.getByRole("button", { name: "Quitar cupon" }).click();
+  await expect(page.getByTestId("cart-discount")).toHaveText("-$0.00");
+});
+```
+
+Qué observar:
+
+1. **Ayudas compartidas** (`iniciarSesion`, `agregarProducto`, del paso 1): evitan repetir los mismos pasos. Si cambia el login, lo arreglas en un solo lugar.
+2. **Cada paso termina esperando un resultado**: tras agregar al carrito se espera el mensaje «Agregado al carrito»; tras cargar el carrito, el subtotal. No hay ninguna pausa fija.
+3. **Con `baseline` pasan los dos tests en un par de segundos. Con `fase1-compra` también pasan**, pero tardan más: cada página espera su «Cargando...». No hizo falta cambiar ninguna línea, porque las aserciones esperan solas.
+4. **Esta suite no detecta lo que está mal con los cupones del escenario**. Pasa con `baseline` y con `fase1-compra`: ejecuta ambas y compruébalo. En los ejercicios aprenderás qué prueba falta.
+
+Los errores típicos de esta práctica:
+
+- **Leer sin esperar:** `expect(await localizador.isVisible()).toBe(true)` justo después de abrir el carrito falla con `Received: false`.
+- **Usar un tiempo fijo:** con `waitForTimeout(1000)` funciona en `baseline` y se rompe con `fase1-compra`, que tarda entre 1,5 y 3 segundos.
+- **Tests que dependen unos de otros:** sin el `beforeEach`, el carrito del test anterior sigue lleno y el subtotal sale mayor que `$19.80`.
+- **Un botón ambiguo:** `getByRole("button", { name: "Quitar" })` con un cupón aplicado encuentra dos botones («Quitar» y «Quitar cupon SAVE5»). Acota con `exact: true` o con el nombre completo.
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+Los ejercicios 2 y 3 necesitan el escenario `fase1-compra` (actívalo con el comando del paso 8) y todos asumen el `beforeEach` de reinicio y las ayudas de `tests/support/tienda.ts` (paso 1). Vuelve a `baseline` al terminar. El botón abre la Arena **alojada**, solo para explorar: tus tests van contra tu Arena local.
+
+<Ejercicio id="ej-1-3-pago-rechazado">
+  Escribe un test que llegue a `/checkout` con un producto en el carrito, rellene la dirección,
+  escriba la tarjeta de prueba rechazada `4000 0000 0000 0002` y pague. Comprueba que aparece el
+  mensaje de pago rechazado y que no sales de la página de pago.
+</Ejercicio>
+
+<Ejercicio id="ej-1-3-carga-tardia">
+  Con `fase1-compra` activo, escribe un test que agregue un producto, abra `/cart` y compruebe que
+  aparecen el encabezado «Carrito» y el subtotal. Prueba primero una versión que lea con
+  `isVisible()` y mira cómo falla; después arréglala sin usar `waitForTimeout`.
+</Ejercicio>
+
+<Ejercicio id="ej-1-3-doble-clic-cupon">
+  Escribe un test que agregue dos unidades de «Auriculares BT», escriba el cupón `SAVE5` y haga
+  doble clic en «Aplicar». Comprueba que el descuento es de `-$5.00`. Ejecútalo con `baseline` y con
+  `fase1-compra` y compara los resultados.
+</Ejercicio>
+
+<Ejercicio id="ej-1-3-carrito-y-cantidades">
+  Agrega dos unidades al carrito, cambia la cantidad a 3 en la página del carrito y comprueba que el
+  subtotal pasa a `$29.70`. Después quita el producto y comprueba que el carrito queda vacío.
+</Ejercicio>
+
+<Ejercicio id="ej-1-3-ordenar-catalogo">
+  En el catálogo, cambia el orden a «Precio: menor a mayor» y comprueba que el primer producto de la
+  lista es «Auriculares BT». Piensa por qué conviene comprobarlo con una aserción y no con un valor
+  leído antes.
+</Ejercicio>
+
+<AbrirArena escenario="fase1-compra" />
+
+## 5. Reto sin guía
+
+<Reto titulo="Tu suite de compra, comprobada por ti">
+  Es una práctica abierta: no hay evaluador automático en este módulo. Tú decides si tu suite está
+  bien con la lista de comprobación del final.
+
+Escribe en `tests/compra-completa.spec.ts` una suite del flujo de compra de QA Arena con **al menos cuatro tests**:
+
+1. Una compra con tarjeta aprobada que termina en un pedido «Pagado».
+2. Un pago con tarjeta rechazada que no crea el pedido.
+3. Un cupón válido y sus casos límite.
+4. Un cambio en el carrito (cantidad o quitar producto) con su resultado comprobado.
+
+Úsala como una herramienta de detección: tu suite debe **pasar entera con `baseline`** y **fallar con `fase1-compra`** por una razón que puedas explicar con tus palabras.
+
+Criterios de autocomprobación:
+
+- Con `baseline`, tu suite termina sin fallos, ejecutada tres veces seguidas (si falla alguna vez, es inestable).
+- Con `fase1-compra`, al menos un test falla, y la lentitud de la tienda por sí sola **no** hace fallar ninguno.
+- No hay `waitForTimeout` en tu código.
+- Cada test empieza con la tienda limpia y no depende del anterior.
+- Cada paso termina con una aserción de Playwright, no con un valor leído antes.
+- Los localizadores siguen las reglas del módulo 1.2 (rol, etiqueta o texto antes que CSS).
+- Dejaste la Arena de nuevo en `baseline`.
+
+Si cumples todos los puntos, tu suite es fiable y detecta el defecto.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+La IA puede escribir en segundos un flujo de compra entero. Justo por eso hay que revisar las esperas con lupa: es donde más se equivoca.
+
+**Qué pedirle:**
+
+- «Escribe un test de Playwright con este flujo: ...» (descríbele los pasos y los textos reales de la pantalla).
+- «¿Qué espera necesito para que este test no sea inestable? Explícame la condición, no un tiempo».
+- «Explícame este error de timeout de Playwright» (pega el mensaje completo).
+
+**Qué revisar antes de aceptarlo:**
+
+- Que no aparezca `waitForTimeout`. Es la señal más clara de un test inestable.
+- Que no lea valores sueltos (`isVisible()`, `count()`, `textContent()`) para compararlos justo después de actuar.
+- Que cada acción importante termine en una aserción con `await expect(...)`.
+- Que los textos y precios coinciden con los de la Arena (sin tildes, `$19.80`).
+- Que los tests no dependan unos de otros: un reinicio o datos propios en cada uno.
+
+**Qué rechazar:**
+
+- Subir timeouts globales («`timeout: 120000`») para que deje de fallar, sin entender por qué fallaba.
+- `force: true` y `dispatchEvent` para saltarse que un botón esté desactivado: pueden esconder un defecto real.
+- Tests que "pasan" porque la IA quitó la comprobación que fallaba.
+- Datos inventados (cupones, productos o tarjetas que no existen en la Arena).
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Poner una espera fija para arreglar un test inestable">
+  `waitForTimeout` esconde el problema: el test pasa hoy y falla cuando el entorno es más lento.
+  Busca la condición real (un elemento, un texto, una respuesta) y espera por ella.
+</ErrorComun>
+
+<ErrorComun titulo="Comparar un valor leído antes en vez de usar una aserción">
+  `expect(await x.isVisible()).toBe(true)` toma una foto del instante y no reintenta. Usa `await
+  expect(x).toBeVisible()`, que espera.
+</ErrorComun>
+
+<ErrorComun titulo="Escuchar la respuesta después de hacer clic">
+  Con `waitForResponse`, primero se crea la espera (sin `await`), luego se hace la acción y al final
+  se espera el resultado. Si inviertes el orden, la respuesta puede haber llegado antes y el test se
+  queda esperando.
+</ErrorComun>
+
+<ErrorComun titulo="Tests que se pisan por compartir datos">
+  El carrito de un test queda lleno para el siguiente y los totales no cuadran. Cada test debe
+  empezar de cero, y en una Arena compartida conviene ejecutar de uno en uno.
+</ErrorComun>
+
+<ErrorComun titulo="Probar solo el camino feliz del descuento">
+  Aplicar un cupón una vez y ver que baja el total no demuestra que los descuentos sean correctos.
+  Pregúntate qué haría una persona con prisa o con dudas, y qué casos límite tiene un cupón.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Un flujo de compra cambia datos: ejecuta los tests de uno en uno y empieza cada uno con la tienda limpia.
+- Las acciones comunes son `fill`, `click`, `dblclick`, `selectOption`, `press`, `check` y `setInputFiles`.
+- Antes de actuar, Playwright espera a que el elemento sea visible, estable, habilitado y reciba clics.
+- Las aserciones `await expect(...)` reintentan hasta cumplirse; `isVisible()`, `count()` y similares no esperan.
+- Las esperas explícitas útiles son `waitFor`, `toBeHidden`, `waitForURL` y `waitForResponse`, siempre sobre una condición real.
+- `waitForTimeout` es una espera fija: la fuente más común de tests inestables.
+- Un test no debe fallar porque la tienda sea lenta, pero sí debe detectar un descuento mal calculado.
+- La suite buena pasa con `baseline` y falla con el escenario cuando hay un defecto de lógica.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

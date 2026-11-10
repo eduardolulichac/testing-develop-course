@@ -1,0 +1,20 @@
+node_modules/
+.next/
+dist/
+coverage/
+playwright-report/
+test-results/
+.turbo/
+.vercel/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+.worktrees/
+
+# Claude Code: configuración personal y notas de trabajo privadas
+.claude/
+CLAUDE.md
+PROGRESS.md
+PLAN_DESARROLLO.md

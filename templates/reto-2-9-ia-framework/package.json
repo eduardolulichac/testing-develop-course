@@ -1,0 +1,13 @@
+{
+  "name": "reto-2-9-ia-framework",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reto 2.9: revisa, corrige y registra código de framework generado por IA con Playwright",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.19.2"
+  }
+}

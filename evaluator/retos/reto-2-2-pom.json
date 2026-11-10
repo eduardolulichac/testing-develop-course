@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "arena": {
+    "escenario": "fase1-aserciones",
+    "release": null,
+    "semilla": 1577
+  },
+  "umbral": 70,
+  "obligatorios": [
+    "suite-verde-baseline",
+    "titulos-conservados",
+    "specs-sin-localizadores",
+    "sin-arena-interna"
+  ],
+  "criterios": [
+    {
+      "id": "suite-verde-baseline",
+      "titulo": "Todos los tests pasan contra la Arena sin defectos",
+      "peso": 20,
+      "competencia": "tecnica",
+      "feedback_fallo": "Tras el refactor algún test falla contra la tienda correcta. Ejecuta la suite en local con baseline.",
+      "tipo": "suite_pasa",
+      "escenario": "baseline"
+    },
+    {
+      "id": "titulos-conservados",
+      "titulo": "Conservas los 10 tests heredados con su título",
+      "peso": 15,
+      "competencia": "tecnica",
+      "feedback_fallo": "Un refactor no cambia el comportamiento: conserva los 10 tests heredados con su título.",
+      "tipo": "reporte_titulos",
+      "titulos": [
+        "login correcto muestra el nombre del usuario",
+        "login con contrasena incorrecta muestra un error",
+        "cerrar sesion devuelve al login",
+        "el catalogo lista productos",
+        "buscar por nombre filtra el catalogo",
+        "el detalle del producto 15 muestra nombre y precio",
+        "agregar un producto sube el contador del carrito",
+        "el subtotal del carrito suma las lineas",
+        "quitar una linea baja el contador del carrito",
+        "el cupon BIGSPEND descuenta el 15% del producto 15"
+      ]
+    },
+    {
+      "id": "detecta-fase1-aserciones",
+      "titulo": "Tu suite sigue detectando el defecto de precios y del carrito",
+      "peso": 15,
+      "competencia": "analisis",
+      "feedback_fallo": "La suite heredada detectaba un defecto de precios y del carrito; tras tu cambio ya no. Revisa qué aserción se perdió.",
+      "tipo": "suite_detecta",
+      "escenario": "fase1-aserciones",
+      "release": null
+    },
+    {
+      "id": "specs-sin-localizadores",
+      "titulo": "Los tests no tocan la página directamente",
+      "peso": 15,
+      "competencia": "tecnica",
+      "feedback_fallo": "Los specs no deben tocar la página directamente: mueve los localizadores y las acciones a tus Page Objects.",
+      "tipo": "estatico",
+      "regla": "pom-specs-sin-localizadores"
+    },
+    {
+      "id": "clases-de-pagina",
+      "titulo": "Al menos tres Page Objects",
+      "peso": 10,
+      "competencia": "tecnica",
+      "feedback_fallo": "Crea al menos tres Page Objects en `pages/` que reciban `page` en el constructor.",
+      "tipo": "estatico",
+      "regla": "pom-clases-de-pagina"
+    },
+    {
+      "id": "fixtures-personalizados",
+      "titulo": "Fixture personalizado usado en todos los tests",
+      "peso": 10,
+      "competencia": "tecnica",
+      "feedback_fallo": "Crea un fixture con `test.extend` que entregue tus Page Objects y úsalo en todos los specs.",
+      "tipo": "estatico",
+      "regla": "fixtures-personalizados"
+    },
+    {
+      "id": "sin-duplicacion",
+      "titulo": "Sin bloques de código repetidos",
+      "peso": 5,
+      "competencia": "tecnica",
+      "feedback_fallo": "Hay bloques de 8 líneas repetidos (ver evidencia). Extráelos a un método o un fixture.",
+      "tipo": "estatico",
+      "regla": "sin-duplicacion"
+    },
+    {
+      "id": "sin-esperas-fijas",
+      "titulo": "Sin esperas fijas",
+      "peso": 5,
+      "competencia": "tecnica",
+      "feedback_fallo": "Quita los `waitForTimeout` heredados: usa esperas automáticas.",
+      "tipo": "estatico",
+      "regla": "sin-esperas-fijas"
+    },
+    {
+      "id": "framework-ampliado",
+      "titulo": "Suite ampliada con al menos 2 tests propios",
+      "peso": 5,
+      "competencia": "autonomia",
+      "feedback_fallo": "Amplía tu framework: añade al menos dos tests de una pantalla que la suite heredada no cubre, con su Page Object.",
+      "tipo": "suite_ejecuta",
+      "min": 12
+    },
+    {
+      "id": "sin-arena-interna",
+      "titulo": "La suite no usa los endpoints internos de la Arena",
+      "peso": 0,
+      "competencia": "autonomia",
+      "feedback_fallo": "Los tests no deben llamar a /__arena ni leer variables ARENA_*: prueba la tienda como lo haría un usuario.",
+      "tipo": "estatico",
+      "regla": "sin-arena-interna"
+    }
+  ]
+}

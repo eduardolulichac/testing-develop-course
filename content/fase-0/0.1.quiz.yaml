@@ -1,0 +1,76 @@
+preguntas:
+  - id: terminal-directorio-actual
+    enunciado: "¿Qué comando muestra el directorio en el que estás trabajando?"
+    opciones: ["cd", "pwd", "ls -l", "mkdir"]
+    correcta: 1
+    explicacion: "`pwd` (print working directory) imprime la ruta del directorio actual. `cd` lo cambia y `ls` lista su contenido."
+  - id: terminal-listar-ocultos
+    enunciado: "¿Qué opción de `ls` también muestra los archivos ocultos?"
+    opciones: ["ls -a", "ls -r", "ls -t", "ls -h"]
+    correcta: 0
+    explicacion: "`-a` (all) incluye los archivos cuyo nombre empieza por punto, como `.env` o `.git`."
+  - id: terminal-ruta-relativa
+    enunciado: "¿Cuál de estas es una ruta relativa?"
+    opciones: ["/usr/local/bin", "~/proyectos", "../pruebas/login.spec.ts", "C:\\Users\\ana"]
+    correcta: 2
+    explicacion: "Una ruta relativa se interpreta desde el directorio actual; `..` sube un nivel. Las demás parten de la raíz, del home o de una unidad."
+  - id: terminal-node-version
+    enunciado: "¿Cómo compruebas qué versión de Node tienes instalada?"
+    opciones: ["node --version", "npm --version", "node --help", "which node"]
+    correcta: 0
+    explicacion: "`node --version` (o `node -v`) imprime la versión de Node. `npm --version` da la de npm, `node --help` lista opciones y `which node` solo muestra dónde está instalado. Es lo primero que se revisa al preparar el entorno."
+  - id: terminal-no-secretos
+    enunciado: "Un archivo `.env` con claves reales, ¿se sube al repositorio?"
+    opciones:
+      [
+        "Sí, para que todos lo tengan",
+        "No, se agrega a .gitignore",
+        "Solo si el repo es privado",
+        "Solo en la rama main",
+      ]
+    correcta: 1
+    explicacion: "Los secretos no se versionan, tampoco en repos privados: se ignoran con `.gitignore` y se documentan con un `.env.example` sin valores."
+  - id: terminal-variable-entorno
+    enunciado: "¿Qué es una variable de entorno?"
+    opciones:
+      [
+        "Un archivo que se sube siempre al repositorio",
+        "Una carpeta oculta del sistema",
+        "Un comando de Node",
+        "Un valor con nombre que los programas pueden leer, como un puerto o una dirección",
+      ]
+    correcta: 3
+    explicacion: "Es un valor con nombre que el sistema ofrece a los programas (`process.env.NOMBRE` en Node). Permite cambiar su comportamiento sin editar el código."
+  - id: terminal-puertos-arena
+    enunciado: "Levantaste QA Arena con `docker compose up --build`. ¿Qué dirección usas en el curso para llamar a la API con curl?"
+    opciones:
+      [
+        "http://localhost:3000/api",
+        "http://localhost:18080/api",
+        "http://localhost:5432/api",
+        "http://localhost:8080/api",
+      ]
+    correcta: 1
+    explicacion: "En el curso todo va por el puerto 18080 (la API cuelga de `/api`). La API también se publica en el 18081, pero no lo usaremos. El 5432 es el de la base de datos, que no se publica fuera de Docker."
+  - id: terminal-cabecera-release
+    enunciado: "Ejecutas `curl -i http://localhost:18080/healthz` y no ves `X-Arena-Release`. ¿Qué haces?"
+    opciones:
+      [
+        "Concluyes que la Arena está rota",
+        "Pides una ruta de la aplicación como /__arena/state, que sí la incluye",
+        "Reinstalas Node",
+        "Borras el archivo .env",
+      ]
+    correcta: 1
+    explicacion: '`/healthz` solo confirma que la API vive y devuelve `{"ok":true}`. La cabecera la añaden las rutas de la aplicación, como `/__arena/state`.'
+  - id: terminal-rm-sin-papelera
+    enunciado: "¿Qué ocurre al ejecutar `rm nota.txt`?"
+    opciones:
+      [
+        "El archivo va a la papelera y puedes recuperarlo",
+        "Solo se oculta",
+        "Se borra de inmediato, sin papelera",
+        "Se mueve a la carpeta anterior",
+      ]
+    correcta: 2
+    explicacion: "`rm` elimina el archivo directamente. Por eso se comprueba con `pwd` y `ls` antes de borrar y se practica en carpetas de prueba."

@@ -1,0 +1,87 @@
+ejercicios:
+  - slug: ej-1-1-instalar-y-primer-test
+    tipo: guiado
+    titulo: "Instala Playwright y ejecuta tu primer test"
+    pistas:
+      - "Crea una carpeta nueva fuera del repositorio del curso, entra en ella y empieza con `npm init -y`."
+      - "Instala con `npm install --save-exact --save-dev` el paquete `@playwright/test@1.64.1` y descarga el navegador con `npx playwright install chromium`. El test va en `tests/` y el archivo termina en `.spec.ts`."
+      - 'El test abre `/login` con `page.goto` y comprueba con `expect(...).toBeVisible()` un `getByRole("heading", ...)`. Recuerda el `await` y que la Arena escribe «Iniciar sesion» sin tilde.'
+    solucion: 'Ejecuta `mkdir practica-playwright`, `cd practica-playwright`, `npm init -y`, `npm install --save-exact --save-dev @playwright/test@1.64.1 @types/node@24.19.2` y `npx playwright install chromium`. Crea `playwright.config.ts` con `testDir: "./tests"` y `baseURL` apuntando a la Arena, y `tests/primero.spec.ts` con un test que haga `await page.goto("/login")` y `await expect(page.getByRole("heading", { name: "Iniciar sesion" })).toBeVisible()`. `npx playwright test` debe mostrar `1 passed`.'
+  - slug: ej-1-1-leer-un-fallo
+    tipo: guiado
+    titulo: "Provoca un fallo y léelo"
+    pistas:
+      - "Cambia el texto del encabezado en tu test por «Iniciar sesión» (con tilde) y ejecuta de nuevo."
+      - "El error se lee de arriba abajo: la aserción que falló, el `Locator`, el motivo (`element(s) not found`) y el `Timeout`. La flecha `>` marca la línea."
+      - "Para arreglarlo no toques la Arena: el texto de tu test debe coincidir con el de la pantalla. Quita la tilde y vuelve a ejecutar."
+    solucion: "Con la tilde falla `toBeVisible() failed` sobre el `Locator: getByRole('heading', { name: 'Iniciar sesión' })`, con `element(s) not found` tras `Timeout: 5000ms`, y la flecha `>` apunta a esa línea de tu test. El problema es el texto del test, no la aplicación: al dejar «Iniciar sesion» sin tilde, el test pasa."
+  - slug: ej-1-1-informe-y-traza
+    tipo: guiado
+    titulo: "Abre el informe HTML y la traza de un test"
+    pistas:
+      - "El informe se genera con la opción `--reporter=html` del comando de test y se abre con `npx playwright show-report`."
+      - "Para tener traza de un test que pasa, ejecuta con `--trace on`. Se guarda en `test-results/<carpeta-del-test>/trace.zip`."
+      - "Abre la traza con `npx playwright show-trace` y la ruta del zip. En la lista de pasos de la izquierda busca el `click` sobre el botón «Entrar» y mira la captura de la derecha."
+    solucion: "Ejecuta `npx playwright test --reporter=html --trace on`, abre el informe con `npx playwright show-report` y la traza con `npx playwright show-trace test-results/<carpeta>/trace.zip`. En la lista de pasos selecciona el clic en el botón «Entrar»: la captura previa muestra el formulario con el correo y la contraseña ya rellenados."
+  - slug: ej-1-1-activar-escenario
+    tipo: guiado
+    titulo: "Activa un escenario, comprueba el estado y vuelve a baseline"
+    escenario: fase1-login
+    pistas:
+      - "Los escenarios se activan con una petición `PUT` a `/__arena/scenario` con un cuerpo JSON que lleva el campo `id`."
+      - 'El comando es `curl -X PUT http://localhost:18080/__arena/scenario -H ''content-type: application/json'' -d ''{"id":"fase1-login"}''`. Para comprobar, pide `GET /__arena/state` y busca el campo `scenario`.'
+      - 'Para volver, repite el mismo `PUT` con `{"id":"baseline"}` y comprueba otra vez `/__arena/state`.'
+    solucion: 'Activa con `curl -X PUT http://localhost:18080/__arena/scenario -H ''content-type: application/json'' -d ''{"id":"fase1-login"}''`; `curl -s http://localhost:18080/__arena/state` debe incluir `"scenario":"fase1-login"`. Con tus dos tests de ejemplo (login correcto y cierre de sesión) la suite sigue pasando: no detecta el defecto. Vuelve con el mismo comando y `{"id":"baseline"}`; el estado debe mostrar `"scenario":"baseline"`.'
+  - slug: reto-1-1-login
+    tipo: reto
+    titulo: "Automatiza el inicio de sesión de la Arena"
+    escenario: fase1-login
+    criterio_aprobacion:
+      version: 1
+      arena: { escenario: fase1-login, release: null, semilla: 1046 }
+      umbral: 70
+      obligatorios: [suite-verde-baseline, detecta-fase1-login, sin-arena-interna]
+      criterios:
+        - id: suite-ejecuta
+          titulo: "La suite tiene al menos 3 tests"
+          tipo: suite_ejecuta
+          min: 3
+          peso: 10
+          competencia: tecnica
+          feedback_fallo: "Escribe al menos tres tests: login correcto, contraseña incorrecta y correo con otro formato."
+        - id: suite-verde-baseline
+          titulo: "Todos los tests pasan contra la Arena sin defectos"
+          tipo: suite_pasa
+          escenario: baseline
+          peso: 30
+          competencia: tecnica
+          feedback_fallo: "Un test que falla contra la versión correcta no es fiable. Ejecútalo en local contra la Arena con baseline."
+        - id: detecta-fase1-login
+          titulo: "Tu suite detecta el defecto del login"
+          tipo: suite_detecta
+          escenario: fase1-login
+          release: null
+          peso: 35
+          competencia: analisis
+          feedback_fallo: "Tu suite no detectó el defecto: o ninguno de tus tests falla con `fase1-login` activo, o tu suite ya falla sin él. Primero comprueba que pasa en `baseline`; después prueba variantes del correo y revisa los mensajes de error."
+        - id: sin-esperas-fijas
+          titulo: "Sin esperas fijas"
+          tipo: estatico
+          regla: sin-esperas-fijas
+          peso: 15
+          competencia: tecnica
+          feedback_fallo: "Evita waitForTimeout: usa las esperas automáticas de Playwright."
+        - id: localizadores-por-rol
+          titulo: "Localizadores accesibles"
+          tipo: estatico
+          regla: localizadores-por-rol
+          peso: 10
+          competencia: tecnica
+          feedback_fallo: "Prefiere getByRole o getByLabel antes que selectores CSS."
+        - id: sin-arena-interna
+          titulo: "La suite no usa los endpoints internos de la Arena"
+          tipo: estatico
+          regla: sin-arena-interna
+          peso: 0
+          competencia: autonomia
+          feedback_fallo: "Los tests no deben llamar a /__arena ni leer variables ARENA_*: prueba la tienda como lo haría un usuario."

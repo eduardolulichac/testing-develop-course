@@ -1,0 +1,113 @@
+ejercicios:
+  - slug: ej-2-7-anotar-requisito
+    tipo: guiado
+    titulo: "Ata un test tuyo a un requisito"
+    pistas:
+      - "Abre la página «Requisitos» de la Arena y busca el REQ-n que describe lo que comprueba uno de tus tests de F1. Escribe el número tal cual, por ejemplo `REQ-4`."
+      - "Las opciones del test van entre el título y la función, y son un objeto con la clave `annotation`. Crea una función `req` que reciba los identificadores y devuelva ese objeto."
+      - 'Ejecuta `npx playwright test` y abre `resultados/informe.json`: dentro de ese test, en `annotations`, debe aparecer `{ "type": "requisito", "description": "REQ-n" }`.'
+    solucion: |
+      Con una función de ayuda:
+
+      ```ts
+      const req = (...ids: string[]) => ({
+        annotation: ids.map((id) => ({ type: "requisito", description: id })),
+      });
+
+      test("un cupón vencido se rechaza", req("REQ-4"), async ({ page }) => {
+        // ...
+      });
+      ```
+
+      En el JSON, ese test lleva `"annotations": [{ "type": "requisito", "description": "REQ-4", ... }]`. Si pasas un arreglo directamente como segundo argumento, Playwright falla con `Error: details: expected object, got array`: el objeto es el que tiene la clave `annotation`, y esa clave sí acepta una lista.
+  - slug: ej-2-7-informe-html
+    tipo: guiado
+    titulo: "Lee un fallo en el informe HTML"
+    escenario: fase2-e2e-combinado
+    pistas:
+      - "Activa `fase2-e2e-combinado` con la versión `v1.0.0`, reinicia la Arena y ejecuta `npx playwright test`. Un test debe fallar."
+      - "Abre el informe con `npx playwright show-report`. En la lista, el test fallido tiene una marca roja; ábrelo."
+      - "Mira el detalle del test: el paso en el que falla, el `Expected` y el `Received`, la anotación `requisito` y la traza (`trace`), que permite ver la página en el momento del fallo."
+    solucion: |
+      Falla «el envío se calcula después del descuento», anotado con REQ-3. En el detalle se ve el paso `expect(locator).toHaveText(expected)` sobre `cart-shipping` con `Expected: "$5.00"` y `Received: "$0.00"`: el envío es gratis cuando el requisito vigente (versión 1.0) dice que se calcula después del descuento. La traza permite abrir el carrito tal como estaba. Al terminar, vuelve a `baseline`:
+
+      ```bash
+      curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"baseline"}'
+      ```
+  - slug: ej-2-7-hueco-req7
+    tipo: guiado
+    titulo: "Rellena el hueco de REQ-7"
+    escenario: fase2-e2e-combinado
+    pistas:
+      - "Un producto de 50,90 USD es el número 15 (`agregarProducto(page, 1, 15)`). Sin cupón, el subtotal supera los 50 USD."
+      - 'Comprueba el subtotal con `cart-subtotal` (`$50.90`) y el envío con `cart-shipping`. Anota el test con `req("REQ-7")` y ejecuta la matriz.'
+      - "Prueba el test con `baseline`, `v1.0.0` y `v1.1.0`. Piensa por qué pasa en todas: el requisito REQ-7 no habla de cupones."
+    solucion: |
+      ```ts
+      test("desde 50 USD de subtotal el envío es gratis", req("REQ-7"), async ({ page }) => {
+        await agregarProducto(page, 1, 15);
+        await abrir(page, "/cart");
+        await expect(page.getByTestId("cart-subtotal")).toHaveText("$50.90");
+        await expect(page.getByTestId("cart-shipping")).toHaveText("$0.00");
+      });
+      ```
+
+      Pasa con `baseline`, con `v1.0.0` y con `v1.1.0`, y REQ-7 aparece como «cubierto» en la matriz. Pasa en todas porque no hay cupón: la ambigüedad de REQ-7 («¿antes o después del descuento?») solo se nota al combinarlo con un cupón, que es lo que prueba REQ-3. Un REQ «cubierto» no significa que el requisito sea claro.
+  - slug: ej-2-7-requisito-cambia
+    tipo: guiado
+    titulo: "Un requisito cambia: ¿falla la tienda o falla tu test?"
+    escenario: fase2-e2e-combinado
+    pistas:
+      - "Activa `fase2-e2e-combinado` con `v1.1.0`, reinicia la Arena y ejecuta la suite. El test de REQ-3 con cupón sigue fallando."
+      - "Lee REQ-3 en la página «Requisitos» de la versión 1.1: dice que el envío gratis se calcula sobre el subtotal antes del descuento. ¿Qué espera ahora el test con el producto 15 y `WELCOME10`?"
+      - "Cambia el valor esperado de `cart-shipping` y el título del test para que digan lo que dice el requisito vigente. Ejecuta la matriz y comprueba que REQ-3 vuelve a «cubierto»."
+    solucion: |
+      El test está desactualizado, no la tienda: en la versión 1.1 el subtotal (50,90 USD) ya alcanza el umbral antes del cupón y el envío es gratis. El test pasa a:
+
+      ```ts
+      test("el envío gratis se mide antes del descuento", req("REQ-3"), async ({ page }) => {
+        await agregarProducto(page, 1, 15);
+        await abrir(page, "/cart");
+        await page.getByTestId("coupon-input").fill("WELCOME10");
+        await page.getByRole("button", { name: "Aplicar" }).click();
+        await expect(page.getByTestId("cart-discount")).toHaveText("-$5.09");
+        await expect(page.getByTestId("cart-shipping")).toHaveText("$0.00");
+      });
+      ```
+
+      Con `v1.1.0` pasa y la matriz muestra REQ-3 «cubierto». Con `baseline` ese mismo test **falla**: la tienda sana cobra $5.00 porque su versión de referencia aplica la regla de la 1.0. Un test es un contrato con **una versión** del requisito: anota en tu informe a cuál corresponde.
+  - slug: ej-2-7-resumen-en-ci
+    tipo: guiado
+    titulo: "Publica la matriz en el resumen de la ejecución"
+    pistas:
+      - "El script escribe en `GITHUB_STEP_SUMMARY` solo si la variable existe. Para probarlo en tu máquina, apúntala a un archivo: `GITHUB_STEP_SUMMARY=resultados/resumen.md node scripts/trazabilidad.mts`."
+      - "Después de la prueba, abre `resultados/resumen.md`: debe tener la tabla. En el workflow, GitHub Actions define esa variable por ti."
+      - "Los pasos van tras `npx playwright test`. Los dos que publican llevan `if: ${{ !cancelled() }}`, para que se ejecuten aunque los tests hayan fallado. El segundo usa `actions/upload-artifact@v7` con las rutas `playwright-report/` y `resultados/`."
+    solucion: |
+      Prueba local:
+
+      ```bash
+      GITHUB_STEP_SUMMARY=resultados/resumen.md node scripts/trazabilidad.mts
+      ```
+
+      `resultados/resumen.md` contiene la misma tabla que ves en la terminal. En el workflow:
+
+      ```yaml
+      - name: Ejecutar la suite
+        run: npx playwright test
+
+      - name: Matriz de trazabilidad
+        if: ${{ !cancelled() }}
+        run: node scripts/trazabilidad.mts
+
+      - name: Publicar el informe HTML y el JSON
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: informe-playwright
+          path: |
+            playwright-report/
+            resultados/
+      ```
+
+      Sin el `if`, un fallo de los tests saltaría los dos pasos siguientes y no quedaría ningún informe de la ejecución que más lo necesita.

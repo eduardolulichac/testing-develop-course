@@ -1,0 +1,111 @@
+ejercicios:
+  - slug: ej-1-5-archivos-env
+    tipo: guiado
+    titulo: "Un archivo .env por ambiente y una plantilla en Git"
+    escenario: fase1-ambientes
+    pistas:
+      - "Crea tres archivos en la raíz de tu proyecto de pruebas: `.env.local`, `.env.qa` y `.env.example`. Cada línea es `NOMBRE=valor`, sin comillas ni espacios alrededor del `=`."
+      - "En `playwright.config.ts` lee `process.env.ENTORNO ?? 'local'`, llama a `dotenv.config({ path: ... })` con el archivo `.env.<entorno>` y usa `process.env.ARENA_URL` como `baseURL`."
+      - "Para comprobarlo escribe un test que reciba `baseURL` como fixture y use `expect(baseURL).toBe(...)` con la dirección que esperas según `AMBIENTE`; ejecútalo con y sin `ENTORNO=qa`. En `.gitignore` pon `.env*` y, debajo, `!.env.example`."
+    solucion: |
+      `.env.local` tiene `ARENA_URL=http://localhost:18080` y `AMBIENTE=local`; `.env.qa`, `ARENA_URL=http://localhost:18090` y `AMBIENTE=qa` (más `USUARIO_EMAIL` y `USUARIO_CLAVE` en ambos); `.env.example` lleva los mismos nombres con valores vacíos o de ejemplo. En `.gitignore`: `.env*` y `!.env.example`.
+
+      ```ts
+      import path from "node:path";
+      import { defineConfig } from "@playwright/test";
+      import dotenv from "dotenv";
+
+      const entorno = process.env.ENTORNO ?? "local";
+      dotenv.config({ path: path.resolve(__dirname, `.env.${entorno}`), quiet: true });
+
+      export default defineConfig({
+        testDir: "./tests",
+        workers: 1,
+        use: { baseURL: process.env.ARENA_URL ?? "http://localhost:18080" },
+      });
+      ```
+
+      Test de comprobación:
+
+      ```ts
+      import { test, expect } from "@playwright/test";
+
+      test("la dirección base es la del ambiente", async ({ baseURL }) => {
+        const esperada =
+          process.env.AMBIENTE === "qa" ? "http://localhost:18090" : "http://localhost:18080";
+        expect(baseURL).toBe(esperada);
+      });
+      ```
+
+      Verificado: el test pasa sin `ENTORNO` (comprueba `http://localhost:18080`) y con `ENTORNO=qa` (comprueba `http://localhost:18090`). Si cambias el valor esperado por uno absurdo, falla: es la prueba de que la aserción mide algo. Si ya tienes `ARENA_URL` definida en la terminal, esa gana al archivo.
+  - slug: ej-1-5-variable-requerida
+    tipo: guiado
+    titulo: "Valores por defecto y un error claro cuando el ambiente no existe"
+    escenario: fase1-ambientes
+    pistas:
+      - "Una función que recibe el nombre de la variable y un valor de práctica, lee `process.env[nombre]` y devuelve ese valor, o el de práctica si no existe o está vacío (`||`)."
+      - "Úsala en el fixture `page` de `tests/support/base.ts`: `conDefecto('USUARIO_EMAIL', 'ana@arena.test')` y `conDefecto('USUARIO_CLAVE', 'Cliente123!')`, y pásalos a `iniciarSesion(page, correo, clave)`. Para probarla, borra `USUARIO_EMAIL` de `.env.local` y ejecuta."
+      - "Para el ambiente desconocido, en `playwright.config.ts` comprueba con `fs.existsSync` que existe `.env.<ENTORNO>` cuando `process.env.ENTORNO` tiene valor, y si no, lanza `throw new Error(...)` diciendo **cuál** archivo falta y **qué hacer**."
+    solucion: |
+      ```ts
+      // tests/support/entorno.ts
+      export function conDefecto(nombre: string, porDefecto: string): string {
+        return process.env[nombre] || porDefecto;
+      }
+      ```
+
+      ```ts
+      // en playwright.config.ts, antes de dotenv.config(...)
+      if (process.env.ENTORNO && !fs.existsSync(archivo)) {
+        throw new Error(
+          `No existe el ambiente "${entorno}": falta el archivo .env.${entorno}. Copia .env.example y complétalo.`,
+        );
+      }
+      ```
+
+      Verificado: con `USUARIO_EMAIL` borrado de `.env.local`, la suite sigue pasando con el valor de práctica. Con `ENTORNO=nadie`, Playwright se detiene con `Error: No existe el ambiente "nadie": falta el archivo .env.nadie. Copia .env.example y complétalo.` Sin esa comprobación, el error aparecería lejos de la causa. La credencial de práctica lleva valor por defecto para que la suite también corra en CI, donde tus `.env` no existen; una credencial real no llevaría ninguno.
+  - slug: ej-1-5-clasifica-fallos
+    tipo: guiado
+    titulo: "Clasifica cada fallo de la suite en el ambiente de QA"
+    escenario: fase1-ambientes
+    pistas:
+      - "Ejecuta primero en `local`: deben pasar los cuatro. Luego `ARENA_URL=http://localhost:18090 npx playwright test` y, para cada fallo, anota el valor **esperado** y el **recibido**."
+      - "Compara con la semilla sucia: pedidos viejos, productos sin stock, cupones agotados y un precio distinto. Para el cupón, mira qué responde la API: `POST /api/cart/coupon` con `WELCOME10` devuelve un código en el cuerpo."
+      - "Para cada test decide: ¿asumió un dato (se arregla leyéndolo o parametrizándolo)?, ¿el ambiente está sucio? o ¿la aplicación falla con datos válidos? Aquí ninguno es un defecto de la aplicación."
+    solucion: |
+      Cuatro fallos en `qa`, ninguno es un defecto de la aplicación:
+
+      - **Producto 1 cuesta $9.90**: recibido `$14.90`. En QA el precio del producto 1 está 5 dólares más alto. El test asumió un dato.
+      - **WELCOME10 descuenta 10 %**: recibido `-$0.00`. La API responde `coupon_exhausted` («Coupon has no uses left»): el cupón está agotado en ese ambiente. Ambiente sucio.
+      - **Ana tiene 2 pedidos**: recibido `42`. Hay 40 pedidos viejos de 2025. Ambiente sucio, y además un test que cuenta una lista compartida.
+      - **Producto 15 se agrega**: el botón queda desactivado hasta agotar el tiempo (`element is not enabled`). El producto 15 está sin stock en QA. Ambiente sucio.
+
+      Verificado ejecutando la suite en las dos Arenas: local pasa los cuatro; qa falla los cuatro con esos valores.
+  - slug: ej-1-5-datos-y-fixtures
+    tipo: guiado
+    titulo: "La misma suite pasa en local y en qa"
+    escenario: fase1-ambientes
+    pistas:
+      - "Crea `datos/ambientes.ts` con un diccionario por ambiente: el cupón porcentual que sirve (`WELCOME10` en local, `QA15` en qa), su porcentaje y, en qa, el producto agotado (el 15). El agotado es opcional."
+      - "En `tests/support/base.ts` usa `base.extend` para crear el fixture `datos` (lee `AMBIENTE` con `conDefecto`) y para redefinir `page` (inicia sesión y vacía el carrito). Exporta `test` y `expect` desde ahí."
+      - "Reescribe cada test para leer el dato en vez de escribirlo: el precio de la ficha se compara con el del carrito; el descuento se calcula con el porcentaje del ambiente (`Math.floor`); el test del agotado usa `test.skip(...)` si el ambiente no tiene ninguno; los pedidos se comprueban por id (`order-row-1`, `order-row-2`), no por conteo."
+    solucion: |
+      El archivo de datos, el fixture y los cinco tests son los del paso 7 del módulo:
+
+      ```ts
+      export const datosPorAmbiente: Record<string, DatosAmbiente> = {
+        local: { cupon: "WELCOME10", porcentaje: 10 },
+        qa: { cupon: "QA15", porcentaje: 15, agotado: 15 },
+      };
+      ```
+
+      ```ts
+      test("un producto agotado no se puede agregar", async ({ page, datos }) => {
+        test.skip(datos.agotado === undefined, "este ambiente no tiene productos agotados");
+        await abrir(page, `/products/${datos.agotado}`);
+        await expect(page.getByTestId("product-stock")).toHaveText("Agotado");
+        await expect(page.getByRole("button", { name: "Agregar al carrito" })).toBeDisabled();
+      });
+      ```
+
+      Verificado: `npx playwright test` en local da 4 passed y 1 skipped; `ENTORNO=qa npx playwright test` da 5 passed. En qa el cupón `QA15` funciona porque el reloj del ambiente está en 2026-03-01 (el cupón vence el 30 de junio de 2026); en el ambiente local ese cupón no existe.

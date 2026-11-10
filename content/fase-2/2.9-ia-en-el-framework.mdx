@@ -1,0 +1,657 @@
+---
+modulo: "2.9"
+titulo: "IA en el framework"
+fase: 2
+nivel: "Semi Senior"
+duracion_min: 120
+prerequisitos: ["2.8"]
+escenario: "fase1-aserciones"
+reto: "reto-2-9-ia-framework"
+version: "2026-11"
+herramientas:
+  ["Playwright 1.64.1", "TypeScript 6.0.3", "Node 24 (verificado 24.14)", "Asistente de IA"]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Al terminar sabrás usar una IA para generar Page Objects, datos de prueba y refactors dentro de tu
+  framework, filtrar lo que entrega con comprobaciones baratas (compilador, búsquedas, la propia
+  tienda), comprobar que un refactor sigue detectando lo que detectaba, medir el tiempo ahorrado y
+  los errores introducidos, y dejar un registro honesto de cada decisión.
+</Objetivo>
+
+En el módulo 1.8 revisaste un test suelto que escribió una IA. En un framework el riesgo es mayor por una razón simple: **el código se reutiliza**. Un Page Object con un localizador inventado lo usan veinte tests. Un archivo de datos con un precio equivocado contamina todos los casos que lo leen. Un refactor que debilita una aserción lo hace en todos los sitios a la vez, y la suite sigue en verde.
+
+La IA también ayuda mucho en lo repetitivo de un framework: esqueletos de Page Objects, tablas de datos, mover lógica de un archivo a otro. La habilidad de este módulo no es pedir mejor. Es **decidir con evidencia** si lo que llegó entra al repositorio, y poder demostrarlo.
+
+Este módulo mide algo más que tu código: mide tu **criterio**. Por eso el reto no te pide escribir un framework nuevo, sino revisar el que «escribió una IA», corregirlo y explicar tus decisiones.
+
+Reglas del módulo, las mismas del 1.8:
+
+- La IA escribe un **borrador**. Tú firmas el código.
+- No importa qué herramienta uses: lo que se enseña sirve para cualquiera y su respuesta de hoy no será la de mañana.
+- No se pegan claves, contraseñas reales ni datos personales en ninguna conversación.
+
+Lo que necesitas antes de empezar:
+
+- Tu proyecto `practica-playwright`, con el framework de Page Objects del módulo 2.2 y `tests/support/tienda.ts`.
+- QA Arena levantada en `http://localhost:18080`.
+- `USUARIO_EMAIL` y `USUARIO_CLAVE` en tu `.env.local` (módulo 1.5): ninguna contraseña va en el código.
+- TypeScript para usar el compilador como filtro: `npm install --save-exact --save-dev typescript@6.0.3`.
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Qué le pides a la IA dentro de un framework">
+Tres usos habituales, con riesgos distintos:
+
+| Uso             | Qué entrega              | Riesgo principal                                                          |
+| --------------- | ------------------------ | ------------------------------------------------------------------------- |
+| Page Objects    | Clases con localizadores | Localizadores o métodos de Playwright que no existen; esperas fijas       |
+| Datos de prueba | Archivos con valores     | Precios, ids o textos inventados que parecen reales                       |
+| Refactors       | Código movido de sitio   | Aserciones que se debilitan o acciones que se pierden y la suite no avisa |
+
+Y un cuarto, el más peligroso: pedirle **tests nuevos** sin darle contexto. Si no sabe cómo es tu aplicación, la inventa.
+
+</Paso>
+
+<Paso numero={2} titulo="Dale las convenciones de tu framework">
+Un prompt que da contexto produce menos correcciones. Este sirve de base para un Page Object:
+
+> **Contexto.** Playwright 1.64.1 con TypeScript. Mi framework sigue Page Object: una clase por página en `pages/`, localizadores como propiedades de solo lectura, métodos que hacen una acción de usuario. Los specs en `tests/` no contienen localizadores. La dirección base ya está en la configuración: usa rutas relativas.
+>
+> **Tarea.** Crea el Page Object de la página del carrito de QA Arena con: abrir, aplicar un cupón y leer el descuento. Estos son los textos y `data-testid` reales: [pega aquí lo que ves en la página: botón «Aplicar», campo «Cupon», `cart-discount`].
+>
+> **Reglas.** Localizadores por `getByRole`, `getByLabel` o `getByTestId`. Nada de `waitForTimeout`, CSS ni XPath. Ninguna contraseña en el código. Esperas con aserciones.
+>
+> **Verificar.** Al final lista todo lo que **supusiste** de la aplicación y de la API de Playwright.
+
+Dos hábitos que ahorran tiempo: pega los textos reales de la pantalla (así no inventa «Filtrar» o «Buscar»), y pídele que declare sus suposiciones. Cada suposición es una línea que tú compruebas.
+
+</Paso>
+
+<Paso numero={3} titulo="Primer filtro: el compilador">
+El filtro más barato no cuesta nada: TypeScript conoce la API de Playwright. Si la IA inventa un método, el compilador lo señala sin ejecutar un test. Necesitas un `tsconfig.json` en la raíz del proyecto:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "nodenext",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["tests", "pages"]
+}
+```
+
+`noEmit` significa «solo revisa, no generes archivos». Se usa así:
+
+```bash
+npx tsc
+```
+
+Si no imprime nada y termina bien, el código compila. Playwright ejecuta TypeScript sin comprobar los tipos, así que **un test puede ejecutarse con errores de tipo** y fallar solo en el momento en que llega a la línea mala. El compilador los encuentra todos de una vez.
+
+Compilar no prueba que el código sea correcto, solo que usa APIs que existen. Un localizador inventado compila perfectamente: es solo un texto.
+
+</Paso>
+
+<Paso numero={4} titulo="Segundo filtro: buscar las señales de siempre">
+En un framework, la búsqueda rápida cambia un poco respecto al módulo 1.8. Se mira en las carpetas de la IA:
+
+```bash
+grep -rnE "waitForTimeout|\.locator\(|nth|password|localhost" pages/ia tests/ia
+```
+
+- `waitForTimeout`: espera fija.
+- `.locator(`: probablemente un selector CSS o XPath. No todos son malos, pero cada uno merece una explicación.
+- `nth`: posición, no significado.
+- `password` y `localhost`: una contraseña o una dirección escritas a mano.
+
+Y en los specs, una regla del módulo 2.2: **no deben tocar la página directamente**. Si ves `page.getByRole(...)` o `page.locator(...)` en un `*.spec.ts`, esa lógica debería estar en un Page Object.
+
+Esta búsqueda no sustituye a leer. Sirve para decidir por dónde empezar y para no olvidarte de los fallos más comunes.
+
+</Paso>
+
+<Paso numero={5} titulo="Tercer filtro: ejecutar contra la tienda sana">
+Con `baseline`, ejecuta la suite. Un fallo aquí es información directa: lo que la IA llama «el botón Filtrar» no existe, o un texto que supone no es el real. Lee el mensaje antes de corregir. Si dice `waiting for getByRole('button', { name: 'Filtrar' })` hasta agotar el tiempo, el localizador apunta a algo que no está en la pantalla.
+
+Corrige mirando **la página real** (con el inspector de Playwright o con DevTools), no preguntándole otra vez a la IA «arréglalo». Si le pides que lo corrija sin darle la verdad de la página, inventará otro texto.
+
+</Paso>
+
+<Paso numero={6} titulo="Los datos generados se verifican contra la fuente de verdad">
+Un archivo de datos «de prueba» generado por la IA parece obediente: nombres, precios, categorías. Pero los valores los inventó. La fuente de verdad es la propia tienda. Un script de unas 25 líneas compara tu archivo con la API:
+
+```ts
+import { readFileSync } from "node:fs";
+
+interface Dato {
+  id: number;
+  nombre: string;
+  precioCentavos: number;
+  categoria: string;
+}
+const productos: Dato[] = JSON.parse(readFileSync("datos/productos.json", "utf8"));
+
+const base = process.env.ARENA_URL ?? "http://localhost:18080";
+const res = await fetch(`${base}/api/products?pageSize=50`); // 50 es el máximo; la tienda tiene 24
+const { items } = (await res.json()) as {
+  items: { id: number; name: string; priceCents: number; category: string }[];
+};
+
+let errores = 0;
+for (const p of productos) {
+  const real = items.find((x) => x.id === p.id);
+  if (!real) {
+    console.log(`id ${p.id} (${p.nombre}): NO EXISTE en la tienda`);
+    errores++;
+    continue;
+  }
+  const difs: string[] = [];
+  if (real.name !== p.nombre) difs.push(`nombre ${real.name}`);
+  if (real.priceCents !== p.precioCentavos) difs.push(`precio ${real.priceCents}`);
+  if (real.category !== p.categoria) difs.push(`categoria ${real.category}`);
+  if (difs.length) {
+    console.log(`id ${p.id} (${p.nombre}): difiere -> ${difs.join(", ")}`);
+    errores++;
+  }
+}
+console.log(
+  errores === 0 ? "datos coinciden con la tienda" : `${errores} producto(s) con problemas`,
+);
+process.exitCode = errores === 0 ? 0 : 1;
+```
+
+Guárdalo como `scripts/verificar-datos.mts` (la extensión `.mts` hace que Node 24 lo ejecute como módulo, sin compilar) y úsalo con `node scripts/verificar-datos.mts`. La idea sirve para cualquier dato generado: **compáralo con la fuente real antes de usarlo**, no después de que un test raro falle.
+
+</Paso>
+
+<Paso numero={7} titulo="Cuarto filtro: ¿el refactor sigue detectando lo que detectaba?">
+Un refactor correcto cambia **dónde** está el código, no **qué comprueba**. La forma de saberlo es objetiva: ejecuta el test antes y después contra un escenario con un defecto que el original detectaba.
+
+1. Con `baseline`, los dos pasan. Eso no demuestra nada.
+2. Con el escenario del defecto, el original **debe fallar**. Si el refactor pasa en verde, perdió poder de detección.
+
+Un refactor que «mejora» un test puede, sin que se note, cambiar un `dblclick()` por un `click()`, una aserción de importe exacto por `toBeVisible()` o quitar un paso de limpieza. El test conserva el título y la forma, pero ya no prueba lo mismo. En el ejemplo de la sección 3 verás un caso real.
+
+La regla práctica: **ningún refactor hecho por una IA se acepta sin ejecutar el antes y el después contra un defecto conocido**.
+
+</Paso>
+
+<Paso numero={8} titulo="Medir: tiempo ahorrado y errores introducidos">
+Decir que la IA «ahorra tiempo» sin medirlo es una impresión. Para cada uso apunta cuatro números:
+
+- **Manual**: cuánto habrías tardado tú sin IA (una estimación honesta).
+- **Pedir**: el tiempo de escribir el prompt y esperar la respuesta.
+- **Revisar**: el tiempo de leer, compilar, buscar y ejecutar.
+- **Corregir**: el tiempo de arreglar lo que estaba mal.
+
+El **tiempo ahorrado** es `manual - (pedir + revisar + corregir)`. Puede ser negativo, y entonces la IA te costó tiempo: es información valiosa, no un fracaso.
+
+Y cuenta los **errores**:
+
+- **Hallados**: los que encontraste en la revisión.
+- **Escapados**: los que se descubrieron más tarde (en otra ejecución, por un compañero, en producción).
+
+Los escapados son los que importan. Si en un mes la IA te ahorró 3 horas pero se te escaparon 4 errores que costaron 5 horas, la cuenta es negativa. Una tabla en `ia/medicion.md` es suficiente:
+
+```markdown
+| Uso            | Manual | Pedir | Revisar | Corregir | Ahorro | Hallados | Escapados |
+| -------------- | -----: | ----: | ------: | -------: | -----: | -------: | --------: |
+| Page Object    |  25min |  2min |   10min |    12min |   1min |        4 |         0 |
+| Datos          |  15min |  2min |    6min |     5min |   2min |        2 |         0 |
+| Refactor cupón |  20min |  2min |   14min |     6min |  -2min |        1 |         0 |
+```
+
+Los números del ejemplo son ilustrativos: apunta los tuyos.
+
+</Paso>
+
+<Paso numero={9} titulo="Decidir y registrar">
+Después de las comprobaciones decides, como en el 1.8: **aceptar**, **modificar** o **rechazar**. Y lo registras. En este módulo el registro es un archivo, `ia/registro.yaml`, con una entrada por archivo que revisaste:
+
+```yaml
+usos:
+  - archivo: pages/ia/CatalogoPage.ts
+    pedido: "Crea un Page Object del catálogo con búsqueda y un test"
+    decision: modifico
+    motivo: "Usaba un método de Playwright que no existe, un botón inexistente y una espera fija; lo reescribí con los localizadores reales"
+```
+
+Cada entrada tiene:
+
+- `archivo`: la ruta de un archivo que exista en tu repositorio.
+- `pedido`: qué le pediste (al menos 20 caracteres).
+- `decision`: `acepto`, `modifico` o `rechazo`.
+- `motivo`: por qué (al menos 30 caracteres cuando modificas o rechazas). Debe decir **qué estaba mal y cómo lo comprobaste**.
+
+Un registro con tres `acepto` seguidos es sospechoso: la IA no acierta siempre. Quien lo lee (una persona que revisa tu trabajo) valora más un «rechacé este archivo porque...» honesto que una columna de aceptaciones. Y en el reto, el registro es obligatorio pero **no da puntos por sí mismo**: los puntos salen de que tu código corregido funcione.
+
+No escribas en el registro claves, contraseñas ni datos personales.
+
+</Paso>
+
+<Paso numero={10} titulo="Cuándo no usar IA">
+Hay casos en los que el mejor uso es ninguno:
+
+- Código que **no vas a poder explicar** línea por línea.
+- Pruebas de seguridad o con datos reales de personas: nada de eso se pega en una conversación.
+- El diseño de la **estrategia** de pruebas (qué probar y qué no): es tu criterio; la IA puede dar ideas, no decidir.
+- Cuando corregir el borrador cuesta más que escribirlo tú. Rechazar a tiempo es parte del oficio.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Tres entregas de una IA: Page Object, datos y refactor">
+Una IA te entrega tres cosas. Los archivos de la IA van en `pages/ia/`, `tests/ia/` y `datos/`; lo revisado pasa después a tu framework (`pages/`, `tests/`).
+
+**Entrega 1: un Page Object del catálogo.** Prompt: «Crea un Page Object del catálogo con búsqueda y un test». `pages/ia/CatalogoPage.ts`:
+
+```ts
+// Generado por IA a partir de: "Crea un Page Object del catálogo con búsqueda y un test".
+import type { Page } from "@playwright/test";
+
+export class CatalogoPage {
+  constructor(private readonly page: Page) {}
+
+  async abrir() {
+    await this.page.goto("/");
+    await this.page.waitForLoadComplete();
+  }
+
+  async buscar(texto: string) {
+    await this.page.getByTestId("catalog-search").fill(texto);
+    await this.page.getByRole("button", { name: "Filtrar" }).click();
+    await this.page.waitForTimeout(2000);
+  }
+
+  primerProducto() {
+    return this.page.locator("ul.grid > li:nth-child(1)");
+  }
+}
+```
+
+y su test, `tests/ia/catalogo.spec.ts`:
+
+```ts
+// Generado por IA a partir de: "Crea un Page Object del catálogo con búsqueda y un test".
+import { test, expect } from "@playwright/test";
+import { CatalogoPage } from "../../pages/ia/CatalogoPage";
+
+test("buscar Atlas muestra un resultado", async ({ page }) => {
+  const catalogo = new CatalogoPage(page);
+  await catalogo.abrir();
+  await catalogo.buscar("Atlas");
+  await expect(catalogo.primerProducto()).toContainText("Atlas");
+});
+```
+
+**Revisión.** Primer filtro, el compilador:
+
+```text
+$ npx tsc
+pages/ia/CatalogoPage.ts(9,21): error TS2339: Property 'waitForLoadComplete' does not exist on type 'Page'.
+```
+
+Playwright no tiene `waitForLoadComplete`. La IA lo inventó con un nombre verosímil. Segundo filtro, la búsqueda:
+
+```text
+$ grep -nE "waitForTimeout|\.locator\(|nth" pages/ia/CatalogoPage.ts
+15:    await this.page.waitForTimeout(2000);
+19:    return this.page.locator("ul.grid > li:nth-child(1)");
+```
+
+Una espera fija y un selector por posición. Tercer filtro: si quitas la línea inventada y ejecutas con un tiempo corto (`npx playwright test tests/ia/catalogo.spec.ts --timeout=15000`), falla con `waiting for getByRole('button', { name: 'Filtrar' })`: ese botón no existe. En la página real el campo de búsqueda filtra al escribir, sin botón.
+
+Resumen de las fallas de esta entrega: un método inventado, un botón inventado, una espera fija y un selector frágil. Cuatro fallas en 20 líneas.
+
+**Decisión: modifico.** La estructura (una clase con `abrir` y `buscar`) sirve. Se reescribe con lo que hay en pantalla, en `pages/CatalogoPage.ts`:
+
+```ts
+import { expect, type Locator, type Page } from "@playwright/test";
+
+export class CatalogoPage {
+  readonly buscador: Locator;
+  readonly productos: Locator;
+
+  constructor(private readonly page: Page) {
+    this.buscador = page.getByTestId("catalog-search");
+    this.productos = page.getByTestId("product-list").getByRole("listitem");
+  }
+
+  async abrir() {
+    await this.page.goto("/");
+    await expect(this.page.getByTestId("arena-ready")).toBeAttached();
+    await expect(this.productos.first()).toBeVisible();
+  }
+
+  async buscar(texto: string) {
+    await this.buscador.fill(texto);
+  }
+}
+```
+
+y el test pasa a comprobar el resultado completo, no «contiene Atlas» sobre la primera posición:
+
+```ts
+import { test, expect } from "@playwright/test";
+import { CatalogoPage } from "../pages/CatalogoPage";
+
+test("buscar Atlas muestra un resultado", async ({ page }) => {
+  const catalogo = new CatalogoPage(page);
+  await catalogo.abrir();
+  await catalogo.buscar("Atlas");
+  await expect(catalogo.productos).toHaveCount(1);
+  await expect(catalogo.productos.first()).toContainText("Atlas mundial");
+});
+```
+
+Con la Arena en `baseline` y el compilador sin errores, pasa en menos de un segundo. Fíjate en que el Page Object espera a `arena-ready` (módulo 1.2) y a que aparezca el primer producto: no hay pausas.
+
+**Entrega 2: datos de prueba.** Prompt: «Dame datos de prueba del catálogo de QA Arena». `datos/productos.json`:
+
+```json
+[
+  { "id": 1, "nombre": "Auriculares BT", "precioCentavos": 990, "categoria": "Electronica" },
+  { "id": 24, "nombre": "Atlas mundial", "precioCentavos": 1999, "categoria": "Libros" },
+  { "id": 31, "nombre": "Lámpara LED", "precioCentavos": 1250, "categoria": "Hogar" }
+]
+```
+
+Parece correcto. Se verifica con el script del paso 6:
+
+```text
+$ node scripts/verificar-datos.mts
+id 24 (Atlas mundial): difiere -> precio 2140
+id 31 (Lámpara LED): NO EXISTE en la tienda
+2 producto(s) con problemas
+```
+
+El «Atlas mundial» cuesta 21,40 USD (2140 centavos), no 19,99, y no hay ningún producto con id 31. Un test que usara estos datos fallaría con un mensaje confuso o, peor, pasaría con un valor equivocado. **Decisión: modifico**: se corrigen los valores con la API y el script queda como comprobación de cada archivo de datos.
+
+**Entrega 3: un refactor.** Tenías este test del módulo 1.3, que comprueba que un doble clic rápido en «Aplicar» descuenta el cupón una sola vez (`tests/cupon-original.spec.ts`):
+
+```ts
+import { test, expect } from "@playwright/test";
+import { abrir, agregarProducto, iniciarSesion, vaciarCarrito } from "./support/tienda";
+
+test.beforeEach(async ({ page }) => {
+  await iniciarSesion(page);
+  await vaciarCarrito(page);
+});
+
+test("un doble clic en Aplicar descuenta el cupón una sola vez", async ({ page }) => {
+  await agregarProducto(page, 2);
+  await abrir(page, "/cart");
+  await page.getByLabel("Cupon").fill("SAVE5");
+  await page.getByRole("button", { name: "Aplicar" }).dblclick();
+  await expect(page.getByTestId("cart-discount")).toHaveText("-$5.00");
+});
+```
+
+Prompt: «Refactoriza este test para usar un Page Object del carrito». La IA entrega `pages/ia/CarritoPage.ts` y `tests/ia/cupon.spec.ts`:
+
+```ts
+// Generado por IA a partir de: "Refactoriza el test del cupón para usar un Page Object del carrito".
+import { expect, type Locator, type Page } from "@playwright/test";
+import { abrir } from "../../tests/support/tienda";
+
+export class CarritoPage {
+  readonly descuento: Locator;
+
+  constructor(private readonly page: Page) {
+    this.descuento = page.getByTestId("cart-discount");
+  }
+
+  async abrir() {
+    await abrir(this.page, "/cart");
+  }
+
+  async aplicarCupon(codigo: string) {
+    await this.page.getByLabel("Cupon").fill(codigo);
+    await this.page.getByRole("button", { name: "Aplicar" }).click();
+    await expect(this.descuento).toBeVisible();
+  }
+}
+```
+
+```ts
+// Generado por IA a partir de: "Refactoriza el test del cupón para usar un Page Object del carrito".
+import { test, expect } from "@playwright/test";
+import { CarritoPage } from "../../pages/ia/CarritoPage";
+import { agregarProducto, iniciarSesion, vaciarCarrito } from "../support/tienda";
+
+test.beforeEach(async ({ page }) => {
+  await iniciarSesion(page);
+  await vaciarCarrito(page);
+});
+
+test("un doble clic en Aplicar descuenta el cupón una sola vez", async ({ page }) => {
+  const carrito = new CarritoPage(page);
+  await agregarProducto(page, 2);
+  await carrito.abrir();
+  await carrito.aplicarCupon("SAVE5");
+  await expect(carrito.descuento).toHaveText("-$5.00");
+});
+```
+
+Compila, y la estructura es buena: el spec ya no toca la página. Con `baseline`, ambos tests pasan. Ahora el filtro del paso 7. Activa `fase1-compra` (el escenario del doble clic) y ejecuta los dos:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase1-compra"}'
+curl -X POST http://localhost:18080/__arena/reset
+npx playwright test cupon
+```
+
+```text
+  ✘  tests/cupon-original.spec.ts › un doble clic en Aplicar descuenta el cupón una sola vez
+    Expected: "-$5.00"
+    Received: "-$10.00"
+  ✓  tests/ia/cupon.spec.ts › un doble clic en Aplicar descuenta el cupón una sola vez
+```
+
+El original **detecta** el defecto (el descuento sale doble); el refactor **no**. La IA convirtió `dblclick()` en `click()` y el test conserva el título («un doble clic...») sin hacer ningún doble clic. Es el peor tipo de fallo de un refactor: silencioso.
+
+**Decisión: modifico.** El Page Object conserva el método general y añade el comportamiento que importa:
+
+```ts
+  async aplicarCuponConDobleClic(codigo: string) {
+    await this.page.getByLabel("Cupon").fill(codigo);
+    await this.page.getByRole("button", { name: "Aplicar" }).dblclick();
+  }
+```
+
+y el test llama a ese método. Se vuelve a ejecutar con `fase1-compra`: debe fallar igual que el original. Al terminar, `curl -X PUT ... '{"id":"baseline"}'`.
+
+**Medición y registro.** Tres entregas, 7 errores hallados (4, 2 y 1) y ninguno escapado gracias a los filtros. El tiempo ahorrado fue pequeño (la última entrega incluso costó más de lo que ahorró), y eso se anota tal cual. El `ia/registro.yaml` queda con una entrada por archivo:
+
+```yaml
+usos:
+  - archivo: pages/ia/CatalogoPage.ts
+    pedido: "Crea un Page Object del catálogo con búsqueda y un test"
+    decision: modifico
+    motivo: "Usaba un método que no existe, un botón inexistente y una espera fija; lo reescribí con los localizadores reales y lo comprobé con tsc y en baseline"
+  - archivo: datos/productos.json
+    pedido: "Dame datos de prueba del catálogo de QA Arena"
+    decision: modifico
+    motivo: "Precio de Atlas mundial y un producto con id inexistente; los corregí con la API y verifiqué con verificar-datos.mts"
+  - archivo: pages/ia/CarritoPage.ts
+    pedido: "Refactoriza el test del cupón para usar un Page Object del carrito"
+    decision: modifico
+    motivo: "Cambió dblclick por click y dejó de detectar el defecto del doble clic en fase1-compra; añadí un método con dblclick y lo ejecuté contra el escenario"
+```
+
+Lo que debes observar:
+
+1. **Cada filtro encontró algo distinto.** El compilador, el método inventado; la búsqueda, la espera y el selector; la ejecución, el botón inexistente; el script, los datos; el escenario, la aserción perdida. Ninguno basta solo.
+2. **Los filtros más baratos van primero** (compilar y buscar cuestan segundos) y los más caros después (ejecutar con un escenario).
+3. **El refactor «limpio» era el peor**: compilaba, pasaba en `baseline` y tenía mejor estructura. Solo la comparación con un defecto lo delató.
+4. **El registro dice qué falló y cómo se comprobó**, no solo «lo modifiqué».
+
+Los errores típicos de esta práctica:
+
+- **Confiar en el verde de `baseline`**: el refactor del ejemplo pasaba.
+- **Pedirle a la IA que corrija sin darle la verdad de la página**: inventa otro texto.
+- **Verificar los datos solo cuando un test raro falla**: hazlo al generarlos.
+- **Dejar la Arena en `fase1-compra`** al terminar: vuelve a `baseline`.
+- **Escribir `acepto` por costumbre** en el registro, sin haber ejecutado nada.
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+Los archivos de la sección 3 son tu material. Los ejercicios 1 a 3 usan `baseline`; el 4 usa `fase1-compra` (se activa con el comando de la sección 3). El botón abre la Arena **alojada**, solo para explorar; tus tests van contra tu Arena local. Vuelve a `baseline` al terminar.
+
+<Ejercicio id="ej-2-9-compilar-primero">
+  Guarda el Page Object y el test de la primera entrega, crea el `tsconfig.json` del paso 3 y
+  ejecuta `npx tsc`. Anota el error, la línea y por qué Playwright ejecutaría ese código sin
+  avisarte hasta llegar a ella.
+</Ejercicio>
+
+<Ejercicio id="ej-2-9-escaner-framework">
+  Ejecuta la búsqueda del paso 4 sobre las carpetas de la IA y clasifica cada línea: espera fija,
+  selector por posición o selector CSS. Para cada una, escribe el localizador accesible que la
+  sustituiría, mirando la página real de la tienda.
+</Ejercicio>
+
+<Ejercicio id="ej-2-9-verificar-datos">
+  Guarda `datos/productos.json` y el script de verificación del paso 6. Ejecútalo, corrige el
+  archivo con los valores reales de la API y comprueba que el script termina con el código 0.
+</Ejercicio>
+
+<Ejercicio id="ej-2-9-refactor-detecta">
+  Ejecuta el test original y el refactor del cupón con `baseline` y con `fase1-compra`. Explica con
+  tus palabras por qué el refactor pasa en verde en los dos, y corrígelo hasta que falle igual que
+  el original en `fase1-compra`.
+</Ejercicio>
+
+<Ejercicio id="ej-2-9-medir-y-registrar">
+  Para las tres entregas, rellena una tabla de medición con tus propios tiempos (aunque sean
+  estimados) y escribe las tres entradas de `ia/registro.yaml`. Revisa que cada motivo diga qué
+  estaba mal y cómo lo comprobaste.
+</Ejercicio>
+
+<AbrirArena escenario="fase1-aserciones" />
+
+## 5. Reto sin guía
+
+<Reto titulo="Revisa, corrige y registra código de framework generado por IA">
+  Este reto lo evalúa la plataforma cada vez que haces `push` a `main`. Parte de una plantilla con
+  código «generado por una IA»: seis tests y tres Page Objects que parecen razonables, pero que
+  esconden fallos. Tu trabajo es revisarlos como los de un compañero, no escribir otros.
+
+**Cómo conseguirlo.** Crea tu repositorio desde la plantilla `reto-2-9-ia-framework` (**Use this template**, visibilidad **Public**, sin secretos), clónalo, instala con `npm ci` y el navegador con `npx playwright install chromium`, y sigue su README. Es un repositorio distinto de tu práctica del curso.
+
+**Qué entregas:**
+
+1. Los **6 tests de la IA conservados, con el mismo título**, corregidos y en verde contra la Arena sin defectos. No sirve borrarlos y escribir otros: cada uno lleva una etiqueta `@ia-…` que no debes quitar.
+2. Tu propia revisión: la plantilla tiene fallos de varios tipos y tú decides cuáles hay. Usa los filtros del módulo (compilador, búsqueda, ejecución contra la tienda sana y contra los escenarios).
+3. Cada test etiquetado debe, además de pasar, **detectar** el defecto de la tienda que su flujo toca. Pasar en verde no es lo mismo que detectar: un test vaciado que conserva su título y su etiqueta no puntúa. Piensa qué comportamiento roto de la tienda toca el flujo de cada test y qué tendría que mirar para notarlo.
+4. Los specs no tocan la página directamente: la lógica va en tus Page Objects, sin bloques de código repetidos.
+5. Sin esperas fijas (`waitForTimeout`), con localizadores accesibles (rol, etiqueta o `data-testid`, sin CSS ni XPath) y sin contraseñas en el código: las credenciales llegan por `USUARIO_EMAIL` y `USUARIO_CLAVE`.
+6. No usas `/__arena` ni variables `ARENA_*` desde los tests.
+7. **`ia/registro.yaml`** con al menos 3 usos, uno por archivo de IA que revisaste, con al menos un `modifico` o `rechazo` y su motivo. Es obligatorio, pero no da puntos por sí mismo: los puntos salen de que tu código corregido funcione.
+
+Criterios, en lenguaje de la plataforma:
+
+- Todos los tests pasan contra la Arena sin defectos.
+- Conservas los 6 tests generados por la IA, corregidos y en verde.
+- Cada uno de los tests del cupón, de quitar el producto y del login incorrecto detecta el defecto de la tienda que le corresponde.
+- Sin esperas fijas.
+- Localizadores accesibles, sin selectores CSS.
+- Sin contraseñas escritas en el código.
+- Los tests no tocan la página directamente.
+- Sin bloques de código repetidos.
+- Registras tu revisión de la IA en `ia/registro.yaml`.
+- La suite no usa los endpoints internos de la Arena.
+
+Cómo entregar: vincula el repositorio en la plataforma, crea el secreto `COURSE_CHALLENGE_KEY` y la variable `COURSE_KEY_ID` en tu repositorio y haz `push` a `main`. No edites `.github/workflows/evaluar.yml`: si lo cambias, la plataforma rechaza la entrega.
+
+Antes de entregar, la prueba general: ejecuta la suite con la Arena sana y, uno por uno, con cada escenario de los tests etiquetados; y comprueba que `npx tsc` no devuelve errores (la plantilla no trae TypeScript: instálalo y copia el `tsconfig.json` del paso 3).
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+Este módulo trata de la IA, y por eso esta sección es corta: aquí va la versión de bolsillo del método.
+
+**Qué pedirle:**
+
+- Esqueletos de Page Objects, **dándole los textos y `data-testid` reales** de la página.
+- Tablas de datos, **con la fuente de verdad** al lado (la API o la pantalla) para que las compare.
+- Refactors pequeños (una clase, un archivo), con tus reglas en el prompt.
+- «Lista todo lo que supusiste» al final de cada respuesta.
+
+**Qué revisar antes de aceptarlo:**
+
+- Que compile (`npx tsc`) y que no use métodos que no encuentras en la documentación de Playwright.
+- Que cada localizador exista en la pantalla real.
+- Que los datos coincidan con la tienda, ejecutando el script de verificación.
+- Que un refactor siga detectando lo que detectaba, ejecutando antes y después contra un escenario con defecto.
+- Que no haya `waitForTimeout`, selectores CSS, credenciales ni direcciones escritas a mano.
+
+**Qué rechazar:**
+
+- Código que no puedes explicar línea por línea.
+- Una aserción que se «simplificó» para que el test pasara, o una acción que desapareció en un refactor.
+- Datos que la IA presenta como reales y no puedes comprobar.
+- Pegar en la conversación tu `.env`, contraseñas reales o datos de personas.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Aceptar porque compila y pasa">
+  Compilar prueba que las llamadas existen. Pasar en `baseline` prueba que la tienda sana no
+  contradice el test. Ninguna de las dos prueba que el test **detecte** un defecto.
+</ErrorComun>
+
+<ErrorComun titulo="Pedirle a la IA que arregle sin darle la pantalla real">
+  Si no le das los textos y los `data-testid` verdaderos, corrige un localizador inventado con otro
+  inventado. Mira la página y pega lo que ves.
+</ErrorComun>
+
+<ErrorComun titulo="Refactorizar sin comparar el antes y el después">
+  Un refactor puede perder una acción o debilitar una aserción y seguir en verde. Ejecuta los dos
+  contra un escenario con defecto y exige que el refactor falle donde fallaba el original.
+</ErrorComun>
+
+<ErrorComun titulo="Usar datos generados sin contrastarlos">
+  Los valores inventados parecen reales. Compáralos con la API o con la pantalla antes de que un
+  test dependa de ellos.
+</ErrorComun>
+
+<ErrorComun titulo="Un registro de aceptaciones sin pruebas">
+  Escribir `acepto` sin haber compilado, buscado ni ejecutado nada es un registro vacío. Cada
+  decisión debe decir qué comprobaste.
+</ErrorComun>
+
+<ErrorComun titulo="Medir solo lo que ahorraste">
+  El tiempo ahorrado sin contar los errores escapados da una cuenta falsa. Apunta también lo que
+  encontraste tarde, que es lo que más cuesta.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- En un framework, el código de una IA se reutiliza: un error se multiplica en todos los tests que lo usan.
+- Un buen prompt da las convenciones del framework y los textos reales de la pantalla, y pide la lista de suposiciones.
+- Los filtros baratos van primero: el compilador (`npx tsc`) encuentra métodos inventados; `grep` encuentra esperas, selectores y contraseñas.
+- Ejecutar con `baseline` encuentra localizadores que no existen; los datos generados se comparan con la API.
+- Un refactor sigue siendo válido solo si detecta lo que detectaba: se comprueba ejecutando antes y después contra un escenario con defecto.
+- Se mide tiempo (manual, pedir, revisar, corregir) y errores (hallados y escapados): el ahorro puede ser negativo.
+- Cada decisión (acepto, modifico, rechazo) se registra en `ia/registro.yaml` diciendo qué estaba mal y cómo lo comprobaste.
+- Rechazar a tiempo, o no usar IA, también es una decisión profesional.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

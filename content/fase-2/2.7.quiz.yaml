@@ -1,0 +1,89 @@
+preguntas:
+  - id: rep-que-es-trazabilidad
+    enunciado: "¿Qué permite la trazabilidad entre requisitos y tests?"
+    opciones:
+      [
+        "Repartir los tests entre workers según el requisito que prueban",
+        "Ver qué requisitos están cubiertos, cuáles fallan y cuáles no tienen prueba",
+        "Actualizar solos los tests cuando cambia el texto de un requisito",
+        "Reemplazar las aserciones por anotaciones que describen cada requisito",
+      ]
+    correcta: 1
+    explicacion: "La trazabilidad une cada requisito con sus tests y con el resultado. Así se ven los huecos y se explica un fallo en lenguaje de negocio. No acelera ni evita fallos, y no reemplaza las aserciones."
+  - id: rep-anotacion
+    enunciado: "¿Cómo se ata en Playwright un test al requisito REQ-3?"
+    opciones:
+      [
+        "Escribiendo REQ-3 en un comentario justo encima del test, con formato fijo",
+        'Con `{ annotation: { type: "requisito", description: "REQ-3" } }` tras el título',
+        'Con `test.info().annotations.clear("REQ-3")` al final del cuerpo del test',
+        "Guardando el test en un archivo cuyo nombre empiece por REQ-3, como convención",
+      ]
+    correcta: 1
+    explicacion: "Las anotaciones viajan con el test hasta el informe JSON y otras herramientas pueden leerlas. Un comentario no llega a ningún informe, `skip` omite el test y un nombre de archivo no identifica el requisito."
+  - id: rep-error-arreglo
+    enunciado: 'Escribes `test("...", [{ type: "requisito", description: "REQ-6" }], async () => {})` y Playwright responde `details: expected object, got array`. ¿Cuál es la corrección?'
+    opciones:
+      [
+        "Pasar un objeto con la clave `annotation`, cuyo valor puede ser una lista de anotaciones",
+        "Quitar el segundo argumento y dejar solo el título y la función",
+        "Cambiar la palabra `requisito` por `tag` dentro de cada objeto",
+        "Mover el arreglo de anotaciones a `playwright.config.ts` del proyecto",
+      ]
+    correcta: 0
+    explicacion: "El segundo argumento son las opciones del test, que deben ser un objeto. La clave `annotation` acepta una anotación o una lista; el arreglo suelto no es válido."
+  - id: rep-etiqueta-vs-anotacion
+    enunciado: '¿Para qué sirve sobre todo `{ tag: "@REQ-2" }` frente a la anotación `requisito`?'
+    opciones:
+      [
+        "Para que el test se ejecute dos veces, una por cada requisito",
+        "Para ocultar el test en el informe cuando el requisito no aplique",
+        "Para filtrar qué tests se ejecutan con `npx playwright test --grep @REQ-2`",
+        "Para marcar el test como no verificable en la matriz de requisitos",
+      ]
+    correcta: 2
+    explicacion: "La etiqueta selecciona tests con `--grep`; la anotación describe el test en el informe. Pueden usarse juntas, pero no cambian cuántas veces se ejecuta un test ni lo ocultan."
+  - id: rep-cubierto
+    enunciado: "REQ-3 tiene dos tests anotados y uno falla. ¿Qué dice la matriz del módulo?"
+    opciones:
+      [
+        "Que REQ-3 está cubierto, porque al menos uno de sus dos tests pasa",
+        "Que REQ-3 está sin pruebas, porque el test que falla no cuenta como prueba",
+        "Que REQ-3 es no verificable, porque un test que falla no demuestra nada",
+        "Que REQ-3 falla: está cubierto solo si todos sus tests pasan",
+      ]
+    correcta: 3
+    explicacion: "Un requisito cubierto necesita al menos un test y que todos pasen. Con uno en fallo, el estado es «falla» y puede tratarse de un defecto de la tienda o de un test desactualizado."
+  - id: rep-open-never
+    enunciado: '¿Por qué el reportero HTML se configura con `open: "never"` en un proyecto con integración continua?'
+    opciones:
+      [
+        "Para que el navegador no se abra solo y bloquee la ejecución en el servidor",
+        "Para que el informe no se genere y la ejecución termine antes",
+        "Para que los tests no se ejecuten hasta que alguien abra el informe",
+        "Para que el informe no incluya las anotaciones de cada requisito",
+      ]
+    correcta: 0
+    explicacion: '`open: "never"` genera el informe sin abrirlo. En un servidor, abrir un navegador puede dejar la ejecución colgada. El informe se sigue creando con sus anotaciones; se abre a mano con `npx playwright show-report`.'
+  - id: rep-req9
+    enunciado: "REQ-9 pide una notificación de confirmación que la Arena no envía. ¿Qué haces?"
+    opciones:
+      [
+        "Anotar REQ-9 en un test de pago aprobado para que la matriz quede completa",
+        "Borrar REQ-9 de la lista, porque la Arena no lo implementa",
+        "Marcarlo como no verificable con su motivo y no inventar una prueba",
+        "Esperar 5 segundos en el test y comprobar si aparece algo en pantalla",
+      ]
+    correcta: 2
+    explicacion: "Una anotación falsa da una cobertura que no existe, y una espera fija no comprueba nada. Declarar el requisito como no verificable, con su motivo, deja el hueco visible y honesto."
+  - id: rep-publicar
+    enunciado: "Quieres que el informe se suba como artefacto aunque los tests fallen, sin esconder ese fallo. ¿Qué pones en el paso que lo sube?"
+    opciones:
+      [
+        "`continue-on-error: true` en el paso de los tests (así el job sigue y sube el informe, pero queda en verde aunque falle)",
+        "`if: ${{ !cancelled() }}`",
+        "`if: success()`",
+        "Nada: se sube siempre",
+      ]
+    correcta: 1
+    explicacion: "Un paso solo se ejecuta si los anteriores tuvieron éxito, salvo que lo indiques. `continue-on-error: true` también subiría el informe, pero deja el job en verde con tests rotos, así que esconde el fallo. `if: ${{ !cancelled() }}` lo ejecuta también tras un fallo. `success()` lo omite justo cuando más se necesita el informe."

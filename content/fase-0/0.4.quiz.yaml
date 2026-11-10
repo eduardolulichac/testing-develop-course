@@ -1,0 +1,69 @@
+preguntas:
+  - id: web-dom
+    enunciado: "¿Qué es el DOM?"
+    opciones:
+      - "El árbol de elementos que el navegador construye a partir del HTML"
+      - "Un servidor que guarda las páginas"
+      - "Un formato para enviar datos"
+      - "Un código de estado HTTP"
+    correcta: 0
+    explicacion: "El DOM es la representación en árbol de la página. JavaScript lo modifica y por eso la página cambia sin recargarse."
+  - id: web-metodo-leer
+    enunciado: "¿Qué método HTTP se usa normalmente para leer un recurso sin modificarlo?"
+    opciones: ["POST", "GET", "DELETE", "PATCH"]
+    correcta: 1
+    explicacion: "`GET` lee. `POST` crea o envía datos, `PATCH` modifica y `DELETE` borra."
+  - id: web-estado-5xx
+    enunciado: "Una petición responde 500. ¿Qué indica?"
+    opciones:
+      - "El cliente envió datos inválidos"
+      - "El recurso pedido no existe"
+      - "Falló el servidor"
+      - "Hace falta iniciar sesión"
+    correcta: 2
+    explicacion: "La familia `5xx` es de errores del servidor. Los datos inválidos dan un `4xx`, un recurso inexistente `404` y la falta de sesión `401`."
+  - id: web-404-esperado
+    enunciado: "Pides `GET /api/products/9999`, que no existe, y la API responde 404 con un mensaje claro. ¿Es un fallo?"
+    opciones:
+      - "Sí, debería responder 200 con una lista vacía"
+      - "Sí, cualquier 4xx es un fallo de la aplicación"
+      - "No, es el comportamiento correcto ante un recurso inexistente"
+      - "No se puede saber sin ver la pantalla"
+    correcta: 2
+    explicacion: "Un 404 con mensaje claro es la respuesta adecuada. Reportarlo como bug sería un falso positivo."
+  - id: web-curl-i
+    enunciado: "¿Qué hace la opción `-i` de curl?"
+    opciones:
+      - "Oculta la barra de progreso"
+      - "Muestra la línea de estado y las cabeceras de la respuesta"
+      - "Ignora los errores"
+      - "Envía el cuerpo como JSON"
+    correcta: 1
+    explicacion: "`-i` incluye en la salida el código de estado y las cabeceras. Ocultar el progreso es `-s`."
+  - id: web-json-revisar
+    enunciado: "Al leer un JSON de una API, ¿qué conviene revisar?"
+    opciones:
+      - "Solo que el estado sea 200"
+      - "Que estén todos los campos esperados, con el tipo y valor correctos"
+      - "Que el JSON sea largo"
+      - "Que las claves estén en mayúsculas"
+    correcta: 1
+    explicacion: "Un 200 no garantiza que el contenido sea correcto: puede faltar un campo o tener un tipo erróneo."
+  - id: web-network-lento
+    enunciado: "Quieres saber qué petición de la página es la más lenta. ¿Qué haces en Network?"
+    opciones:
+      - "Miras la pestaña Elements"
+      - "Ordenas por la columna Time y repites la medida varias veces"
+      - "Cuentas las filas"
+      - "Lees solo las cabeceras de la primera petición"
+    correcta: 1
+    explicacion: "Ordenar por Time muestra la más lenta. Repetir la medida evita sacar conclusiones de un valor casual."
+  - id: web-401-400
+    enunciado: "Un `POST /api/auth/login` sin cuerpo responde 400 y con un correo inexistente responde 401. ¿Cuál es la diferencia?"
+    opciones:
+      - "El 400 indica una petición mal formada y el 401 unas credenciales no válidas"
+      - "Ambos significan lo mismo"
+      - "El 400 es un error del servidor y el 401 del cliente"
+      - "El 401 indica que el recurso no existe"
+    correcta: 0
+    explicacion: "400 es «no entiendo tu petición» y 401 es «no estás autenticado»; ambos son 4xx, errores del cliente."

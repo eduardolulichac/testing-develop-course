@@ -1,0 +1,11 @@
+usos:
+  - archivo: tests/ia/inventado.spec.ts
+    pedido: "Genera un test de cupón para el carrito"
+    decision: modifico
+    motivo: "Corregí todo lo que estaba mal porque la IA se equivocó en varias cosas."
+  - archivo: pages/ia/Fantasma.ts
+    pedido: "Crea un Page Object para el login de la tienda"
+    decision: acepto
+  - archivo: tests/ia/otro.spec.ts
+    pedido: "Crea un Page Object para el carrito y los cupones"
+    decision: acepto

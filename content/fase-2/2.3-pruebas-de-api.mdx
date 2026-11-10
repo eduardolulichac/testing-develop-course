@@ -1,0 +1,732 @@
+---
+modulo: "2.3"
+titulo: "Pruebas de API"
+fase: 2
+nivel: "Semi Senior"
+duracion_min: 150
+prerequisitos: ["2.2"]
+escenario: "fase2-api"
+reto: "reto-2-3-api"
+version: "2026-11"
+herramientas: ["Playwright 1.64.1", "Zod 4.6.7", "Node 24 (verificado 24.14)"]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+
+Al terminar este módulo sabrás:
+
+- Escribir pruebas de API con el `request` de Playwright, sin abrir un navegador.
+- Leer el contrato de una API (OpenAPI) y convertirlo en casos de prueba.
+- Validar la forma y los tipos de cada respuesta con esquemas de Zod.
+- Probar errores con su código de estado exacto, la sesión completa y las listas con varias páginas.
+- Dar a cada prueba sus propios datos y reproducir una condición de carrera con `Promise.all`.
+- Documentar un defecto de API con un test que lo demuestra.
+
+</Objetivo>
+
+Hasta ahora probaste la tienda desde la pantalla. Pero debajo de la pantalla hay una **API**: el servicio al que el navegador le pide los datos. Probarla directamente tiene ventajas que la UI no tiene:
+
+- **Es rápida.** Una prueba de API tarda milisegundos; una de UI, segundos.
+- **Es precisa.** Ves el código de estado y el cuerpo exactos, sin el maquillaje de la pantalla.
+- **Llega donde la pantalla no llega.** Un error 500 o un campo con el tipo equivocado puede quedar escondido: la pantalla muestra «algo salió mal» o ignora el campo, y no sabes cuál fue la causa.
+- **Prepara estados.** Crear un usuario con un carrito lleno por API es mucho más rápido que hacerlo hacer clic a clic.
+
+En este módulo pruebas la API REST de QA Arena. Trabajas con el escenario `fase2-api`, que tiene defectos de API: códigos de estado, contratos, sesión y paginación.
+
+Reglas del módulo:
+
+- Las pruebas de API **no** usan `page`. Solo `request`.
+- Las credenciales de práctica llegan del entorno (`USUARIO_EMAIL`, `USUARIO_CLAVE`) y nunca se escriben en el código.
+- Cada prueba prepara sus propios datos: la API guarda todo en el servidor y los datos se acumulan entre pruebas.
+
+Lo que necesitas antes de empezar:
+
+- El proyecto `practica-playwright` de los módulos anteriores, con `fixtures/credenciales.ts` del módulo 2.2.
+- QA Arena levantada en `http://localhost:18080`.
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Prepara el proyecto">
+Instala Zod, la librería de esquemas, con la versión exacta del curso:
+
+```bash
+npm install --save-exact zod@4.6.7
+```
+
+Crea las carpetas `schemas/` (los esquemas) y `tests/api/` (las pruebas), junto a las que ya tienes. Tu `playwright.config.ts` del módulo 1.5 sirve tal cual: `baseURL` apunta a la Arena y `workers: 1` ejecuta de uno en uno. Además, `request` usa esa misma `baseURL`, así que en las pruebas escribirás solo la ruta (`/api/products`).
+
+Y un archivo de ayudas, `tests/support/api.ts`, que reutiliza las credenciales del módulo 2.2:
+
+```ts
+import type { APIRequestContext } from "@playwright/test";
+import { credenciales } from "../../fixtures/credenciales";
+
+export { credenciales };
+
+/** Cabecera de autenticación para las rutas protegidas. */
+export const conToken = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+/** Inicia sesión por API con el usuario de práctica y devuelve el token. */
+export async function loginPorApi(request: APIRequestContext): Promise<string> {
+  const { email, clave } = credenciales();
+  const res = await request.post("/api/auth/login", { data: { email, password: clave } });
+  if (!res.ok()) throw new Error(`Login por API falló con ${res.status()}`);
+  const cuerpo = (await res.json()) as { token: string };
+  return cuerpo.token;
+}
+
+/**
+ * Crea un cliente nuevo y devuelve su token. Cada prueba que lo usa parte de un carrito vacío
+ * y no estorba a las demás: los datos de la Arena se acumulan, así que mejor no compartirlos.
+ */
+export async function registrarCliente(request: APIRequestContext): Promise<string> {
+  const id = crypto.randomUUID().slice(0, 8);
+  const res = await request.post("/api/auth/register", {
+    data: { email: `qa-${id}@arena.test`, password: crypto.randomUUID(), name: `QA ${id}` },
+  });
+  if (res.status() !== 201) throw new Error(`El registro falló con ${res.status()}`);
+  const cuerpo = (await res.json()) as { token: string };
+  return cuerpo.token;
+}
+```
+
+Tres ayudas, cada una con una sola tarea (módulo 2.1). La contraseña del cliente nuevo la genera el propio código: no hay ninguna clave escrita. `crypto.randomUUID()` es una función de Node que devuelve un identificador único, así que dos pruebas nunca crean el mismo correo.
+
+</Paso>
+
+<Paso numero={2} titulo="Tu primera prueba de API">
+`request` es un fixture de Playwright (igual que `page`) que envía peticiones HTTP. Una prueba de API tiene la misma forma que una de UI: preparar, actuar y comprobar.
+
+```ts
+import { test, expect } from "@playwright/test";
+
+test("GET /api/products responde 200", async ({ request }) => {
+  const res = await request.get("/api/products?page=1&pageSize=5");
+
+  expect(res.status()).toBe(200);
+  const cuerpo = await res.json();
+  expect(cuerpo.items).toHaveLength(5);
+});
+```
+
+Lo que usarás de la respuesta (`res`):
+
+- `res.status()`: el código de estado como número (200, 404, 500…).
+- `res.ok()`: `true` si el código está entre 200 y 299. Es útil en las ayudas, pero **en las pruebas conviene comprobar el código exacto**: un 201 y un 200 no son lo mismo, y `ok()` los acepta a los dos.
+- `await res.json()`: el cuerpo ya convertido de JSON.
+- `res.headers()`: las cabeceras de la respuesta.
+
+Para enviar datos: `request.post(ruta, { data: { ... } })` envía un cuerpo JSON. Para cabeceras: `{ headers: { ... } }`. Para parámetros de búsqueda puedes escribirlos en la ruta o usar `{ params: { page: 1, pageSize: 5 } }`.
+
+</Paso>
+
+<Paso numero={3} titulo="Lee el contrato antes de escribir pruebas">
+Una API describe lo que hace en un **contrato**. La Arena usa el estándar OpenAPI, y lo publica de dos formas:
+
+- `http://localhost:18080/docs`: una página interactiva (Swagger) para leerlo y probar peticiones a mano.
+- `http://localhost:18080/api/openapi.json`: el mismo contrato en JSON.
+
+Abre `/docs`. Para cada operación verás: el método y la ruta, si necesita sesión, qué cuerpo espera y **qué respuestas puede dar** con su código de estado. Un caso de prueba nace de cada línea de ese contrato. Por ejemplo, de `POST /api/cart/items`:
+
+| Situación                    | Respuesta esperada           |
+| ---------------------------- | ---------------------------- |
+| Cantidad válida con stock    | 200 y el carrito actualizado |
+| Más unidades que el stock    | 409 `insufficient_stock`     |
+| Producto que no existe       | 404 `not_found`              |
+| Cuerpo inválido (cantidad 0) | 400 `validation_error`       |
+| Sin token                    | 401 `unauthorized`           |
+
+Todos los errores de la API tienen la misma forma:
+
+```json
+{ "error": { "code": "not_found", "message": "Product not found" } }
+```
+
+Una regla para el módulo y para el reto: **el contrato dice más de lo que enseñan los ejemplos de una lección.** Léelo completo, y para cada regla que describe pregúntate si tus pruebas la ejercitan.
+
+</Paso>
+
+<Paso numero={4} titulo="Esquemas con Zod: comprueba la forma y los tipos">
+Comprobar `res.status() === 200` no basta. Una API puede responder 200 con un campo que cambió de tipo, y nadie se entera hasta que algo se rompe. Un **esquema** describe la forma esperada de la respuesta, y Zod la comprueba.
+
+Crea `schemas/producto.ts`:
+
+```ts
+import { z } from "zod";
+
+export const Producto = z.strictObject({
+  id: z.number().int(),
+  sku: z.string(),
+  name: z.string(),
+  description: z.string(),
+  priceCents: z.number().int(),
+  category: z.string(),
+  stock: z.number().int(),
+  active: z.boolean(),
+});
+
+export const ListaDeProductos = z.strictObject({
+  items: z.array(Producto),
+  page: z.number().int(),
+  pageSize: z.number().int(),
+  total: z.number().int(),
+  categories: z.array(z.string()),
+});
+```
+
+Cómo leerlo:
+
+- `z.strictObject({...})` describe un objeto y **rechaza campos que el esquema no menciona**. Con `z.object` los campos extra se ignorarían. El contrato de la Arena dice que no hay campos extra, así que `strictObject` es más fiel.
+- `z.number().int()` exige un número **entero**. Un `"990"` (texto) o un `9.9` fallan.
+- `z.array(Producto)` reutiliza el esquema de un producto para cada elemento de una lista.
+- `ListaDeProductos` se construye con `Producto`: el conocimiento «cómo es un producto» vive en un solo lugar (módulo 2.1).
+
+Para usar un esquema:
+
+```ts
+const lista = ListaDeProductos.parse(await res.json());
+```
+
+`parse` devuelve el cuerpo ya tipado si cumple el esquema, y **lanza un error** si no lo cumple. En una prueba, ese error la hace fallar con un mensaje que dice exactamente qué campo está mal, por ejemplo: `Invalid input: expected number, received string` en `priceCents`. Y como TypeScript infiere el tipo, `lista.items[0]` ya sabe que tiene `name` y `priceCents`.
+
+Crea también los de otras respuestas: `schemas/comunes.ts` con el esquema de error, `schemas/carrito.ts` y `schemas/auth.ts`. Están completos en el ejemplo resuelto.
+
+</Paso>
+
+<Paso numero={5} titulo="Errores: el código exacto y el cuerpo">
+Los casos de error son donde más defectos se esconden. Para cada uno comprueba **el código exacto y el cuerpo**:
+
+```ts
+const res = await request.get("/api/products/9999");
+
+expect(res.status()).toBe(404);
+expect(ErrorApi.parse(await res.json()).error.code).toBe("not_found");
+```
+
+Tres hábitos:
+
+- **Código exacto.** `expect(res.status()).toBeGreaterThanOrEqual(400)` acepta un 500, que es un error del servidor y no un error del cliente. Una API correcta responde 4xx cuando la petición es mala (409, 404, 400, 401) y 500 solo cuando ella misma falla.
+- **Cuerpo con esquema.** Un error debe tener la forma `{ error: { code, message } }`. Valídala igual que un caso feliz.
+- **El código interno (`code`)** es el que un programa lee. El mensaje (`message`) es para humanos y puede cambiar; no lo uses para decidir.
+
+</Paso>
+
+<Paso numero={6} titulo="La sesión completa">
+La API se autentica con un **token**. El ciclo de una sesión tiene cuatro momentos, y cada uno es un caso:
+
+1. `POST /api/auth/login` con credenciales correctas: 200 y un token. Con credenciales incorrectas: 401.
+2. `GET /api/auth/me` con el token: 200 y los datos de la persona. Sin token: 401.
+3. `POST /api/auth/logout` con el token: 204 (sin cuerpo).
+4. `GET /api/auth/me` **otra vez con el mismo token**: ya no debe servir.
+
+El cuarto es el que más se olvida. Un cierre de sesión que responde 204 pero deja el token válido parece correcto en la pantalla (te lleva al login) y es un agujero de seguridad: quien robe el token sigue entrando. Solo una prueba de API que reutilice el token lo descubre.
+
+</Paso>
+
+<Paso numero={7} titulo="Listas y paginación">
+Una lista con muchas páginas tiene reglas que se comprueban sin conocer los datos:
+
+- **Ninguna página repite elementos de otra.**
+- **Recorridas todas, se obtiene cada elemento una vez**, y la cantidad coincide con `total`.
+- El tamaño de página se respeta y la última página puede tener menos elementos.
+
+Para comprobar la primera, compara los identificadores de dos páginas seguidas:
+
+```ts
+const ids1 = pagina1.items.map((p) => p.id);
+const repetidos = pagina2.items.map((p) => p.id).filter((id) => ids1.includes(id));
+expect(repetidos).toEqual([]);
+```
+
+Comparar contra `[]` es mejor que contar: si falla, el mensaje muestra **cuáles** se repiten. Pruébalo con dos páginas seguidas y con el recorrido completo, que es el ejercicio guiado.
+
+</Paso>
+
+<Paso numero={8} titulo="Datos propios en cada prueba">
+La Arena guarda el carrito en el servidor, y la cuenta de Ana es una sola. Si dos pruebas agregan productos al carrito de Ana, la segunda ve lo que dejó la primera: el subtotal no cuadra y la suite falla según el orden o las veces que corras. Es el mismo problema de independencia del módulo 2.1, pero en la API es más grave porque nadie lo ve en pantalla.
+
+La solución es la ayuda `registrarCliente` del paso 1: **cada prueba crea su propio cliente** con `POST /api/auth/register`, y por tanto parte de un carrito vacío y de un token propio. Es rápido (unas decenas de milisegundos) y evita compartir datos. Úsala siempre que la prueba **cambie** algo (carrito, cupón, pedido). Para pruebas que solo **leen** (el catálogo) no hace falta ninguna sesión.
+
+Un detalle útil: la contraseña la genera `crypto.randomUUID()`, así que ni siquiera hay una clave que cuidar en el código.
+
+</Paso>
+
+<Paso numero={9} titulo="Condiciones de carrera con Promise.all">
+Un doble clic en «Aplicar cupón» envía **dos peticiones casi simultáneas**. Si la API no está preparada, las dos pueden ejecutarse a la vez y aplicar el descuento dos veces. Para reproducir eso en una prueba lanzas las peticiones juntas con `Promise.all`:
+
+```ts
+const [primera, segunda] = await Promise.all([
+  request.post("/api/cart/coupon", { headers: conToken(token), data: { code: "SAVE5" } }),
+  request.post("/api/cart/coupon", { headers: conToken(token), data: { code: "SAVE5" } }),
+]);
+```
+
+`Promise.all` recibe una lista de peticiones, las inicia todas sin esperar a que termine la anterior y devuelve las respuestas en el mismo orden. Si escribieras `await` en cada una por separado, las peticiones saldrían una detrás de otra y no probarías la carrera.
+
+El contrato de este endpoint es claro: aplicar un cupón es **idempotente** (volver a aplicar el mismo código no cambia nada). Una prueba lo comprueba: tras las dos peticiones, el descuento es el de una sola aplicación. Es el caso del cupón doble del módulo 1.3, ahora visto desde la API; lo harás en un ejercicio guiado.
+
+</Paso>
+
+<Paso numero={10} titulo="El escenario fase2-api">
+Este escenario activa cuatro defectos de API. Actívalo en tu Arena local:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase2-api"}'
+```
+
+Cuando termines, vuelve a la versión correcta:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"baseline"}'
+```
+
+No te digo cuáles son: una buena suite de API los encuentra por sí sola. Lo que sí sabes es dónde mirar: códigos de estado, el contrato, el ciclo de la sesión y la paginación.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Una primera suite de API con esquemas">
+Crea los esquemas y tres archivos de pruebas. Los esquemas de producto están en el paso 4. Los demás:
+
+`schemas/comunes.ts`:
+
+```ts
+import { z } from "zod";
+
+/** Cuerpo de todos los errores de la API: `{ "error": { "code": "...", "message": "..." } }`. */
+export const ErrorApi = z.strictObject({
+  error: z.strictObject({ code: z.string(), message: z.string() }),
+});
+```
+
+`schemas/auth.ts`:
+
+```ts
+import { z } from "zod";
+
+export const Sesion = z.strictObject({
+  token: z.string().min(1),
+  expiresInHours: z.number().int(),
+  user: z.strictObject({
+    id: z.number().int(),
+    email: z.string(),
+    name: z.string(),
+    role: z.enum(["customer", "admin"]),
+  }),
+});
+```
+
+`schemas/carrito.ts`:
+
+```ts
+import { z } from "zod";
+
+export const LineaDeCarrito = z.strictObject({
+  productId: z.number().int(),
+  name: z.string(),
+  sku: z.string(),
+  unitPriceCents: z.number().int(),
+  quantity: z.number().int(),
+  lineTotalCents: z.number().int(),
+  stock: z.number().int(),
+});
+
+export const Carrito = z.strictObject({
+  items: z.array(LineaDeCarrito),
+  couponCode: z.string().nullable(),
+  subtotalCents: z.number().int(),
+  discountCents: z.number().int(),
+  shippingCents: z.number().int(),
+  totalCents: z.number().int(),
+  couponWarning: z.string().nullable(),
+});
+```
+
+`tests/api/catalogo.spec.ts`:
+
+```ts
+import { test, expect } from "@playwright/test";
+import { ErrorApi } from "../../schemas/comunes";
+import { ListaDeProductos } from "../../schemas/producto";
+
+test.describe("catálogo", () => {
+  test("GET /api/products responde 200 con la forma del contrato", async ({ request }) => {
+    const res = await request.get("/api/products?page=1&pageSize=5");
+
+    expect(res.status()).toBe(200);
+    const cuerpo = ListaDeProductos.parse(await res.json());
+    expect(cuerpo.items).toHaveLength(5);
+  });
+
+  test("la página 2 no repite productos de la página 1", async ({ request }) => {
+    const pagina1 = ListaDeProductos.parse(
+      await (await request.get("/api/products?page=1&pageSize=5")).json(),
+    );
+    const pagina2 = ListaDeProductos.parse(
+      await (await request.get("/api/products?page=2&pageSize=5")).json(),
+    );
+
+    const ids1 = pagina1.items.map((p) => p.id);
+    const repetidos = pagina2.items.map((p) => p.id).filter((id) => ids1.includes(id));
+    expect(repetidos).toEqual([]);
+  });
+
+  test("GET /api/products/1 responde 200 con el producto esperado", async ({ request }) => {
+    const res = await request.get("/api/products/1");
+
+    expect(res.status()).toBe(200);
+    expect((await res.json()).name).toBe("Auriculares BT");
+  });
+
+  test("GET /api/products/9999 responde 404 not_found", async ({ request }) => {
+    const res = await request.get("/api/products/9999");
+
+    expect(res.status()).toBe(404);
+    expect(ErrorApi.parse(await res.json()).error.code).toBe("not_found");
+  });
+});
+```
+
+`tests/api/sesion.spec.ts`:
+
+```ts
+import { test, expect } from "@playwright/test";
+import { Sesion } from "../../schemas/auth";
+import { ErrorApi } from "../../schemas/comunes";
+import { credenciales } from "../support/api";
+
+test.describe("sesión", () => {
+  test("login correcto devuelve token y usuario", async ({ request }) => {
+    const { email, clave } = credenciales();
+
+    const res = await request.post("/api/auth/login", { data: { email, password: clave } });
+
+    expect(res.status()).toBe(200);
+    expect(Sesion.parse(await res.json()).user.email).toBe(email);
+  });
+
+  test("login con clave incorrecta responde 401 unauthorized", async ({ request }) => {
+    const { email } = credenciales();
+
+    const res = await request.post("/api/auth/login", {
+      data: { email, password: "clave-incorrecta" },
+    });
+
+    expect(res.status()).toBe(401);
+    expect(ErrorApi.parse(await res.json()).error.code).toBe("unauthorized");
+  });
+
+  test("GET /api/auth/me sin token responde 401", async ({ request }) => {
+    const res = await request.get("/api/auth/me");
+
+    expect(res.status()).toBe(401);
+  });
+});
+```
+
+`tests/api/carrito.spec.ts`:
+
+```ts
+import { test, expect } from "@playwright/test";
+import { Carrito } from "../../schemas/carrito";
+import { ErrorApi } from "../../schemas/comunes";
+import { conToken, registrarCliente } from "../support/api";
+
+test.describe("carrito", () => {
+  test("agregar 2 unidades devuelve el carrito con su subtotal", async ({ request }) => {
+    const token = await registrarCliente(request);
+
+    const res = await request.post("/api/cart/items", {
+      headers: conToken(token),
+      data: { productId: 1, quantity: 2 },
+    });
+
+    expect(res.status()).toBe(200);
+    const carrito = Carrito.parse(await res.json());
+    expect(carrito.subtotalCents).toBe(1980);
+  });
+
+  test("pedir más unidades que el stock responde 409 insufficient_stock", async ({ request }) => {
+    const token = await registrarCliente(request);
+
+    // El producto 11 tiene 5 unidades en stock.
+    const res = await request.post("/api/cart/items", {
+      headers: conToken(token),
+      data: { productId: 11, quantity: 6 },
+    });
+
+    expect(res.status()).toBe(409);
+    expect(ErrorApi.parse(await res.json()).error.code).toBe("insufficient_stock");
+  });
+
+  test("agregar un producto que no existe responde 404", async ({ request }) => {
+    const token = await registrarCliente(request);
+
+    const res = await request.post("/api/cart/items", {
+      headers: conToken(token),
+      data: { productId: 9999, quantity: 1 },
+    });
+
+    expect(res.status()).toBe(404);
+  });
+
+  test("cantidad 0 es una petición inválida (400)", async ({ request }) => {
+    const token = await registrarCliente(request);
+
+    const res = await request.post("/api/cart/items", {
+      headers: conToken(token),
+      data: { productId: 1, quantity: 0 },
+    });
+
+    expect(res.status()).toBe(400);
+    expect(ErrorApi.parse(await res.json()).error.code).toBe("validation_error");
+  });
+
+  test("agregar sin token responde 401", async ({ request }) => {
+    const res = await request.post("/api/cart/items", { data: { productId: 1, quantity: 1 } });
+
+    expect(res.status()).toBe(401);
+  });
+});
+```
+
+**Con `baseline`**, las doce pruebas pasan en menos de un segundo:
+
+```bash
+npx playwright test tests/api
+```
+
+```text
+  12 passed (0.5s)
+```
+
+**Con `fase2-api`** activo, fallan dos:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase2-api"}'
+npx playwright test tests/api
+```
+
+```text
+  ✘  tests/api/carrito.spec.ts › carrito › pedir más unidades que el stock responde 409 insufficient_stock
+  ✘  tests/api/catalogo.spec.ts › catálogo › la página 2 no repite productos de la página 1
+    Expected: 409
+    Received: 500
+    - Expected  - 1
+    + Received  + 3
+  2 failed
+  10 passed
+```
+
+Cada fallo es un defecto:
+
+1. **`Expected: 409`, `Received: 500`**: pedir más unidades que el stock debería ser un error del cliente (409) y la API responde un error del servidor (500). La pantalla probablemente solo muestraría «algo salió mal».
+2. **Un arreglo con un elemento de más**: `repetidos` debería ser `[]` y trae el id de un producto, porque la página 2 empieza repitiendo el último de la página 1.
+
+**Esta suite no detecta los otros dos defectos del escenario.** Pasan las pruebas del detalle de producto y de la sesión, y aun así hay un fallo en cada una. Antes de seguir, piensa por qué: las pruebas del detalle solo comprueban el nombre, y ninguna prueba cierra la sesión. En los ejercicios los encontrarás.
+
+Cuando termines, deja la Arena en `baseline`:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"baseline"}'
+```
+
+Qué observar:
+
+1. **Cada prueba de carrito crea su propio cliente.** Por eso pasan en cualquier orden y repetidas.
+2. **Los esquemas son estrictos** (`strictObject`, enteros): comprueban tipos, no solo que el campo exista.
+3. **Los errores se comprueban dos veces**: el código de estado y el `code` del cuerpo.
+4. **Ninguna prueba contiene una contraseña**: `credenciales()` lee del entorno y el cliente nuevo usa una contraseña aleatoria.
+
+Los errores típicos de esta práctica:
+
+- **Comprobar solo que el código no es 200** o que `res.ok()` es falso: acepta un 500 donde se esperaba un 409.
+- **Usar `z.object` en vez de `z.strictObject`:** un campo inesperado pasa sin que nadie lo vea.
+- **Compartir el carrito de Ana** entre pruebas: pasan la primera vez y fallan al repetir.
+- **Poner `await` en cada petición de `Promise.all`:** las peticiones salen una detrás de otra y la carrera no se produce.
+- **Olvidar cerrar el ciclo de la sesión:** no hay prueba que cierre sesión y vuelva a usar el token.
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+Los ejercicios parten de la suite del ejemplo (esquemas, `tests/support/api.ts` y los tres archivos de `tests/api/`). Los dos primeros y el tercero usan `fase2-api`; el cuarto, `fase1-compra`; el quinto, `baseline`. Vuelve a `baseline` al terminar cada uno. El botón abre la Arena **alojada**, solo para explorar; tus pruebas van contra tu Arena local.
+
+<Ejercicio id="ej-2-3-esquema-del-producto">
+  Cambia la prueba del detalle de producto para que valide la respuesta de `GET /api/products/1` con
+  el esquema `Producto`. Ejecútala con `baseline` y con `fase2-api`, y lee el mensaje del error.
+</Ejercicio>
+
+<Ejercicio id="ej-2-3-cierre-de-sesion">
+  Escribe una prueba del ciclo completo de la sesión: inicia sesión por API, comprueba `GET
+  /api/auth/me` (200), cierra sesión (204) y vuelve a pedir `me` con el mismo token. Decide qué
+  código esperas la segunda vez y ejecútala con `fase2-api`.
+</Ejercicio>
+
+<Ejercicio id="ej-2-3-paginacion-completa">
+  Escribe una prueba que recorra todas las páginas del catálogo con `pageSize=5` y compruebe que no
+  hay productos repetidos y que la cantidad de productos coincide con `total`. Ejecútala con
+  `baseline` y con `fase2-api`.
+</Ejercicio>
+
+<Ejercicio id="ej-2-3-cupon-doble">
+  Con `fase1-compra`, escribe una prueba que cree un cliente, agregue 2 unidades del producto 1,
+  aplique el cupón `SAVE5` con dos `POST /api/cart/coupon` simultáneos (`Promise.all`) y compruebe
+  que el descuento del carrito es el de una sola aplicación.
+</Ejercicio>
+
+<Ejercicio id="ej-2-3-datos-propios">
+  Escribe una prueba que agregue 2 unidades del producto 1 con el token de Ana (`loginPorApi`) y
+  compruebe el subtotal. Ejecútala con `--repeat-each=3`, mira qué pasa, y arréglala para que pase
+  siempre.
+</Ejercicio>
+
+<AbrirArena escenario="fase2-api" />
+
+<AbrirArena escenario="fase1-compra" />
+
+## 5. Reto sin guía
+
+<Reto titulo="Prueba la API de la tienda">
+  Este reto sí se evalúa solo: lo corrige la plataforma ejecutando tu suite contra la Arena con
+  varios escenarios, igual que los retos anteriores.
+
+**Consigue la plantilla y arráncala.** El reto no se hace en `practica-playwright`: vive en su propio repositorio.
+
+1. Abre `https://github.com/eduardolulichac/reto-2-3-api`, pulsa **Use this template** y luego **Create a new repository**. Nómbralo `reto-2-3-api` y créalo en tu cuenta con visibilidad **Public** (el evaluador solo funciona con repositorios públicos; no guardes secretos en él).
+2. Clónalo (cambia `TU-USUARIO` por tu usuario de GitHub) y entra en la carpeta:
+
+   ```bash
+   git clone https://github.com/TU-USUARIO/reto-2-3-api.git
+   cd reto-2-3-api
+   ```
+
+3. Instala los paquetes. Las pruebas de API no abren navegador, así que no hace falta descargarlo:
+
+   ```bash
+   npm ci
+   ```
+
+4. Copia `.env.example` como `.env` (no se sube al repositorio) y, con la Arena levantada, ejecuta la suite de la plantilla:
+
+   ```bash
+   npx playwright test
+   ```
+
+   Debe terminar con `1 passed`: es el ejemplo de `tests/api/ejemplo.spec.ts`.
+
+**Qué entregas.** Una suite de pruebas de API sobre QA Arena, con esquemas de Zod, y un archivo `defectos.yaml` con los defectos que encontraste. La plantilla trae la estructura (`tests/api/`, `tests/support/api.ts`, `schemas/`, `defectos.yaml`).
+
+Lo que se evalúa, en lenguaje de este módulo:
+
+- La suite tiene al menos 20 pruebas de API.
+- Todas pasan contra la API correcta (`baseline`), también si las repites.
+- Detectan los defectos de la lección: con `fase2-api` activo, alguna prueba falla.
+- Detectan un campo con el tipo equivocado: valida el tipo de los campos con un esquema para cada respuesta.
+- Detectan un código de estado incorrecto: prueba los casos de error y su código exacto.
+- Detectan un fallo en el ciclo de la sesión.
+- Detectan un fallo en la paginación.
+- **Detectan un defecto que esta lección no menciona.** No te digo cuál. Lee el contrato completo en `/docs` y cuestiona cada regla que describe: ¿tus pruebas la ejercitan?
+- Documentas **al menos dos defectos** en `defectos.yaml`, cada uno ligado a una prueba tuya que pasa sin defectos y falla con el defecto activo.
+- No hay contraseñas escritas en el código: las lees de `USUARIO_CLAVE` (el evaluador las pone solo).
+- No llamas a los endpoints internos de la Arena (`/__arena`).
+
+Son obligatorios: que la suite pase con `baseline`, que detecte los defectos de `fase2-api` y que no uses `/__arena`. El resto suma hasta superar el umbral de **70** puntos. El evaluador ejecuta tu suite contra una Arena distinta por cada defecto y comprueba que falle cuando debe.
+
+**El formato de `defectos.yaml`.** El archivo de la plantilla trae el formato comentado. Cada defecto es una entrada con `titulo`, `test`, `pasos` (al menos 2), `esperado`, `obtenido` y `severidad` (`baja`, `media`, `alta` o `critica`).
+
+El campo `test` es el título de la prueba, con el nombre del grupo delante si la prueba está dentro de un `test.describe` (separados por « › »), tal como sale en el informe de Playwright. Un defecto **cuenta** solo si esa prueba existe, pasa contra la Arena correcta y falla con algún escenario con defectos: así el informe queda atado a evidencia real y no a una opinión.
+
+**Cómo entregar.** Abre el reto en la plataforma y vincula tu repositorio: te muestra una clave **una sola vez**. En **Settings → Secrets and variables → Actions** crea el secreto `COURSE_CHALLENGE_KEY` con la clave y la variable `COURSE_KEY_ID` con el identificador. Haz `push` a `main`. No edites `.github/workflows/evaluar.yml`. El resultado aparece en la pestaña **Actions** y en la página del reto. La evaluación ejecuta tu suite varias veces (una por escenario) y tarda unos minutos.
+
+Antes de entregar, repasa esta lista en local:
+
+- Tienes 20 pruebas o más y todas pasan con `baseline`, también con `--repeat-each=3`.
+- Cada prueba que cambia datos crea su propio cliente.
+- Cada respuesta se valida con un esquema, incluidos los errores.
+- Hay pruebas de errores con su código exacto, de la sesión completa y de la paginación.
+- Cada defecto de `defectos.yaml` nombra una prueba tuya que lo demuestra.
+- `grep -rn "Cliente123" .` no encuentra nada en tu código.
+- Dejaste la Arena de nuevo en `baseline`.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+La IA genera pruebas de API muy rápido, pero tiende a probar solo el camino feliz y a repetir lo que describe el contrato sin cuestionarlo.
+
+**Qué pedirle:**
+
+- «Escribe un esquema de Zod 4 para esta respuesta JSON» (pega una respuesta real, no una inventada).
+- «Dame una lista de casos de prueba para este endpoint a partir de este contrato OpenAPI».
+- «Explícame este error de Zod» (pega el mensaje completo).
+
+**Qué revisar antes de aceptarlo:**
+
+- Que cada código de estado sea exacto, no `toBeGreaterThan(399)` ni `res.ok()`.
+- Que el esquema use `z.strictObject` y tipos enteros donde el contrato dice entero.
+- Que no haya una contraseña, un token o un correo real escrito en el código.
+- Que las pruebas que cambian datos no dependan de otras ni de la cuenta de Ana.
+- Que ejecutes la suite con `baseline` y con el escenario con defectos: una prueba que nunca falla no prueba nada.
+
+**Qué rechazar:**
+
+- Esquemas con `z.any()` o `z.unknown()` para que «pase».
+- Pruebas que comprueban lo que la propia respuesta dice de sí misma (`expect(cuerpo).toEqual(cuerpo)`).
+- Rutas o campos inventados que no están en el contrato.
+- Un `try/catch` que se traga el fallo para que la prueba pase.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Comprobar solo el camino feliz">
+  Una suite que solo prueba respuestas 200 deja pasar los errores mal manejados. Prueba también sin
+  token, con datos inválidos, con recursos que no existen y con reglas de negocio (stock).
+</ErrorComun>
+
+<ErrorComun titulo="Aceptar cualquier error 4xx o 5xx">
+  `expect(res.ok()).toBe(false)` acepta un 500 donde el contrato dice 409. Comprueba el código
+  exacto y el `code` del cuerpo.
+</ErrorComun>
+
+<ErrorComun titulo="Esquemas que dejan pasar todo">
+  Con `z.object` se ignoran los campos extra, y con `z.any()` no se comprueba nada. Usa
+  `z.strictObject` y tipos concretos: así un número que llega como texto hace fallar la prueba.
+</ErrorComun>
+
+<ErrorComun titulo="Compartir datos entre pruebas">
+  Si varias pruebas usan el carrito de Ana, las cantidades se acumulan y la suite falla al
+  repetirla. Crea un cliente nuevo por prueba con `registrarCliente`.
+</ErrorComun>
+
+<ErrorComun titulo="No probar el cierre de sesión">
+  Un logout que responde 204 y deja el token vivo pasa por bueno si nadie reutiliza el token. Cierra
+  sesión y vuelve a pedir `me` con el mismo token.
+</ErrorComun>
+
+<ErrorComun titulo="Escribir las contraseñas en el código">
+  Aunque sea una cuenta de práctica, el hábito importa y el evaluador lo comprueba. Léelas de
+  `USUARIO_CLAVE` con `credenciales()`.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Las pruebas de API son rápidas y precisas: ven el código de estado y el cuerpo exactos y llegan donde la pantalla no llega.
+- `request` de Playwright envía las peticiones; la `baseURL` de la configuración se aplica igual que con `page`.
+- El contrato (`/docs`, OpenAPI) es la fuente de los casos de prueba: cada respuesta que describe merece una prueba, y dice más que cualquier lección.
+- Un esquema de Zod (`z.strictObject`, `z.number().int()`) comprueba la forma y los tipos de la respuesta, no solo que el campo exista.
+- Los errores se prueban con el código exacto y su cuerpo: un 500 no es un 409.
+- La sesión se prueba completa: iniciar, usar, cerrar y comprobar que el token ya no sirve.
+- Las listas se prueban con invariantes: sin repetidos entre páginas y con la suma igual a `total`.
+- Cada prueba crea sus propios datos (`registrarCliente`); las condiciones de carrera se reproducen con `Promise.all`; un defecto se documenta ligándolo a una prueba que lo demuestra.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

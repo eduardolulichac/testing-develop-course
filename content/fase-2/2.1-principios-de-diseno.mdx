@@ -1,0 +1,565 @@
+---
+modulo: "2.1"
+titulo: "Principios de diseño"
+fase: 2
+nivel: "Semi Senior"
+duracion_min: 90
+prerequisitos: ["1.8"]
+version: "2026-11"
+herramientas: ["Playwright 1.64.1", "Node 24 (verificado 24.14)"]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+
+Al terminar este módulo sabrás:
+
+- Detectar la duplicación en una suite y eliminarla sin esconder lo que se prueba.
+- Dar a cada test un solo motivo para fallar y a cada ayuda una sola tarea.
+- Escribir tests legibles: nombres que describen el comportamiento, pasos en orden y datos con nombre.
+- Dejar cada test independiente de los demás.
+- Refactorizar con una red de seguridad: la suite debe seguir detectando lo mismo que antes.
+
+</Objetivo>
+
+En la Fase 1 aprendiste a escribir tests que funcionan. En la Fase 2 construyes un **framework**: una suite que otras personas leen, amplían y arreglan durante años. Ahí cambia la pregunta. Ya no es «¿pasa?», es «¿alguien puede mantenerlo?».
+
+Una suite mal diseñada se nota pronto:
+
+- Un cambio pequeño en la pantalla de login obliga a editar treinta archivos.
+- Un test falla y nadie sabe qué se estaba comprobando.
+- Los tests pasan solos y fallan todos juntos.
+- La gente deja de confiar en la suite y la ignora.
+
+Los principios de este módulo son los mismos que se usan para diseñar cualquier código, aplicados a tests. Son la base del módulo 2.2, donde migrarás tu suite a Page Objects.
+
+Reglas del módulo:
+
+- **Refactorizar es cambiar la forma sin cambiar el comportamiento.** Si después del cambio la suite detecta menos defectos, no refactorizaste: rompiste algo.
+- Un principio es una guía, no una ley. Cada uno tiene un límite, y los verás.
+
+Lo que necesitas antes de empezar:
+
+- El proyecto `practica-playwright` con `tests/support/tienda.ts` (módulos 1.3 y 1.4).
+- QA Arena levantada en `http://localhost:18080`.
+
+## 2. Explicación paso a paso
+
+**Una advertencia antes de empezar:** en los ejemplos «antes» de este módulo la clave `"Cliente123!"` está escrita en el código a propósito, porque es el código malo de partida. Y el `iniciarSesion(page)` de tu `tienda.ts` de la Fase 1 trae esa clave como valor por defecto. En este módulo lo dejas así para centrarte en el diseño; en el módulo 2.2 la sacas de los Page Objects y en el 2.4 (paso 1) la retiras de `tienda.ts`.
+
+<Paso numero={1} titulo="DRY: no repitas conocimiento">
+DRY significa «no te repitas» (en inglés, _don't repeat yourself_). La idea es que **cada pieza de conocimiento viva en un solo lugar**. Si cambia, lo cambias una vez.
+
+Mira este fragmento, que aparece tal cual en tres tests:
+
+```ts
+await page.goto("/login");
+await page.getByLabel("Correo").fill("ana@arena.test");
+await page.getByLabel("Contrasena").fill("Cliente123!");
+await page.getByRole("button", { name: "Entrar" }).click();
+await expect(page.getByTestId("user-name")).toBeVisible();
+```
+
+El conocimiento repetido es «cómo se inicia sesión en la tienda». Si mañana el botón se llama «Ingresar», hay que editar tres tests (o treinta). Con una ayuda, ese conocimiento vive en un solo lugar:
+
+```ts
+await iniciarSesion(page);
+```
+
+Tres matices importantes:
+
+- DRY trata de **conocimiento**, no de líneas parecidas. Dos bloques que se parecen por casualidad pero cambian por motivos distintos no son duplicación.
+- También se repiten los **datos**: el texto `"Cliente123!"`, el precio `"$50.90"` o el id `15` escritos en diez sitios. Un dato repetido se vuelve una constante con nombre.
+- **La regla de tres:** la primera vez lo escribes, la segunda lo toleras, la tercera lo extraes. Extraer demasiado pronto crea abstracciones que luego no encajan.
+
+</Paso>
+
+<Paso numero={2} titulo="DRY tiene un límite: no escondas lo que pruebas">
+Un test debe poder leerse **de arriba abajo sin abrir otros archivos** para saber qué comprueba. Por eso conviene separar dos cosas:
+
+- La **mecánica** (cómo se llega a un estado): iniciar sesión, agregar un producto. Se extrae sin miedo.
+- La **intención** (qué se verifica): el descuento, el contador. Se queda a la vista, dentro del test.
+
+Esta ayuda rompe la regla. Mezcla la mecánica con la comprobación, y esconde el valor esperado en un parámetro:
+
+```ts
+// MAL: hace cuatro cosas y el test que la llama no dice qué comprueba.
+export async function comprarConCupon(
+  page: Page,
+  productoId: number,
+  cupon: string,
+  descuentoEsperado: string,
+) {
+  await agregarProducto(page, 1, productoId);
+  await abrir(page, "/cart");
+  await aplicarCupon(page, cupon);
+  await expect(page.getByTestId("cart-discount")).toHaveText(descuentoEsperado);
+}
+```
+
+El test queda así: `await comprarConCupon(page, 15, "BIGSPEND", "-$7.63")`. Cuando falla, no sabes si falló el cupón, la cantidad o el producto. Y para una variante (cupón sobre dos productos) hay que añadir otro parámetro. Las ayudas con muchos parámetros y una aserción escondida son un mal olor frecuente.
+
+</Paso>
+
+<Paso numero={3} titulo="Responsabilidad única: un motivo para fallar">
+El principio de **responsabilidad única** dice que una pieza debe tener **una sola razón para cambiar**. Aplicado a tests:
+
+- **Un test, un comportamiento.** Si el nombre del test necesita una «y», probablemente son dos tests.
+- **Una ayuda, una tarea.** `iniciarSesion` inicia sesión. No agrega productos ni comprueba precios.
+- **Un archivo, un tema.** Cupones en un archivo, pagos en otro.
+
+La señal de alarma es el test largo que verifica cosas sin relación: cupón, total, quitar línea y contador, todo seguido. Si falla el descuento, el test se detiene ahí y nunca llega a comprobar el contador. Un defecto puede esconder a otro.
+
+Esto **no** significa una sola aserción por test. Varias aserciones sobre el mismo comportamiento están bien: por ejemplo, tras quitar la única línea, el contador es 0 **y** el carrito muestra el mensaje de vacío. Son dos formas de mirar el mismo resultado.
+
+</Paso>
+
+<Paso numero={4} titulo="Legibilidad: que el test se lea como una frase">
+Un test se lee muchas más veces de las que se escribe. Cuatro hábitos lo hacen legible.
+
+**1. El nombre describe el comportamiento esperado**, no el número ni la pantalla:
+
+```ts
+// MAL
+test("prueba 1", ...);
+test("carrito", ...);
+
+// BIEN
+test("BIGSPEND descuenta el 15 % de la botella", ...);
+test("el contador baja a 1 al quitar una de dos líneas", ...);
+```
+
+Cuando el informe dice que falló `prueba 3`, hay que abrir el código. Cuando dice que falló «el contador baja a 1 al quitar una de dos líneas», ya sabes por dónde empezar.
+
+**2. Tres bloques en orden:** preparar, actuar, comprobar (en inglés, _arrange, act, assert_). Una línea en blanco los separa:
+
+```ts
+test("SAVE5 descuenta $5.00 de dos auriculares", async ({ page }) => {
+  await agregarProducto(page, 2, AURICULARES.id); // preparar
+  await abrir(page, "/cart");
+
+  await aplicarCupon(page, "SAVE5"); // actuar
+
+  await expect(page.getByTestId("cart-discount")).toHaveText("-$5.00"); // comprobar
+});
+```
+
+**3. Los números y textos con significado llevan nombre.** Un `15` suelto no dice si es un id, un porcentaje o una cantidad. `BOTELLA.id` sí lo dice. Con TypeScript, `as const` fija los valores y evita que se modifiquen por error.
+
+**4. Los comentarios explican el porqué, no el qué.** `// hace clic en Aplicar` sobra, porque el código ya lo dice. `// BIGSPEND trunca los centavos: 15 % de $50.90 = $7.635` es útil: explica de dónde sale un número que nadie adivinaría.
+
+</Paso>
+
+<Paso numero={5} titulo="Independencia: cada test se basta solo">
+Un test **independiente** funciona igual si lo ejecutas solo, después de otro o dos veces seguidas. Un test que depende del anterior es una trampa: pasa en tu máquina, falla cuando alguien ejecuta solo ese test, y no se puede repartir entre varios procesos.
+
+La causa más común es el **estado compartido**. En QA Arena, el carrito de Ana vive en el servidor: lo que deja un test lo encuentra el siguiente. La solución es que **cada test prepare su propio estado**:
+
+- Antes de cada test: inicia sesión y deja el carrito vacío (la ayuda `vaciarCarrito` del módulo 1.4).
+- Cada test agrega lo que necesita, no lo que dejó otro.
+- Nunca escribas un test que empiece con «ya hay dos productos en el carrito, porque el test anterior los agregó».
+
+Una prueba sencilla de independencia: ejecuta un único test con `npx playwright test --grep "SAVE5"`. Si falla solo y pasa dentro de la suite, depende de algo que no preparó.
+
+Recuerda lo del módulo 1.3: el reinicio de datos con `/__arena/reset` era una ayuda para practicar, y los retos con evaluador no lo permiten. Desde la Fase 2 la regla es: **el test prepara su estado con la propia aplicación**, como lo haría una persona, y el reinicio completo de la Arena lo haces tú en la terminal cuando lo necesites:
+
+```bash
+curl -X POST http://localhost:18080/__arena/reset
+```
+
+</Paso>
+
+<Paso numero={6} titulo="Simple antes que ingenioso">
+El otro lado de DRY es la **sobreingeniería**: construir una abstracción antes de necesitarla. Estas señales indican que te pasaste:
+
+- Una ayuda con cinco parámetros opcionales, algunos de ellos booleanos que cambian su comportamiento (`pagar(page, true, false, undefined, "x")`).
+- Una clase base de la que heredan tres clases, para ahorrar cuatro líneas.
+- Un archivo de configuración para algo que cambia una vez al año.
+- Código que solo entiende quien lo escribió.
+
+Pregúntate: «¿esto ayuda a la persona que leerá el test dentro de seis meses?». Si la respuesta es no, bórralo. Un poco de repetición clara es mejor que una abstracción confusa.
+
+Orden de trabajo recomendado:
+
+1. Haz que funcione, con el código más simple.
+2. Cuando aparezca la tercera repetición, extrae.
+3. Pon nombres que se lean como una frase.
+4. Si una ayuda crece, divídela según el principio de responsabilidad única.
+
+</Paso>
+
+<Paso numero={7} titulo="Refactorizar con red de seguridad">
+Refactorizar es mejorar el diseño **sin cambiar lo que hace**. Para hacerlo con tranquilidad:
+
+1. **Antes de tocar nada**, ejecuta la suite y comprueba que pasa con `baseline`. Si ya falla, no sabrás qué rompiste tú.
+2. **Cambia en pasos pequeños**, y ejecuta tras cada uno.
+3. **Comprueba que sigue detectando.** Una suite refactorizada que pasa con `baseline` pero deja de fallar con un escenario con defectos perdió una aserción por el camino. Es el error más caro de un refactor, y por eso se comprueba con el escenario de aserciones de la Fase 1 (`fase1-aserciones`).
+
+Esto último es lo que distingue un refactor de una reescritura descuidada: la suite hace **lo mismo**, pero mejor escrita. En el siguiente paso lo hacemos con un ejemplo completo.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="De «prueba 1, 2, 3» a una suite que se lee">
+Parte de este archivo, `tests/compra-antes.spec.ts`. Lo escribió alguien con prisa, copiando y pegando. Funciona, pero tiene todos los problemas del módulo. Crea el archivo y ejecútalo:
+
+```ts
+import { test, expect } from "@playwright/test";
+import { vaciarCarrito } from "./support/tienda";
+
+test("prueba 1", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Correo").fill("ana@arena.test");
+  await page.getByLabel("Contrasena").fill("Cliente123!");
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.getByTestId("user-name")).toBeVisible();
+  await vaciarCarrito(page);
+  await page.goto("/products/15");
+  await page.getByLabel("Cantidad").fill("1");
+  await page.getByRole("button", { name: "Agregar al carrito" }).click();
+  await expect(page.getByRole("status")).toHaveText("Agregado al carrito");
+  await page.goto("/cart");
+  await expect(page.getByTestId("cart-subtotal")).toHaveText("$50.90");
+  await page.getByLabel("Cupon").fill("BIGSPEND");
+  await page.getByRole("button", { name: "Aplicar" }).click();
+  await expect(page.getByTestId("cart-discount")).toHaveText("-$7.63");
+  await expect(page.getByTestId("cart-total")).toHaveText("$48.27");
+  await page.getByRole("button", { name: "Quitar", exact: true }).click();
+  await expect(page.getByTestId("cart-count")).toHaveText("0");
+  await expect(page.getByTestId("cart-empty")).toBeVisible();
+});
+
+test("prueba 2", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Correo").fill("ana@arena.test");
+  await page.getByLabel("Contrasena").fill("Cliente123!");
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.getByTestId("user-name")).toBeVisible();
+  await vaciarCarrito(page);
+  await page.goto("/products/1");
+  await page.getByLabel("Cantidad").fill("2");
+  await page.getByRole("button", { name: "Agregar al carrito" }).click();
+  await expect(page.getByRole("status")).toHaveText("Agregado al carrito");
+  await page.goto("/cart");
+  await expect(page.getByTestId("cart-subtotal")).toHaveText("$19.80");
+  await page.getByLabel("Cupon").fill("SAVE5");
+  await page.getByRole("button", { name: "Aplicar" }).click();
+  await expect(page.getByTestId("cart-discount")).toHaveText("-$5.00");
+});
+
+test("prueba 3", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Correo").fill("ana@arena.test");
+  await page.getByLabel("Contrasena").fill("Cliente123!");
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.getByTestId("user-name")).toBeVisible();
+  await vaciarCarrito(page);
+  await page.goto("/products/1");
+  await page.getByLabel("Cantidad").fill("1");
+  await page.getByRole("button", { name: "Agregar al carrito" }).click();
+  await expect(page.getByRole("status")).toHaveText("Agregado al carrito");
+  await page.goto("/products/15");
+  await page.getByLabel("Cantidad").fill("1");
+  await page.getByRole("button", { name: "Agregar al carrito" }).click();
+  await expect(page.getByRole("status")).toHaveText("Agregado al carrito");
+  await expect(page.getByTestId("cart-count")).toHaveText("2");
+  await page.goto("/cart");
+  await page.getByRole("button", { name: "Quitar", exact: true }).first().click();
+  await expect(page.getByTestId("cart-count")).toHaveText("1");
+});
+```
+
+**Paso 1: mide el punto de partida.** Con `baseline` pasan los tres. Con el escenario `fase1-aserciones` (descuento mal redondeado y contador del carrito que no baja) fallan dos:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase1-aserciones"}'
+npx playwright test tests/compra-antes.spec.ts
+```
+
+```text
+  ✘  tests/compra-antes.spec.ts › prueba 1
+  ✓  tests/compra-antes.spec.ts › prueba 2
+  ✘  tests/compra-antes.spec.ts › prueba 3
+    Expected: "-$7.63"
+    Received: "-$7.64"
+    Expected: "1"
+    Received: "2"
+```
+
+Esa es la red de seguridad: **dos fallos con estos dos mensajes**. Después del refactor deben seguir apareciendo.
+
+**Paso 2: mide la duplicación.** Cuenta cuántas veces se escribe el login y cuántas el paso de agregar:
+
+```bash
+grep -c 'getByLabel("Contrasena")' tests/compra-antes.spec.ts   # 3
+grep -c 'getByLabel("Cantidad")' tests/compra-antes.spec.ts     # 4
+```
+
+**Paso 3: crea los datos con nombre.** En `tests/support/datos.ts`:
+
+```ts
+/** Productos de la Arena que usan los tests de compra. El precio es el que muestra la pantalla. */
+export const AURICULARES = { id: 1, nombre: "Auriculares BT", precio: "$9.90" } as const;
+export const BOTELLA = { id: 15, nombre: "Botella termica", precio: "$50.90" } as const;
+
+/** BIGSPEND descuenta el 15 % y trunca los centavos: 15 % de $50.90 = $7.635, que se muestra como $7.63. */
+export const DESCUENTO_BIGSPEND_SOBRE_BOTELLA = "-$7.63";
+```
+
+**Paso 4: añade una ayuda.** Ya tienes `iniciarSesion`, `agregarProducto` y `vaciarCarrito`. Falta una para el cupón. Añádela al final de `tests/support/tienda.ts`. Hace una sola tarea y **no comprueba nada**:
+
+```ts
+/** Escribe un cupón en /cart y pulsa «Aplicar». Se asume que ya estás en la página del carrito. */
+export async function aplicarCupon(page: Page, codigo: string): Promise<void> {
+  await page.getByLabel("Cupon").fill(codigo);
+  await page.getByRole("button", { name: "Aplicar" }).click();
+}
+```
+
+**Paso 5: reescribe los tests.** Crea `tests/carrito.spec.ts` con el resultado:
+
+```ts
+import { test, expect } from "@playwright/test";
+import {
+  abrir,
+  agregarProducto,
+  aplicarCupon,
+  iniciarSesion,
+  vaciarCarrito,
+} from "./support/tienda";
+import { AURICULARES, BOTELLA, DESCUENTO_BIGSPEND_SOBRE_BOTELLA } from "./support/datos";
+
+test.beforeEach(async ({ page }) => {
+  await iniciarSesion(page);
+  await vaciarCarrito(page);
+});
+
+test.describe("cupones", () => {
+  test("BIGSPEND descuenta el 15 % de la botella", async ({ page }) => {
+    await agregarProducto(page, 1, BOTELLA.id);
+    await abrir(page, "/cart");
+    await expect(page.getByTestId("cart-subtotal")).toHaveText(BOTELLA.precio);
+
+    await aplicarCupon(page, "BIGSPEND");
+
+    await expect(page.getByTestId("cart-discount")).toHaveText(DESCUENTO_BIGSPEND_SOBRE_BOTELLA);
+  });
+
+  test("SAVE5 descuenta $5.00 de dos auriculares", async ({ page }) => {
+    await agregarProducto(page, 2, AURICULARES.id);
+    await abrir(page, "/cart");
+
+    await aplicarCupon(page, "SAVE5");
+
+    await expect(page.getByTestId("cart-discount")).toHaveText("-$5.00");
+  });
+});
+
+test.describe("contador del carrito", () => {
+  test("baja a 0 al quitar la única línea", async ({ page }) => {
+    await agregarProducto(page, 1, BOTELLA.id);
+    await abrir(page, "/cart");
+
+    await page.getByRole("button", { name: "Quitar", exact: true }).click();
+
+    await expect(page.getByTestId("cart-count")).toHaveText("0");
+    await expect(page.getByTestId("cart-empty")).toBeVisible();
+  });
+
+  test("baja a 1 al quitar una de dos líneas", async ({ page }) => {
+    await agregarProducto(page, 1, AURICULARES.id);
+    await agregarProducto(page, 1, BOTELLA.id);
+    await expect(page.getByTestId("cart-count")).toHaveText("2");
+    await abrir(page, "/cart");
+
+    await page.getByRole("button", { name: "Quitar", exact: true }).first().click();
+
+    await expect(page.getByTestId("cart-count")).toHaveText("1");
+  });
+});
+```
+
+Qué cambió y por qué:
+
+1. **El login y la limpieza viven en un `beforeEach`**: cada test empieza igual, sin copiar nada.
+2. **Cuatro tests, cada uno con un motivo para fallar.** La «prueba 1» se dividió: el cupón por un lado, el contador por otro. Si falla el descuento, el contador se sigue comprobando.
+3. **Los nombres dicen qué se espera.** El informe de errores ya se entiende solo.
+4. **Cada test sigue el orden preparar, actuar, comprobar**, separado por una línea en blanco.
+5. **Las comprobaciones siguen dentro de los tests.** Las ayudas solo hacen mecánica; lo que se verifica se lee en el test.
+6. **Ningún test depende de otro.** Cualquiera se ejecuta solo: `npx playwright test --grep "SAVE5"`.
+
+**Paso 6: comprueba que sigue detectando.** Ejecuta la suite nueva con `baseline` (pasan los cuatro) y con `fase1-aserciones`:
+
+```text
+  ✘  tests/carrito.spec.ts › cupones › BIGSPEND descuenta el 15 % de la botella
+  ✓  tests/carrito.spec.ts › cupones › SAVE5 descuenta $5.00 de dos auriculares
+  ✘  tests/carrito.spec.ts › contador del carrito › baja a 0 al quitar la única línea
+  ✘  tests/carrito.spec.ts › contador del carrito › baja a 1 al quitar una de dos líneas
+    Expected: "-$7.63"
+    Received: "-$7.64"
+    Expected: "0"
+    Received: "1"
+    Expected: "1"
+    Received: "2"
+```
+
+Los mismos dos defectos, ahora con tres fallos que dicen mucho más. La «prueba 1» antigua se detenía en el descuento y nunca llegaba a mirar el contador; ahora se ve que **el contador falla también cuando se quita la única línea**. Este es un efecto del principio de responsabilidad única: el refactor revela información que antes quedaba tapada.
+
+Cuando termines, deja la Arena en `baseline`:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"baseline"}'
+```
+
+Los errores típicos de este ejemplo:
+
+- **Extraer la aserción junto con la mecánica** (la ayuda `comprarConCupon` del paso 2 del módulo): el test deja de decir qué comprueba.
+- **Olvidar el `vaciarCarrito`:** con `--repeat-each=2`, la segunda vuelta empieza con productos de la primera y los subtotales dejan de cuadrar.
+- **Refactorizar y no volver a ejecutar con el escenario:** la suite queda bonita y deja de detectar.
+- **Mover una constante pero no su explicación:** `"-$7.63"` sin el comentario vuelve a ser un número mágico.
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+Los ejercicios parten del archivo `tests/compra-antes.spec.ts` del ejemplo (cópialo de nuevo si lo cambiaste) y de tu `tests/support/tienda.ts`. El botón abre la Arena **alojada**, solo para explorar; tus tests van contra tu Arena local. Deja la Arena en `baseline` al terminar cada ejercicio que active un escenario.
+
+<Ejercicio id="ej-2-1-medir-duplicacion">
+  Cuenta con `grep -c` cuántas veces se repiten en `compra-antes.spec.ts` el inicio de sesión y el
+  paso de agregar un producto. Reemplaza cada repetición por las ayudas de `tienda.ts`, ejecuta con
+  `baseline` y vuelve a contar. Anota los dos números.
+</Ejercicio>
+
+<Ejercicio id="ej-2-1-nombres-y-datos">
+  Cambia los nombres «prueba 1», «prueba 2» y «prueba 3» por frases que describan el comportamiento
+  esperado. Después saca a una constante con nombre los valores que no se entienden solos: ids de
+  producto, precios y el descuento de `BIGSPEND`.
+</Ejercicio>
+
+<Ejercicio id="ej-2-1-un-motivo-para-fallar">
+  Divide la «prueba 1» en tests con un solo motivo para fallar: uno para el descuento del cupón y
+  otro para el contador al quitar la línea. Ejecútalos con `fase1-aserciones` y comprueba qué fallo
+  quedaba tapado antes.
+</Ejercicio>
+
+<Ejercicio id="ej-2-1-independencia">
+  Quita el `vaciarCarrito` del `beforeEach` de `carrito.spec.ts` y ejecuta la suite con
+  `--repeat-each=2`. Anota qué tests fallan en la segunda vuelta y por qué. Devuelve la línea y
+  comprueba que cada test pasa también solo con `--grep`.
+</Ejercicio>
+
+<Ejercicio id="ej-2-1-sigue-detectando">
+  Ejecuta el archivo antiguo y el nuevo con `fase1-aserciones` y compara: ¿qué defectos detecta cada
+  uno? Después quita a propósito una aserción de la suite nueva y comprueba que la comparación lo
+  delata.
+</Ejercicio>
+
+<AbrirArena escenario="fase1-aserciones" />
+
+## 5. Reto sin guía
+
+<Reto titulo="Refactoriza una de tus suites de la Fase 1">
+  Es una práctica abierta: este módulo no tiene evaluador automático. Tú compruebas el resultado con
+  la lista del final, y cada punto se puede verificar con un comando o con lo que ves en pantalla.
+
+Elige una suite que hayas escrito en la Fase 1 (por ejemplo la del módulo 1.4 o la del 1.5) o una que te interese mejorar, y refactorízala aplicando los principios del módulo. No cambies lo que prueba: cambia cómo está escrito.
+
+Pasos sugeridos:
+
+1. Ejecuta la suite con `baseline` y con el escenario del módulo de origen. Anota qué tests fallan y con qué mensaje: es tu red de seguridad.
+2. Busca la duplicación con `grep -c` y elimina lo que se repita tres veces o más.
+3. Renombra los tests y saca los datos con significado a constantes.
+4. Divide los tests que verifiquen cosas sin relación.
+5. Deja cada test independiente.
+6. Vuelve a ejecutar con `baseline` y con el escenario, y compara con lo que anotaste.
+
+Criterios de autocomprobación:
+
+- Con `baseline`, tu suite termina sin fallos, y también con `npx playwright test --repeat-each=2`.
+- Con el escenario del módulo de origen, **fallan los mismos tests con el mismo motivo** que antes (o más, si el refactor destapó fallos que estaban tapados). Ninguno deja de fallar.
+- La preparación no está copiada: por ejemplo, `grep -rn 'getByLabel("Contrasena")' tests` muestra una sola línea (la de `tienda.ts`).
+- Ningún nombre de test empieza por «prueba», «test» o un número.
+- Ningún test supera unas 15 líneas de cuerpo, y ninguno lleva una «y» en el nombre.
+- Cada test pasa ejecutado solo con `--grep "<su nombre>"`.
+- Ninguna ayuda hace más de una tarea ni contiene una aserción escondida.
+- No hay `waitForTimeout`, y la Arena quedó de nuevo en `baseline`.
+
+Si cumples todos los puntos, tu suite está lista para el siguiente paso: llevarla a Page Objects en el módulo 2.2.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+La IA es buena refactorizando mecánica, pero no sabe qué comportamiento debe conservar tu suite. Eso lo sabes tú.
+
+**Qué pedirle:**
+
+- «Señala los bloques duplicados de este archivo y propón una ayuda por cada uno, sin mover ninguna aserción».
+- «Sugiere nombres para estos tests que describan el comportamiento esperado».
+- «Revisa si algún test mezcla varias responsabilidades y dime cómo dividirlo».
+
+**Qué revisar antes de aceptarlo:**
+
+- Que el número de aserciones sea el mismo (o mayor). Cuéntalas antes y después.
+- Que la suite siga fallando con el escenario con defectos, y con los mismos mensajes.
+- Que las ayudas nuevas hagan una sola tarea y no escondan comprobaciones.
+- Que no haya nombres inventados de ayudas o de datos que no existen en tu proyecto.
+
+**Qué rechazar:**
+
+- Una «limpieza» que elimina aserciones porque «eran redundantes».
+- Capas de abstracción nuevas (clases base, fábricas, configuración) que nadie pidió.
+- Cambios de comportamiento disfrazados de refactor: otros textos esperados, otros timeouts, otros datos.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Refactorizar sin una red de seguridad">
+  Si no ejecutaste la suite antes y con el escenario con defectos, no puedes saber si el refactor
+  conservó lo que detectaba. Anota los fallos esperados antes de empezar.
+</ErrorComun>
+
+<ErrorComun titulo="Esconder la aserción dentro de una ayuda">
+  Una ayuda que hace la acción y además comprueba un valor pasado por parámetro vuelve ilegibles los
+  tests y difíciles de variar. La mecánica se extrae; la intención se queda en el test.
+</ErrorComun>
+
+<ErrorComun titulo="Un test que verifica cinco cosas distintas">
+  Se detiene en la primera aserción que falla y tapa los demás defectos. Un test, un comportamiento.
+</ErrorComun>
+
+<ErrorComun titulo="Abstraer demasiado pronto">
+  Crear una clase base o una ayuda con muchos parámetros para evitar dos repeticiones complica el
+  código más de lo que lo simplifica. Espera a la tercera repetición.
+</ErrorComun>
+
+<ErrorComun titulo="Tests que dependen del orden">
+  Un test que necesita que otro haya agregado productos pasa en tu máquina y falla en cuanto se
+  ejecuta solo o dos veces. Cada test prepara su propio estado.
+</ErrorComun>
+
+<ErrorComun titulo="Números y textos mágicos">
+  Un `15` o un `"-$7.63"` sin nombre ni comentario obligan a adivinar. Dales un nombre y explica de
+  dónde salen.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Una suite es código que se mantiene durante años: se diseña para quien la lea después.
+- DRY: cada conocimiento (cómo iniciar sesión, un precio) vive en un solo lugar. Extrae a la tercera repetición.
+- La mecánica se extrae a ayudas; la intención (lo que se verifica) se queda a la vista en el test.
+- Responsabilidad única: un test, un comportamiento; una ayuda, una tarea.
+- Un buen test se lee como una frase: nombre del comportamiento, preparar-actuar-comprobar, datos con nombre.
+- Cada test es independiente: prepara su estado y se ejecuta igual solo, repetido o en otro orden.
+- Simple antes que ingenioso: una abstracción que nadie necesita es peor que un poco de repetición.
+- Refactorizar es cambiar la forma sin cambiar el comportamiento: comprueba con `baseline` y con el escenario con defectos que la suite sigue detectando lo mismo.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

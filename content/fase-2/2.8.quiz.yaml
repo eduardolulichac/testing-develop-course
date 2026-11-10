@@ -1,0 +1,89 @@
+preguntas:
+  - id: dkr-localhost
+    enunciado: "Desde el contenedor `tests`, ¿qué dirección usas para llegar a la web de la Arena definida en el mismo compose?"
+    opciones:
+      [
+        "http://localhost:18080",
+        "http://127.0.0.1:18080",
+        "http://web",
+        "http://host.docker.internal:80/web",
+      ]
+    correcta: 2
+    explicacion: "Compose crea una red donde cada servicio se llama por su nombre. `localhost` dentro de un contenedor es ese mismo contenedor, donde la Arena no escucha, y por eso sale `ECONNREFUSED`."
+  - id: dkr-from-version
+    enunciado: "¿Qué regla sigue la línea `FROM` del Dockerfile de una suite de Playwright?"
+    opciones:
+      [
+        "Usa siempre `latest`, para tener los navegadores más recientes",
+        "Usa la versión exacta de `@playwright/test` de tu `package.json`, escrita literal",
+        "Sirve cualquier versión de la misma serie, aunque cambie el parche",
+        "Usa una imagen de Node y luego instala los navegadores a mano dentro",
+      ]
+    correcta: 1
+    explicacion: "Cada versión de Playwright busca navegadores concretos. Si la imagen es de otra versión, falla con `Executable doesn't exist`. `latest` cambia sin avisar y rompe la reproducibilidad."
+  - id: dkr-npm-ci-primero
+    enunciado: "¿Por qué el Dockerfile copia `package.json` y `package-lock.json` y ejecuta `npm ci` antes de `COPY . .`?"
+    opciones:
+      [
+        "Para que los tests se ejecuten más rápido dentro del contenedor, siempre",
+        "Porque Docker no deja copiar la carpeta de tests sin instalar antes",
+        "Para que los navegadores se descarguen antes que el código de las pruebas",
+        "Para reutilizar la capa de dependencias mientras no cambien, aunque cambien tus tests",
+      ]
+    correcta: 3
+    explicacion: "Docker guarda cada instrucción como una capa y la reutiliza si lo que depende de ella no cambió. Las dependencias cambian poco y los tests mucho, así `npm ci` no se repite en cada cambio."
+  - id: dkr-dockerignore-env
+    enunciado: "Tienes un `.env` con la contraseña de práctica y no hay `.dockerignore`. ¿Qué pasa con `COPY . .`?"
+    opciones:
+      [
+        "Nada: Docker ignora por defecto los archivos que empiezan por punto",
+        "El `.env` se copia a la imagen y queda legible por quien tenga la imagen",
+        "Docker lo cifra automáticamente y solo se puede leer dentro de la imagen",
+        "El build falla por seguridad, al detectar un archivo con una contraseña",
+      ]
+    correcta: 1
+    explicacion: "Docker copia todo lo que no se excluye. Un `.env` copiado queda en una capa de la imagen. Por eso `.env` va en el `.dockerignore`, junto a `node_modules`."
+  - id: dkr-exit-code
+    enunciado: "¿Para qué sirve `--exit-code-from tests` en `docker compose up --build --abort-on-container-exit --exit-code-from tests`?"
+    opciones:
+      [
+        "Para que el comando devuelva el código de salida de la suite",
+        "Para ejecutar solo el servicio `tests` y dejar los demás apagados",
+        "Para ocultar los errores de los demás servicios durante la ejecución",
+        "Para guardar el informe de la suite en la carpeta `resultados/`",
+      ]
+    correcta: 0
+    explicacion: "Sin esa opción no hay garantía de que el comando refleje el resultado de las pruebas. `--abort-on-container-exit` apaga la Arena cuando `tests` termina; `--exit-code-from` hace que el resultado de `tests` sea el del comando. El informe sale por el volumen, no por esta opción."
+  - id: dkr-healthy
+    enunciado: "¿Qué evita `depends_on` con `condition: service_healthy` en el servicio `tests`?"
+    opciones:
+      [
+        "Que se escriban contraseñas de práctica en el archivo del compose",
+        "Que la imagen de la suite pese demasiado al construirla de nuevo",
+        "Que las pruebas empiecen mientras la web o la API aún están arrancando",
+        "Que el informe se borre cuando termina la ejecución del servicio",
+      ]
+    correcta: 2
+    explicacion: "Un servicio «arrancado» no es un servicio «listo». La condición espera a que el healthcheck de la web dé sano, y así los tests no compiten con el arranque."
+  - id: dkr-seguro
+    enunciado: "¿Cuál de estas opciones del compose abre la puerta a tu máquina y debes evitar?"
+    opciones:
+      [
+        "`init: true`",
+        "`volumes: - /var/run/docker.sock:/var/run/docker.sock`",
+        "`volumes: - ./resultados:/app/resultados`",
+        "`environment: ARENA_URL: http://web`",
+      ]
+    correcta: 1
+    explicacion: "Montar el socket de Docker da control sobre todos los contenedores y, en la práctica, sobre la máquina. `privileged`, `network_mode: host` y `pid: host` también se evitan. `init`, un volumen dentro del repositorio y una variable de entorno son seguros."
+  - id: dkr-runner
+    enunciado: "Tu ayuda `abrir` espera a `arena-ready`. Dentro de la Arena del compose de la plantilla, que arranca en modo evaluador sin barra de escenarios, ¿qué ocurre?"
+    opciones:
+      [
+        "El test se queda esperando para siempre: ese marcador solo existe con la barra de escenarios",
+        "Hay que cambiar la espera de `abrir` a otro elemento que exista en esa Arena",
+        "Funciona igual: el marcador oculto existe en las dos Arenas, así que la misma suite corre en ambas",
+        "El navegador falla al abrir la página, porque el modo evaluador rechaza los navegadores con interfaz",
+      ]
+    correcta: 2
+    explicacion: "El modo evaluador quita la barra de escenarios, las cabeceras `X-Arena-*` y deja un estado mínimo, pero conserva `arena-ready`, un marcador oculto y constante. Por eso la espera de `abrir` sirve en los dos sitios."

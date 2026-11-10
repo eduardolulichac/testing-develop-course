@@ -1,0 +1,19 @@
+defectos:
+  - titulo: "La página 2 repite el último producto de la página 1"
+    test: "catálogo › la página 2 no repite productos"
+    pasos: ["GET /api/products?page=1&pageSize=5", "GET /api/products?page=2&pageSize=5"]
+    esperado: "Los ids de las dos páginas no se repiten"
+    obtenido: "El último id de la página 1 aparece al inicio de la página 2"
+    severidad: media
+  - titulo: "Cerrar sesión no invalida el token"
+    test: "sesión › el token deja de valer después de cerrar sesión"
+    pasos: ["POST /api/auth/logout con el token", "GET /api/auth/me con el mismo token"]
+    esperado: "El segundo paso responde 401"
+    obtenido: "El segundo paso responde 200 con el usuario"
+    severidad: alta
+  - titulo: "El precio del detalle llega como texto"
+    test: "catálogo › el precio del detalle es un entero"
+    pasos: ["GET /api/products/2", "Comprobar el tipo de priceCents"]
+    esperado: "priceCents es un número entero, como dice el contrato"
+    obtenido: "priceCents llega como cadena de texto"
+    severidad: media

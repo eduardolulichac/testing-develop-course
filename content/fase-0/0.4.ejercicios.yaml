@@ -1,0 +1,41 @@
+ejercicios:
+  - slug: ej-0-4-network-primera-peticion
+    tipo: guiado
+    titulo: "Lee tu primera petición en la pestaña Network"
+    pistas:
+      - "Abre las DevTools con F12 y busca la pestaña Network antes de recargar la página."
+      - "Usa el filtro Fetch/XHR para quedarte solo con las llamadas a la API; las del catálogo contienen `products` en la URL."
+      - "Haz clic en la fila de la petición: en Headers están el método y el estado, y en la tabla general la columna Time."
+    solucion: "Con Network abierto y filtro Fetch/XHR, recarga el catálogo. La petición a `/api/products` es un `GET`. Anota su Status (200 si todo va bien) y su Time en milisegundos. Esos tres datos son la base de cualquier reporte."
+  - slug: ej-0-4-curl-estado-404
+    tipo: guiado
+    titulo: "Provoca y explica un 404 con curl"
+    pistas:
+      - "Los productos tienen ids pequeños, así que un número muy grande no existirá."
+      - "La opción `-i` de curl muestra la primera línea con el código de estado."
+      - "Un 404 ante un recurso que no existe es lo esperado; compara con lo que diría un 500."
+    solucion: 'Ejecuta `curl -s -i http://localhost:18080/api/products/9999`. Responde `404 Not Found` con `{"error":{"code":"not_found","message":"Product not found"}}`. Es correcto: el cliente pidió algo que no existe y el servidor lo dice con un 4xx y un mensaje claro, sin romperse.'
+  - slug: ej-0-4-leer-json-producto
+    tipo: guiado
+    titulo: "Lee los campos de un producto en JSON"
+    pistas:
+      - "Pide el producto con `curl -s http://localhost:18080/api/products/1` y busca las claves entre comillas."
+      - "El texto va entre comillas, los números sin ellas y los booleanos son `true` o `false`."
+      - "Piensa en un precio como 9,90: guardarlo en centavos evita decimales y errores de redondeo."
+    solucion: "Campos: `id` número, `sku` texto, `name` texto, `description` texto, `priceCents` número entero, `category` texto, `stock` número, `active` booleano. `priceCents` es entero porque guarda el precio en centavos (990 = 9,90), lo que evita errores de redondeo con decimales."
+  - slug: ej-0-4-curl-post-login
+    tipo: guiado
+    titulo: "Compara un 401 con un 400 en el login"
+    pistas:
+      - "Para un POST con JSON necesitas `-X POST`, la cabecera `content-type: application/json` y el cuerpo con `-d`."
+      - 'Prueba primero con `{"email":"nadie@example.com","password":"incorrecta1"}` y después sin la opción `-d`.'
+      - "Piensa si en cada caso el servidor pudo entender la petición o ni siquiera pudo leerla."
+    solucion: "Con un correo inexistente la petición es válida pero las credenciales no, y responde `401 Unauthorized`. Sin cuerpo, la petición está mal formada y responde `400 Bad Request` con `validation_error`. Un 401 dice «no sé quién eres» y un 400 dice «tu petición no se entiende»."
+  - slug: ej-0-4-elements-console
+    tipo: guiado
+    titulo: "Cambia el DOM desde Elements y recarga"
+    pistas:
+      - "Clic derecho sobre el nombre del producto y Inspeccionar abre Elements ya situado en ese elemento."
+      - "Doble clic sobre el texto en Elements te deja editarlo; el cambio se ve de inmediato en la página."
+      - "Piensa de dónde saca el navegador los datos cuando recargas: ¿del DOM que editaste o de una nueva petición al servidor?"
+    solucion: "Al editar el texto en Elements solo cambias el DOM de tu navegador, que es una copia en memoria. Al recargar, el navegador vuelve a pedir el HTML y los datos al servidor y reconstruye el DOM con el nombre original. El servidor no cambió. En Console no suele aparecer nada si no hay errores de JavaScript."

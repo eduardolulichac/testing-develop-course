@@ -1,0 +1,513 @@
+---
+modulo: "2.8"
+titulo: "Docker para QA"
+fase: 2
+nivel: "Semi Senior"
+duracion_min: 120
+prerequisitos: ["2.7"]
+reto: "reto-2-8-docker"
+version: "2026-11"
+herramientas:
+  [
+    "Docker 29.8 (verificado 29.8.2)",
+    "Docker Compose 5.5 (verificado 5.5.1)",
+    "Playwright 1.64.1",
+    "Imagen mcr.microsoft.com/playwright:v1.64.1-noble",
+  ]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Al terminar sabrás empaquetar tu suite de Playwright en una imagen de Docker, escribir un
+  `compose.yml` que levanta la tienda y ejecuta las pruebas con un solo comando, recuperar el
+  informe desde el contenedor, pasar las credenciales sin escribirlas en el código ni en la imagen y
+  diagnosticar los fallos típicos de un contenedor.
+</Objetivo>
+
+«En mi máquina funciona» es la frase más cara de la automatización. Tu suite depende de tu versión de Node, de los navegadores que instalaste, de que la Arena esté arriba en un puerto concreto y de variables que solo existen en tu terminal. Cuando otra persona, o un servidor de integración continua, la ejecuta, algo falla y nadie sabe qué.
+
+**Docker** resuelve esto empaquetando el entorno entero. Una **imagen** es la receta congelada (sistema, Node, navegadores, tu código) y un **contenedor** es esa imagen en ejecución. Con **Docker Compose** describes varios contenedores a la vez (la base de datos, la API, la web y tus pruebas) y los arrancas juntos.
+
+El objetivo del módulo, y del reto con el que termina la Fase 2, es este:
+
+```bash
+docker compose up --build --abort-on-container-exit --exit-code-from tests
+```
+
+Un solo comando que levanta la Arena, ejecuta la suite, devuelve el código de salida de las pruebas y deja un informe. Quien lo ejecute, en cualquier máquina con Docker, obtiene el mismo resultado.
+
+Lo que necesitas antes de empezar:
+
+- Docker en marcha. Comprueba las versiones con `docker --version` y `docker compose version` (el curso se verificó con Docker 29.8.2 y Compose 5.5.1).
+- Si tu computadora es un Mac con chip Apple (arm64): las imágenes de la Arena están publicadas solo para `linux/amd64`. El compose de la plantilla ya lo indica (`platform: linux/amd64`), así que Docker las ejecuta emuladas, con un aviso de plataforma; la primera vez es más lento, pero funciona.
+- Tu suite de Playwright de los módulos anteriores, con Playwright 1.64.1. Las pruebas con trazabilidad del módulo 2.7 te servirán de contenido.
+- Unos 5 GB libres: la imagen oficial de Playwright pesa unos 3,5 GB.
+- Haber leído el README del reto (sección 5) para conseguir la plantilla, porque la práctica de este módulo parte de ella.
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Imagen, contenedor, volumen y red">
+Cuatro palabras bastan para entender todo el módulo:
+
+- **Imagen**: el paquete de solo lectura con el sistema, las herramientas y tu código. Se construye una vez y se puede ejecutar muchas.
+- **Contenedor**: una imagen ejecutándose. Es desechable: al borrarlo, lo que escribió dentro se pierde.
+- **Volumen o montaje** (_mount_): una carpeta de tu máquina conectada a una carpeta del contenedor. Es la forma de sacar el informe antes de que el contenedor desaparezca.
+- **Red**: Compose crea una red privada donde cada servicio se encuentra por su nombre. Desde el contenedor de pruebas, la tienda no está en `localhost`: está en `http://web`.
+
+Esa última idea explica la mitad de los errores de este módulo. `localhost` dentro de un contenedor es **ese mismo contenedor**, no tu ordenador.
+
+</Paso>
+
+<Paso numero={2} titulo="El Dockerfile de una suite de Playwright">
+El **Dockerfile** es la receta de la imagen. Para una suite de Playwright queda así:
+
+```dockerfile
+FROM mcr.microsoft.com/playwright:v1.64.1-noble
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+CMD ["npx", "playwright", "test"]
+```
+
+Línea por línea:
+
+- `FROM`: imagen de partida. La oficial de Playwright ya trae Node, los navegadores y sus dependencias del sistema. El nombre sigue el formato `mcr.microsoft.com/playwright:v<versión>-noble`, y la versión debe ser **exactamente la de `@playwright/test`** en tu `package.json`. Si difieren, Playwright busca navegadores que esa imagen no tiene y todos los tests fallan antes de empezar. Escríbela literal, sin `latest` y sin variables.
+- `WORKDIR /app`: la carpeta de trabajo dentro de la imagen.
+- `COPY package.json package-lock.json ./` y `RUN npm ci`: instalas las dependencias **antes** de copiar el resto. Docker guarda cada paso como una capa y la reutiliza si nada cambió. Como tus dependencias cambian poco y tus tests mucho, así `npm ci` solo se repite cuando tocas `package.json`.
+- `COPY . .`: copia tu proyecto.
+- `CMD`: lo que se ejecuta al arrancar el contenedor. Lleva el comando de la suite, en formato de lista (cada palabra, un elemento).
+
+La imagen trae su propio Node (en la versión usada para verificar este módulo, la 26.13), que puede ser distinto del Node 24 de tu máquina. Para una suite de Playwright no importa, pero conviene saberlo si algo se comporta distinto.
+
+</Paso>
+
+<Paso numero={3} titulo="El .dockerignore: lo que no debe entrar en la imagen">
+`COPY . .` copia **todo** lo que hay en la carpeta. El archivo `.dockerignore` lista lo que se excluye:
+
+```text
+node_modules
+.env
+resultados
+test-results
+playwright-report
+```
+
+- `node_modules`: lo instala `npm ci` dentro de la imagen. Copiar el tuyo mezclaría paquetes compilados para tu sistema (macOS o Windows) con los de Linux.
+- `.env`: tu archivo local con la contraseña de práctica. Si se copia, queda **escrito dentro de la imagen**, en una capa que cualquiera con la imagen puede leer. Lo comprobamos en el ejercicio 2.
+- Las carpetas de resultados no tienen nada que hacer en la imagen.
+
+</Paso>
+
+<Paso numero={4} titulo="Construir y ejecutar la imagen sola">
+Construye la imagen con un nombre (`-t`) desde la carpeta del Dockerfile:
+
+```bash
+docker build -t suite-qa .
+```
+
+y ejecútala. Las credenciales se pasan con `-e`, y `--ipc=host` y `--init` son las opciones que recomienda Playwright para Chromium en contenedores:
+
+```bash
+docker run --rm --ipc=host --init \
+  -e USUARIO_EMAIL=ana@arena.test -e USUARIO_CLAVE="$USUARIO_CLAVE" suite-qa
+```
+
+`--rm` borra el contenedor al terminar. Como no hay ninguna Arena a la vista, **todos los tests fallan**:
+
+```text
+AggregateError: apiRequestContext.get: connect ECONNREFUSED ::1:18080
+connect ECONNREFUSED 127.0.0.1:18080
+Call log:
+  - → GET http://localhost:18080/api/products
+```
+
+El contenedor intenta llegar a `localhost:18080`, que dentro de él no es tu Arena. Es el motivo por el que necesitamos Compose: juntar tus pruebas y la tienda en la misma red.
+
+</Paso>
+
+<Paso numero={5} titulo="El compose.yml: la Arena y tu servicio de pruebas">
+Compose describe los servicios en un archivo. La plantilla del reto trae `arena/compose.yml` con la base de datos, la API y la web (`db`, `api` y `web`), con imágenes públicas, y un `compose.yml` raíz que la incluye. Lo que falta es tu servicio `tests`:
+
+```yaml
+name: reto-docker
+
+include:
+  - arena/compose.yml
+
+services:
+  tests:
+    build: .
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      ARENA_URL: http://web
+      USUARIO_EMAIL:
+      USUARIO_CLAVE:
+      CI: "1"
+    ipc: host
+    init: true
+    volumes:
+      - ./resultados:/app/resultados
+```
+
+Qué hace cada parte:
+
+- `include`: trae los servicios de la Arena desde otro archivo.
+- `build: .`: construye la imagen con **tu** Dockerfile. Es lo que hace que el servicio ejecute tus pruebas y no una imagen ajena.
+- `depends_on` con `service_healthy`: espera a que la web esté **sana**, no solo arrancada. La web tiene un _healthcheck_ (una comprobación periódica) que dice cuándo responde. Sin esta condición, tus tests empiezan mientras la API aún carga y fallan por una carrera.
+- `ARENA_URL: http://web`: la dirección de la tienda dentro de la red de Compose.
+- `USUARIO_EMAIL:` y `USUARIO_CLAVE:` **sin valor**: Compose copia esas variables de tu terminal o de un archivo `.env`. La contraseña no se escribe en el archivo.
+- `CI: "1"`: algunas herramientas se comportan distinto en entornos automáticos.
+- `ipc: host` e `init: true`: equivalen a `--ipc=host` y `--init` del paso anterior.
+- `volumes`: conecta `./resultados` de tu máquina con `/app/resultados` del contenedor. El `playwright.config.ts` de la plantilla escribe ahí el informe JSON, y así sobrevive al contenedor.
+
+Lo que **no** debe aparecer, porque abre la puerta a tu máquina: `privileged: true`, `network_mode: host`, `pid: host`, montar `/var/run/docker.sock` y volúmenes que apunten fuera del repositorio. Quien controla el socket de Docker controla toda la máquina.
+
+</Paso>
+
+<Paso numero={6} titulo="El comando único y su código de salida">
+Con la contraseña exportada en la terminal (`USUARIO_EMAIL` y `USUARIO_CLAVE`, o copiando `.env.example` como `.env`), ejecuta:
+
+```bash
+docker compose up --build --abort-on-container-exit --exit-code-from tests
+```
+
+- `up`: crea y arranca los servicios (`db`, `api`, `web` y `tests`).
+- `--build`: construye otra vez la imagen de `tests` si cambió algo.
+- `--abort-on-container-exit`: cuando **cualquier** contenedor termina, para los demás. La Arena nunca termina sola; el que acaba es `tests`, y con él se apaga todo.
+- `--exit-code-from tests`: el comando devuelve el código de salida de `tests`. Si la suite pasa, `0`; si falla, distinto de cero. Es lo que hace que un servidor de integración marque el trabajo en rojo.
+
+Con 6 tests de ejemplo, el final de la salida es:
+
+```text
+tests-1  | Running 6 tests using 1 worker
+tests-1  |   ✓  1 tests/api.spec.ts:7:5 › GET /api/products devuelve el catálogo paginado (50ms)
+...
+tests-1  |   6 passed (935ms)
+tests-1 exited with code 0
+```
+
+y el informe queda en tu carpeta `resultados/informe.json`. Para limpiar los contenedores, la red y los datos de la base:
+
+```bash
+docker compose down -v
+```
+
+`-v` borra también los volúmenes. Si dejas la base de datos de una ejecución a otra, los datos acumulados pueden alterar los resultados.
+
+</Paso>
+
+<Paso numero={7} titulo="Secretos: lo que no se escribe en ningún sitio">
+La contraseña de práctica de la Arena es pública, pero adquirir el hábito es lo que importa. Hay tres lugares donde se escapa sin querer:
+
+- **El código**: `fill("Cliente123!")` en un test. Se lee de `process.env`.
+- **El compose**: `USUARIO_CLAVE: Cliente123!` bajo `environment`. Se deja sin valor, para que Compose lo copie del entorno.
+- **La imagen**: un `.env` copiado por `COPY . .` (paso 3) o un `ENV USUARIO_CLAVE=...` en el Dockerfile. Quedan en una capa para siempre.
+
+Un cuidado más: `docker compose config` muestra el compose ya resuelto **con los valores reales** de las variables. Si lo pegas en un mensaje o en un issue, antes revisa que no lleve secretos.
+
+</Paso>
+
+<Paso numero={8} titulo="Probar un escenario dentro de Docker">
+Hay una diferencia importante entre tu Arena de práctica y la Arena del `arena/compose.yml`. Esta última arranca en **modo evaluador** (`ARENA_RUNNER_MODE=1`): sin la barra de escenarios, sin las cabeceras `X-Arena-*` y con un estado mínimo. Sirve para que todos ejecuten lo mismo. Tiene dos consecuencias:
+
+- Tus tests no deben llamar a `/__arena` ni leer variables `ARENA_*` (salvo `ARENA_URL`).
+- Para probar si tu suite detecta un defecto, tú activas el escenario **desde tu terminal**, mientras la Arena está arriba.
+
+Tu ayuda `abrir` no necesita cambios: espera a `arena-ready`, un marcador oculto que existe tanto en tu Arena de práctica como en la del compose, así que la misma suite corre en los dos sitios.
+
+El procedimiento, con el puerto que publica la plantilla (`127.0.0.1:18080`):
+
+```bash
+docker compose up -d --wait db api web
+curl -X PUT http://127.0.0.1:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase2-e2e-combinado","release":"v1.0.0"}'
+curl -X POST http://127.0.0.1:18080/__arena/reset
+docker compose run --rm --build tests
+docker compose down -v
+```
+
+- `up -d --wait db api web` levanta solo la Arena, en segundo plano, hasta que está sana.
+- Los dos `curl` activan el escenario y reinician los datos. Como la Arena está en modo evaluador, la respuesta del `PUT` muestra `"scenario":"runner"` aunque el cambio se aplicó: se comprueba por el **comportamiento**, no por la respuesta.
+- `docker compose run --rm --build tests` ejecuta solo tu servicio de pruebas contra la Arena que ya está arriba y borra su contenedor. El `--build` es importante: `run` no reconstruye la imagen por sí solo, y sin él usarías la versión de tus tests de la última vez que construiste (si añadiste o cambiaste tests, no se ejecutarían).
+
+Con el escenario `fase2-e2e-combinado` activo, una suite como la del módulo 2.7 pasa de 14 tests en verde a 13 en verde y uno en rojo, y el comando devuelve el código `1`.
+
+</Paso>
+
+<Paso numero={9} titulo="Cuando algo falla: cómo diagnosticar">
+Los fallos de Docker casi siempre caen en uno de estos grupos, y cada uno tiene su pista:
+
+| Síntoma                                      | Causa habitual                                             | Qué mirar                                                    |
+| -------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------ |
+| `ECONNREFUSED ... localhost:18080`           | `ARENA_URL` no está definida en el contenedor              | `environment` del servicio `tests`                           |
+| `Executable doesn't exist at ...`            | La versión de la imagen no coincide con `@playwright/test` | La línea `FROM` y `package.json`                             |
+| `Falta USUARIO_EMAIL` (u otra variable)      | La variable no llegó al contenedor                         | Que esté exportada o en `.env`, y declarada en `environment` |
+| Los tests empiezan y fallan al cargar la web | Arranque en carrera                                        | `depends_on` con `service_healthy`                           |
+| No aparece `resultados/informe.json`         | Falta el montaje o la suite no llegó a ejecutarse          | `volumes` y el reportero `json` de `playwright.config.ts`    |
+
+Comandos útiles:
+
+```bash
+docker compose ps                 # estado de los servicios
+docker compose logs tests         # lo que escribió tu servicio de pruebas
+docker compose config --quiet     # valida el compose (devuelve distinto de 0 si es inválido)
+```
+
+Cuando la imagen no coincide con tu Playwright, el mensaje que ves es el de «Executable doesn't exist»: el navegador que busca tu versión no está en la imagen. Esa es la razón por la que la versión se escribe literal, como se vio en el paso 2.
+
+</Paso>
+
+<Paso numero={10} titulo="Lo que Docker no arregla">
+Un contenedor da el mismo entorno, no el mismo resultado de un test mal escrito. Una espera fija que funciona en tu portátil puede fallar dentro de un contenedor, porque ahí el tiempo varía. La regla de siempre sigue valiendo: sin `waitForTimeout`, con aserciones que esperan, y tests que no dependen del orden. Docker hace que los problemas aparezcan antes y de forma repetible, que es una ventaja si estás dispuesto a leerlos.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Del repositorio plantilla al comando único">
+Parte de la plantilla del reto en una carpeta de práctica: en la página de la plantilla `reto-2-8-docker`, pulsa **Use this template**, crea un repositorio que se llame `practica-docker` (público) y clónalo. **No es el repositorio de tu reto**: para el reto crearás otro, desde la misma plantilla.
+
+```bash
+git clone https://github.com/TU-USUARIO/practica-docker.git
+cd practica-docker
+npm ci
+cp .env.example .env
+```
+
+`.env.example` trae `USUARIO_EMAIL` y `USUARIO_CLAVE` con los datos de práctica; `.env` está en `.gitignore` y no se sube. La plantilla trae 6 tests (3 de interfaz y 3 de API), el `arena/compose.yml`, un `compose.yml` sin el servicio `tests` y un `Dockerfile` con solo comentarios.
+
+**1. El Dockerfile.** Sustituye su contenido por el del paso 2, con la versión que tenga tu `package.json`:
+
+```dockerfile
+FROM mcr.microsoft.com/playwright:v1.64.1-noble
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+CMD ["npx", "playwright", "test"]
+```
+
+**2. El .dockerignore.**
+
+```text
+node_modules
+.env
+resultados
+test-results
+playwright-report
+```
+
+**3. El servicio `tests`.** Añade al final del `compose.yml` el bloque `services:` del paso 5.
+
+**4. Valida antes de construir.** Un compose inválido se detecta sin gastar tiempo:
+
+```bash
+docker compose config --quiet && echo "compose válido"
+```
+
+**5. El comando único.**
+
+```bash
+docker compose up --build --abort-on-container-exit --exit-code-from tests
+echo "código de salida: $?"
+docker compose down -v
+```
+
+La primera vez construye la imagen; en las siguientes reutiliza las capas. En una ejecución de verificación del módulo, la suite terminó con `6 passed`, `tests-1 exited with code 0` y `resultados/informe.json` con `"expected": 6, "unexpected": 0`. Sin el `.env` ni las variables exportadas, la suite falla con `Error: Falta USUARIO_EMAIL: copia .env.example como .env`.
+
+**6. Qué pasa cuando un test falla.** Añade `tests/falla.spec.ts`, que busca un encabezado que no existe:
+
+```ts
+import { expect, test } from "@playwright/test";
+
+test("falla a propósito", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "No existe" })).toBeVisible({ timeout: 2000 });
+});
+```
+
+Ejecuta el comando único otra vez. Termina con:
+
+```text
+tests-1  |   ✘  4 tests/falla.spec.ts:2:5 › falla a propósito (2.1s)
+tests-1  |   1 failed
+tests-1  |   6 passed (3.1s)
+tests-1 exited with code 1
+```
+
+y el comando devuelve `1`. El informe también se escribió: `"expected": 6, "unexpected": 1`. Borra el test cuando termines.
+
+Lo que debes observar:
+
+1. **Una orden, tres servicios más tus pruebas.** Nadie arrancó la base de datos ni la API a mano.
+2. **El código de salida atraviesa Docker.** Un rojo en el test es un rojo en el comando, y eso es lo que un servidor lee.
+3. **La carrera la evita `service_healthy`.** Compruébalo con `docker compose ps` mientras corre.
+4. **El informe sobrevive** porque el volumen lo saca del contenedor.
+5. **Imagen de unos 3,5 GB.** Es lo que cuesta tener los tres navegadores; la capa pesada se descarga una sola vez.
+
+Los errores típicos de esta práctica:
+
+- **Cambiar el `FROM` por `latest`** o por una versión distinta de la de tu `package.json`: los tests no encuentran el navegador.
+- **Escribir la contraseña en el `compose.yml`** para que «funcione ya»: la regla es dejarla sin valor.
+- **Olvidar `down -v`** y arrancar la siguiente vez con datos acumulados.
+- **Usar `localhost` en `ARENA_URL`**: dentro del contenedor es el propio contenedor.
+- **Tener el puerto 18080 ocupado** por tu Arena de práctica: el compose de la plantilla publica su web en `127.0.0.1:18080`. Apaga la otra Arena antes (`docker compose down` en `apps/qa-arena`).
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+Todos usan tu carpeta `practica-docker`, el comando del paso 6 y Docker en marcha. Solo los tres últimos levantan la Arena. El botón abre la Arena **alojada**, solo para explorar la tienda; tu suite corre contra la Arena de tu compose.
+
+<Ejercicio id="ej-2-8-imagen-sola">
+  Construye la imagen con `docker build -t suite-qa .` y ejecútala sola con `docker run` (sin
+  Compose). Observa que todos los tests fallan, y explica con tus palabras por qué `localhost`
+  dentro del contenedor no es tu Arena.
+</Ejercicio>
+
+<Ejercicio id="ej-2-8-dockerignore">
+  Comprueba qué pasa con un `.env` si no hay `.dockerignore`: crea un `.env`, quita (temporalmente)
+  el `.dockerignore`, construye una imagen y mira dentro con `docker run --rm <imagen> ls -a /app`.
+  Después restaura la regla y comprueba que el `.env` ya no está.
+</Ejercicio>
+
+<Ejercicio id="ej-2-8-comando-unico">
+  Ejecuta el comando único completo en tu carpeta, anota el código de salida con `echo $?` y abre
+  `resultados/informe.json` para localizar cuántos tests pasaron (`stats.expected`) y cuántos
+  fallaron (`stats.unexpected`).
+</Ejercicio>
+
+<Ejercicio id="ej-2-8-codigo-de-salida">
+  Añade un test que falle a propósito, ejecuta el comando único y comprueba que su código de salida
+  es distinto de cero y que el informe lo refleja. Después borra el test y comprueba que el código
+  vuelve a ser `0`.
+</Ejercicio>
+
+<Ejercicio id="ej-2-8-escenario-en-docker">
+  Copia tu suite de trazabilidad del módulo 2.7 a `tests/`, comprueba que `abrir` espera a
+  `arena-ready`, activa `fase2-e2e-combinado` en la versión `v1.0.0` con el procedimiento del paso 8
+  y ejecuta `docker compose run --rm --build tests`. Comprueba qué test falla y por qué, y deja la
+  Arena limpia con `docker compose down -v`.
+</Ejercicio>
+
+<AbrirArena escenario="fase2-e2e-combinado" />
+
+## 5. Reto sin guía
+
+<Reto titulo="Dockeriza tu suite: la Arena y las pruebas con un solo comando">
+  Este reto cierra la Fase 2 y lo evalúa la plataforma cada vez que haces `push` a `main`. El
+  evaluador **ejecuta de verdad** `docker compose up --build --abort-on-container-exit
+  --exit-code-from tests` en tu repositorio y lee el informe JSON que deja la suite. Pruébalo tú
+  antes con ese mismo comando.
+
+**Cómo conseguirlo.** Crea tu repositorio a partir de la plantilla `reto-2-8-docker` (**Use this template**, visibilidad **Public**, sin secretos en el código), clónalo y sigue el README de la plantilla. Es un repositorio distinto de `practica-docker`.
+
+**Qué entregas:**
+
+1. Un `Dockerfile` que parte de la imagen de Playwright **con la misma versión** que tu `@playwright/test`, con la versión escrita literal.
+2. Un `.dockerignore` que excluya `node_modules`.
+3. Un `compose.yml` con la Arena y un servicio `tests` que **construye** tu imagen y ejecuta Playwright, sin abrir el anfitrión (nada de `privileged`, red del anfitrión, socket de Docker ni rutas fuera del repositorio).
+4. Una suite de **8 tests o más** que pasan en Docker, de interfaz y de API. Al menos uno debe **fallar** si los defectos de precio y envío del escenario `fase2-e2e-combinado` (release `v1.0.0`) están presentes. Lee la página **Requisitos** de la Arena para saber qué comprobar.
+5. Trazabilidad (módulo 2.7): tests anotados con `requisito` que cubren **al menos 5** requisitos distintos de `REQ-1` a `REQ-10`, con todos sus tests en verde.
+6. Credenciales por variables de entorno, sin esperas fijas (`waitForTimeout`) y sin llamar a `/__arena` ni leer variables `ARENA_*` desde los tests (`ARENA_URL` sí se puede leer).
+
+**Cómo entregar:** vincula el repositorio en la plataforma, crea el secreto `COURSE_CHALLENGE_KEY` y la variable `COURSE_KEY_ID` en tu repositorio y haz `push` a `main`. No edites `.github/workflows/evaluar.yml`: si lo cambias, la plataforma rechaza la entrega.
+
+Criterios, en lenguaje de la plataforma:
+
+- Un solo comando levanta la Arena, ejecuta la suite y deja el informe.
+- Tu Dockerfile usa la imagen de Playwright de la misma versión que tu proyecto.
+- Tu `.dockerignore` excluye `node_modules`.
+- Tu compose no abre la puerta al anfitrión.
+- Todos los tests pasan contra la Arena sin defectos.
+- Tu suite detecta los defectos de precio y envío del Sprint 14.
+- Tus tests cubren al menos 5 requisitos `REQ-n`.
+- No hay contraseñas de práctica escritas en el repositorio.
+- No hay esperas fijas.
+- La suite no usa los endpoints internos de la Arena.
+
+Un informe `resultados/informe.json` subido al repositorio no cuenta: el evaluador lo borra y exige que lo genere la ejecución dentro del contenedor.
+
+Haz la prueba general antes de entregar: `docker compose down -v`, borra `resultados/` y ejecuta el comando único desde cero. Si termina con código 0 y deja el informe, estás listo.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+Una IA escribe un Dockerfile o un compose en segundos, pero los escribe con la versión de la última vez que vio la documentación. Aquí revisar es más importante que pedir.
+
+**Qué pedirle:**
+
+- «Escribe un Dockerfile para una suite de Playwright 1.64.1 que parta de la imagen oficial con esa versión exacta».
+- «Explícame línea por línea qué hace este `compose.yml`».
+- «Este error sale al ejecutar `docker compose up`: [pega el mensaje]. ¿Qué lo causa?».
+
+**Qué revisar antes de aceptarlo:**
+
+- Que la imagen sea `mcr.microsoft.com/playwright:v<versión>-noble` con **tu** versión, y no `latest` ni otra.
+- Que no haya `privileged`, `network_mode: host`, el socket de Docker ni rutas fuera del repositorio.
+- Que `ARENA_URL` apunte a `http://web` y no a `localhost`.
+- Que la contraseña no esté escrita en el compose ni en el Dockerfile.
+- Que `depends_on` use `service_healthy`.
+- Que el comando ejecute de verdad Playwright, y no `true` ni un `echo`.
+
+**Qué rechazar:**
+
+- Un comando que «pasa» sin ejecutar tests (por ejemplo, un `command: ["true"]`) o que copia un informe de tu máquina.
+- `docker run --privileged` o montar el socket «para que funcione».
+- Subir tu `.env` a la imagen o al repositorio.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Usar localhost dentro del contenedor">
+  `localhost` es el propio contenedor. La Arena del compose se llama `web`: la dirección correcta es
+  `ARENA_URL=http://web`.
+</ErrorComun>
+
+<ErrorComun titulo="Una imagen de Playwright de otra versión">
+  Si el `FROM` no coincide con `@playwright/test`, Playwright no encuentra los navegadores. Escribe
+  la versión literal y cámbiala a la vez que `package.json`.
+</ErrorComun>
+
+<ErrorComun titulo="Arrancar los tests antes de que la Arena esté lista">
+  Sin `depends_on` con `service_healthy`, los tests compiten con el arranque de la API y fallan de
+  forma intermitente. Espera a que la web esté sana.
+</ErrorComun>
+
+<ErrorComun titulo="Copiar el .env o node_modules a la imagen">
+  `COPY . .` copia todo. Sin `.dockerignore`, tu contraseña local queda escrita en la imagen y tus
+  paquetes de macOS o Windows se mezclan con los de Linux.
+</ErrorComun>
+
+<ErrorComun titulo="Olvidar el volumen del informe">
+  Lo que se escribe dentro del contenedor desaparece con él. Sin `./resultados:/app/resultados` no
+  hay `informe.json` al terminar.
+</ErrorComun>
+
+<ErrorComun titulo="Dejar datos de una ejecución a otra">
+  Si no usas `docker compose down -v`, la base conserva datos que pueden cambiar los resultados.
+  Empieza cada comprobación importante desde cero.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Una imagen es la receta congelada del entorno; un contenedor, esa imagen en ejecución. Compose levanta varios a la vez.
+- Dentro de un contenedor, `localhost` es el propio contenedor: la Arena se alcanza por el nombre del servicio (`http://web`).
+- El `FROM` usa la imagen oficial de Playwright con la versión **exacta** de tu `@playwright/test`.
+- `npm ci` va antes de copiar el código, para aprovechar la caché; el `.dockerignore` excluye `node_modules` y `.env`.
+- `depends_on` con `service_healthy` espera a que la Arena esté sana antes de lanzar las pruebas.
+- `docker compose up --build --abort-on-container-exit --exit-code-from tests` ejecuta todo y devuelve el código de salida de las pruebas.
+- Las credenciales se pasan por variables de entorno, sin valor en el compose y sin copiarlas a la imagen.
+- El informe sale del contenedor por un volumen; los escenarios se activan desde la terminal, y la Arena del compose no tiene barra de escenarios.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

@@ -1,0 +1,134 @@
+ejercicios:
+  - slug: ej-2-2-pagina-de-pago
+    tipo: guiado
+    titulo: "Crea el Page Object de la página de pago"
+    pistas:
+      - "Copia la estructura de `CarritoPage`: una clase con `constructor(private readonly page: Page)`, la cabecera como componente y los localizadores en el constructor. En `/checkout` necesitas el campo «Direccion de envio», el campo «Numero de tarjeta», el botón «Pagar ahora» y la alerta de error."
+      - 'Deja públicos solo `error` y `cabecera`. Un método `abrir()` que use `abrir(this.page, "/checkout")` y otro `pagar(direccion, tarjeta?)` que escriba la dirección, escriba la tarjeta solo si se indica una distinta de la precargada y pulse el botón. El método no comprueba el resultado.'
+      - 'Añade `checkout: CheckoutPage` al tipo `Paginas` y un fixture `checkout` en `fixtures/index.ts`. En el test usa `test.use({ sesion: "ana" })`, agrega un producto, abre el pago, paga con `4000 0000 0000 0002` y comprueba el mensaje y la dirección con `toHaveURL`.'
+    solucion: 'En `pages/CheckoutPage.ts`: `export class CheckoutPage { readonly cabecera; readonly error = page.getByRole("alert"); ... async abrir() { await abrir(this.page, "/checkout"); } async pagar(direccion: string, tarjeta?: string) { await this.campoDireccion.fill(direccion); if (tarjeta) await this.campoTarjeta.fill(tarjeta); await this.botonPagar.click(); } }`, con `campoDireccion = page.getByLabel("Direccion de envio")`, `campoTarjeta = page.getByLabel("Numero de tarjeta")` y `botonPagar = page.getByRole("button", { name: "Pagar ahora" })` creados en el constructor. En el test: `await producto.agregar(BOTELLA.id); await checkout.abrir(); await checkout.pagar("Calle Falsa 123", "4000 0000 0000 0002"); await expect(checkout.error).toHaveText("Pago rechazado: Tarjeta rechazada"); await expect(page).toHaveURL("/checkout");`. Para usar `expect(page)` recibe también `page` en los parámetros del test: está permitido porque no toca la página directamente.'
+  - slug: ej-2-2-linea-del-carrito
+    tipo: guiado
+    titulo: "Usa el componente de línea del carrito"
+    pistas:
+      - "Agrega dos auriculares y una botella. Con `carrito.linea(AURICULARES.id)` obtienes la fila de los auriculares y con `carrito.linea(BOTELLA.id)` la de la botella: cada una busca solo dentro de su fila."
+      - "Cambia la cantidad de los auriculares a 3 con `cambiarCantidad(3)`. Comprueba el total de esa línea (`$29.70`) y que el de la botella sigue siendo `$50.90` con `toHaveText`."
+      - 'Para el nombre añade a `LineaDeCarrito` un localizador que apunte a la primera celda de la fila: `root.getByRole("cell").first()`. Comprueba con `toHaveText` que la fila de cada id muestra el producto esperado antes de cambiar la cantidad.'
+    solucion: 'En `LineaDeCarrito`: `readonly nombre: Locator;` y en el constructor `this.nombre = root.getByRole("cell").first();`. El test, con `test.use({ sesion: "ana" })`: `await producto.agregar(AURICULARES.id, 2); await producto.agregar(BOTELLA.id); await carrito.abrir(); await expect(carrito.linea(AURICULARES.id).nombre).toHaveText(AURICULARES.nombre); await expect(carrito.linea(BOTELLA.id).nombre).toHaveText(BOTELLA.nombre); await carrito.linea(AURICULARES.id).cambiarCantidad(3); await expect(carrito.linea(AURICULARES.id).total).toHaveText("$29.70"); await expect(carrito.linea(BOTELLA.id).total).toHaveText(BOTELLA.precio);`. Pasa con `baseline`.'
+  - slug: ej-2-2-sesion-de-administrador
+    tipo: guiado
+    titulo: "Añade la sesión de administrador al fixture"
+    pistas:
+      - 'Añade a tu `.env.local` las variables `ADMIN_EMAIL=admin@arena.test` y `ADMIN_CLAVE=Admin123!` (son datos de práctica públicos, y viven en el archivo de entorno, no en el código). Cambia `credenciales()` para que acepte `"usuario"` o `"admin"` y lea `USUARIO_*` o `ADMIN_*` según el caso.'
+      - 'Amplía el tipo de la opción a `"ninguna" | "ana" | "admin"` y haz que `prepararSesion` inicie sesión con las credenciales que correspondan. Solo vacía el carrito si la sesión es la de Ana. En `CabeceraTienda` añade `enlaceAdmin = page.getByRole("link", { name: "Admin", exact: true })`.'
+      - 'Escribe dos tests en grupos distintos con `test.use({ sesion: "admin" })` y `test.use({ sesion: "ana" })`. El del administrador comprueba `toBeVisible()` sobre `cabecera.enlaceAdmin`; el de Ana, `toHaveCount(0)`.'
+    solucion: 'En `credenciales(quien: "usuario" | "admin" = "usuario")` el prefijo es `ADMIN` o `USUARIO` y se leen `${prefijo}_EMAIL` y `${prefijo}_CLAVE` de `process.env`, con un error claro si faltan. En el fixture, `sesion: "ninguna" | "ana" | "admin"` y en `prepararSesion`: `if (sesion !== "ninguna") { const { email, clave } = credenciales(sesion === "admin" ? "admin" : "usuario"); await login.abrir(); await login.entrar(email, clave); await expect(cabecera.nombreDeUsuario).toBeVisible(); if (sesion === "ana") await carrito.vaciar(); }`. Los tests: `test.describe("como administrador", () => { test.use({ sesion: "admin" }); test("la cabecera muestra el enlace Admin", async ({ cabecera }) => { await expect(cabecera.enlaceAdmin).toBeVisible(); }); });` y el equivalente de Ana con `toHaveCount(0)`. Ambos pasan con `baseline`.'
+  - slug: ej-2-2-cerrar-sesion
+    tipo: guiado
+    titulo: "Cierra sesión usando el componente de cabecera"
+    pistas:
+      - 'El test empieza con la sesión de Ana (`test.use({ sesion: "ana" })`), así que ya estás dentro cuando arranca. Pide en los parámetros del test los fixtures `cabecera` y `login`.'
+      - "Cierra la sesión con `cabecera.cerrarSesion()`. Después de salir, la tienda te lleva a la pantalla de inicio de sesión: esa pantalla ya tiene un localizador para su título."
+      - "Si el botón pasara a llamarse «Salir de la cuenta», solo cambiaría una línea: el localizador `botonSalir` de `CabeceraTienda`. Ningún test se enteraría."
+    solucion: 'Con `test.use({ sesion: "ana" })`: `test("cerrar sesión devuelve al login", async ({ cabecera, login }) => { await cabecera.cerrarSesion(); await expect(login.titulo).toBeVisible(); });`. Pasa con `baseline`. Si el botón cambiara de nombre, se edita solo `page.getByRole("button", { name: "Salir" })` en `CabeceraTienda.ts`, y los tests que cierran sesión siguen intactos: esa es la ventaja de tener el localizador en un solo lugar.'
+  - slug: ej-2-2-sigue-detectando
+    tipo: guiado
+    titulo: "Comprueba que la suite migrada sigue detectando"
+    escenario: fase1-aserciones
+    pistas:
+      - "Activa `fase1-aserciones` y ejecuta `tests/carrito.spec.ts` (la suite del módulo 2.1) y `tests/carrito-pom.spec.ts` (la migrada). Anota qué tests fallan y con qué mensaje en cada una."
+      - 'Debes ver los mismos tres fallos: `Expected: "-$7.63"` frente a `Received: "-$7.64"`, y dos del contador (`Expected: "0"`, `Received: "1"` y `Expected: "1"`, `Received: "2"`). Si falta alguno en la suite migrada, perdiste una aserción.'
+      - "Borra a propósito la línea `await expect(carrito.descuento).toHaveText(DESCUENTO_BIGSPEND_SOBRE_BOTELLA);` de la suite migrada y ejecútala de nuevo: el test de BIGSPEND pasa con el escenario con defectos. Devuelve la línea."
+    solucion: 'Con `fase1-aserciones`, las dos suites fallan en el descuento de `BIGSPEND` (`Expected: "-$7.63"`, `Received: "-$7.64"`) y en los dos tests del contador (`Expected: "0"`, `Received: "1"` y `Expected: "1"`, `Received: "2"`). Con `baseline` pasan todas. Si borras la aserción del descuento, el test de BIGSPEND pasa con el escenario activo: el refactor perdió capacidad de detección. Por eso se compara siempre contra el escenario, no solo contra `baseline`.'
+  - slug: reto-2-2-pom
+    tipo: reto
+    titulo: "Refactoriza la suite heredada a Page Objects"
+    escenario: fase1-aserciones
+    criterio_aprobacion:
+      version: 1
+      arena: { escenario: fase1-aserciones, release: null, semilla: 1577 }
+      umbral: 70
+      obligatorios:
+        [suite-verde-baseline, titulos-conservados, specs-sin-localizadores, sin-arena-interna]
+      criterios:
+        - id: suite-verde-baseline
+          titulo: "Todos los tests pasan contra la Arena sin defectos"
+          tipo: suite_pasa
+          escenario: baseline
+          peso: 20
+          competencia: tecnica
+          feedback_fallo: "Tras el refactor algún test falla contra la tienda correcta. Ejecuta la suite en local con baseline."
+        - id: titulos-conservados
+          titulo: "Conservas los 10 tests heredados con su título"
+          tipo: reporte_titulos
+          titulos:
+            - "login correcto muestra el nombre del usuario"
+            - "login con contrasena incorrecta muestra un error"
+            - "cerrar sesion devuelve al login"
+            - "el catalogo lista productos"
+            - "buscar por nombre filtra el catalogo"
+            - "el detalle del producto 15 muestra nombre y precio"
+            - "agregar un producto sube el contador del carrito"
+            - "el subtotal del carrito suma las lineas"
+            - "quitar una linea baja el contador del carrito"
+            - "el cupon BIGSPEND descuenta el 15% del producto 15"
+          peso: 15
+          competencia: tecnica
+          feedback_fallo: "Un refactor no cambia el comportamiento: conserva los 10 tests heredados con su título."
+        - id: detecta-fase1-aserciones
+          titulo: "Tu suite sigue detectando el defecto de precios y del carrito"
+          tipo: suite_detecta
+          escenario: fase1-aserciones
+          release: null
+          peso: 15
+          competencia: analisis
+          feedback_fallo: "La suite heredada detectaba un defecto de precios y del carrito; tras tu cambio ya no. Revisa qué aserción se perdió."
+        - id: specs-sin-localizadores
+          titulo: "Los tests no tocan la página directamente"
+          tipo: estatico
+          regla: pom-specs-sin-localizadores
+          peso: 15
+          competencia: tecnica
+          feedback_fallo: "Los specs no deben tocar la página directamente: mueve los localizadores y las acciones a tus Page Objects."
+        - id: clases-de-pagina
+          titulo: "Al menos tres Page Objects"
+          tipo: estatico
+          regla: pom-clases-de-pagina
+          peso: 10
+          competencia: tecnica
+          feedback_fallo: "Crea al menos tres Page Objects en `pages/` que reciban `page` en el constructor."
+        - id: fixtures-personalizados
+          titulo: "Fixture personalizado usado en todos los tests"
+          tipo: estatico
+          regla: fixtures-personalizados
+          peso: 10
+          competencia: tecnica
+          feedback_fallo: "Crea un fixture con `test.extend` que entregue tus Page Objects y úsalo en todos los specs."
+        - id: sin-duplicacion
+          titulo: "Sin bloques de código repetidos"
+          tipo: estatico
+          regla: sin-duplicacion
+          peso: 5
+          competencia: tecnica
+          feedback_fallo: "Hay bloques de 8 líneas repetidos (ver evidencia). Extráelos a un método o un fixture."
+        - id: sin-esperas-fijas
+          titulo: "Sin esperas fijas"
+          tipo: estatico
+          regla: sin-esperas-fijas
+          peso: 5
+          competencia: tecnica
+          feedback_fallo: "Quita los `waitForTimeout` heredados: usa esperas automáticas."
+        - id: framework-ampliado
+          titulo: "Suite ampliada con al menos 2 tests propios"
+          tipo: suite_ejecuta
+          min: 12
+          peso: 5
+          competencia: autonomia
+          feedback_fallo: "Amplía tu framework: añade al menos dos tests de una pantalla que la suite heredada no cubre, con su Page Object."
+        - id: sin-arena-interna
+          titulo: "La suite no usa los endpoints internos de la Arena"
+          tipo: estatico
+          regla: sin-arena-interna
+          peso: 0
+          competencia: autonomia
+          feedback_fallo: "Los tests no deben llamar a /__arena ni leer variables ARENA_*: prueba la tienda como lo haría un usuario."

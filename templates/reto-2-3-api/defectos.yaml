@@ -1,0 +1,13 @@
+# Los defectos que encontraste, uno por entrada. Cada uno debe nombrar un test tuyo que:
+#   - pasa contra la Arena sin defectos (baseline), y
+#   - falla cuando el defecto está activo.
+# El `test` es el título del test o la ruta completa con ›, tal como sale en el informe de Playwright.
+#
+# defectos:
+#   - titulo: "Resumen corto del defecto (10 a 120 caracteres)"
+#     test: "grupo › título exacto del test"
+#     pasos: ["Primera petición que hiciste", "Segunda petición o comprobación"]
+#     esperado: "Lo que debía responder la API (al menos 10 caracteres)"
+#     obtenido: "Lo que respondió en realidad (al menos 10 caracteres)"
+#     severidad: media # baja | media | alta | critica
+defectos: []

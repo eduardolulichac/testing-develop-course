@@ -1,0 +1,78 @@
+preguntas:
+  - id: pw-que-es
+    enunciado: "¿Qué hace Playwright?"
+    opciones:
+      [
+        "Abre un navegador real, hace acciones como una persona y comprueba lo que aparece",
+        "Reemplaza a la aplicación que se prueba",
+        "Solo envía peticiones HTTP sin abrir ningún navegador",
+        "Genera la documentación de la API",
+      ]
+    correcta: 0
+    explicacion: "Playwright controla un navegador real (Chromium, Firefox o WebKit): escribe, hace clic y comprueba la pantalla. No sustituye a la aplicación ni se limita a peticiones HTTP."
+  - id: pw-await
+    enunciado: "Escribes `expect(page.getByRole('alert')).toBeVisible();` sin `await`. ¿Qué pasa?"
+    opciones:
+      [
+        "Funciona igual, el await es opcional",
+        "El test puede terminar antes de comprobar nada y fallar con «Test ended»",
+        "Playwright añade el await solo",
+        "La aserción se convierte en una espera fija de 5 segundos",
+      ]
+    correcta: 1
+    explicacion: "La aserción devuelve una promesa. Sin `await`, el test acaba antes de que se resuelva y Playwright informa `Test ended`. Todas las acciones y todos los `expect` llevan `await`."
+  - id: pw-leer-fallo
+    enunciado: "Un test falla con `element(s) not found` y `Timeout: 5000ms`. ¿Qué te dice?"
+    opciones:
+      [
+        "Que la Arena se cayó seguro",
+        "Que Playwright esperó 5 segundos y no halló ningún elemento que coincida con el localizador",
+        "Que el navegador no está instalado",
+        "Que el test tardó 5 segundos en total",
+      ]
+    correcta: 1
+    explicacion: "Es el aviso de que el localizador no encontró nada tras esperar. Puede ser un texto distinto (una tilde de más), una página incorrecta o un elemento que no aparece. Revisa el localizador y abre la traza antes de culpar a la aplicación."
+  - id: pw-baseurl
+    enunciado: 'En `playwright.config.ts` defines `baseURL: "http://localhost:18080"`. ¿Qué te permite?'
+    opciones:
+      [
+        'Escribir `page.goto("/login")` sin repetir la dirección completa',
+        "Que Playwright levante la Arena sin Docker",
+        "Saltarte la instalación del navegador",
+        "Que los tests se ejecuten en paralelo",
+      ]
+    correcta: 0
+    explicacion: '`baseURL` es el prefijo de las direcciones relativas, así que `"/login"` abre `http://localhost:18080/login`. Además se puede cambiar con una variable de entorno sin tocar los tests.'
+  - id: pw-baseline
+    enunciado: "Activas el escenario `fase1-login` y todos tus tests siguen pasando. ¿Qué conclusión es la correcta?"
+    opciones:
+      [
+        "La aplicación no tiene defectos",
+        "Tu suite no detecta ese defecto: faltan casos o comprobaciones",
+        "El escenario no se activó seguro",
+        "Playwright ignora los escenarios",
+      ]
+    correcta: 1
+    explicacion: "Que pasen todos solo demuestra que tu suite no sabe distinguir esa versión con defecto. Antes confirma con `/__arena/state` que el escenario quedó activo; si lo está, necesitas más casos (variantes de datos, mensajes de error). Y al terminar, vuelve a `baseline`."
+  - id: pw-traza
+    enunciado: "Un test falla y no entiendes por qué. ¿Qué herramienta te muestra la página paso a paso, con las peticiones y la consola?"
+    opciones:
+      [
+        "La traza (trace viewer) con `npx playwright show-trace`",
+        "`console.log` en la Arena",
+        "Subir el timeout a 60 segundos",
+        "Repetir el test hasta que pase",
+      ]
+    correcta: 0
+    explicacion: "La traza guarda una captura de la página en cada paso, el localizador usado, la red y la consola. Subir el timeout o repetir hasta que pase oculta el problema en vez de explicarlo."
+  - id: pw-que-no-subir
+    enunciado: "¿Qué carpetas de tu proyecto de Playwright NO se suben a Git?"
+    opciones:
+      [
+        "tests/ y playwright.config.ts",
+        "package.json y tests/",
+        "test-results/, playwright-report/ y node_modules/",
+        "Todas se suben para que otros vean los resultados",
+      ]
+    correcta: 2
+    explicacion: "Los resultados, el informe y los paquetes instalados se generan en cada máquina y pesan mucho. Se ignoran con `.gitignore`; se versionan los tests, la configuración y el `package.json`."

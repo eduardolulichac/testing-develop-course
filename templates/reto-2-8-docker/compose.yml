@@ -1,0 +1,25 @@
+# Compose de tu reto. Ya incluye la Arena (db + api + web); falta TU servicio `tests`.
+# Objetivo: que este único comando levante la Arena, ejecute la suite y devuelva su código de salida:
+#   docker compose up --build --abort-on-container-exit --exit-code-from tests
+# Reglas: un `include` local está permitido; no uses `privileged`, `network_mode: host`, `pid: host`
+# ni montes el socket de Docker ni rutas fuera de este repositorio.
+name: reto-docker
+
+include:
+  - arena/compose.yml
+
+# services:
+#   tests:
+#     build: .                      # usa tu Dockerfile
+#     depends_on:
+#       web:
+#         condition: service_healthy
+#     environment:
+#       ARENA_URL: http://web       # dentro de la red de Compose la Arena se llama `web`
+#       USUARIO_EMAIL:              # sin valor: Compose copia la variable de tu entorno
+#       USUARIO_CLAVE:
+#       CI: "1"
+#     ipc: host                     # recomendado por Playwright para Chromium
+#     init: true
+#     volumes:
+#       - ./resultados:/app/resultados   # aquí la suite deja informe.json

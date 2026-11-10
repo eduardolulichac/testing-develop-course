@@ -1,0 +1,257 @@
+---
+modulo: "0.5"
+titulo: "Prompting para aprender"
+fase: 0
+nivel: "Base"
+duracion_min: 45
+prerequisitos: ["0.4"]
+version: "2026-11"
+herramientas: ["Asistente de IA"]
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+
+Al terminar este módulo sabrás:
+
+- Escribir un prompt con un método simple de cuatro partes: contexto, tarea, formato y verificación.
+- Pedir explicaciones y ejemplos adaptados a tu nivel.
+- Detectar una respuesta inventada o incorrecta contrastándola con la documentación oficial y ejecutándola.
+- Llevar un registro personal de prompts útiles y de errores de la IA.
+
+</Objetivo>
+
+Un asistente de IA puede ser un buen tutor: responde a cualquier hora, repite sin cansarse y adapta el nivel. Pero a veces se equivoca con total seguridad, y su tono no cambia cuando inventa algo. Por eso, en este curso la IA es una ayuda para aprender, no una fuente de verdad. Quien prueba software tiene ventaja: ya sabe que hay que **comprobar** antes de creer.
+
+Este módulo no depende de ninguna herramienta concreta. Sirve para cualquier asistente de chat.
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="El método: contexto, tarea, formato, verificar">
+
+Un buen prompt tiene cuatro partes:
+
+1. **Contexto**: quién eres y qué sabes. «Soy principiante en QA, sé lo básico de HTML, no sé programar.»
+2. **Tarea**: qué quieres exactamente. «Explícame qué es un código de estado HTTP.»
+3. **Formato**: cómo quieres la respuesta. «En 5 líneas, con un ejemplo y una tabla.»
+4. **Verificar**: pídele cómo comprobar lo que dice. «Dime cómo puedo comprobarlo yo mismo y qué fuente oficial lo confirma.»
+
+Compara:
+
+- Prompt débil: `explícame HTTP`.
+- Prompt con método: `Soy principiante en QA y sé lo básico de HTML. Explícame qué es un código de estado HTTP en 5 líneas, con un ejemplo de cada familia (2xx, 4xx, 5xx). Al final, dime cómo comprobarlo con curl.`
+
+</Paso>
+
+<Paso numero={2} titulo="Pide explicaciones a tu nivel, con ejemplos">
+
+Si una respuesta es demasiado técnica, no te rindas: dilo. Frases que funcionan:
+
+- «Explícamelo como si no supiera programar.»
+- «Dame un ejemplo cotidiano y otro de una tienda online.»
+- «No he entendido la parte de X; explícala de otra forma.»
+
+Una buena señal de que has entendido es poder explicarlo con tus palabras. Pídele a la IA que te haga 3 preguntas para comprobarlo.
+
+</Paso>
+
+<Paso numero={3} titulo="Itera: un prompt no es una sola pregunta">
+
+La primera respuesta rara vez es la mejor. Afina con mensajes cortos: «más corto», «añade un ejemplo con datos reales», «muéstrame el caso en que NO se cumple». Guarda la versión final del prompt si te fue útil: irá a tu registro.
+
+</Paso>
+
+<Paso numero={4} titulo="Cómo se detecta una respuesta inventada">
+
+Una IA puede dar nombres de opciones, funciones, enlaces o datos que **parecen** reales y no existen. Señales de alarma:
+
+- Detalles muy concretos sin fuente (números de versión, nombres de opciones).
+- Una opción de un comando que no encuentras en su ayuda.
+- Una URL o cita que no puedes abrir.
+- Cambia de respuesta si le preguntas lo mismo de otra forma.
+- Contradice la documentación oficial.
+
+Dos comprobaciones, siempre que se pueda:
+
+1. **Documentación oficial**: la ayuda del propio programa y la documentación del fabricante o de MDN para la web.
+2. **Ejecutarlo**: si te da un comando o código, pruébalo en un directorio temporal.
+
+</Paso>
+
+<Paso numero={5} titulo="Pruebas de verificación reales">
+
+Ejemplos que puedes ejecutar tú en tu terminal (WSL2 en Windows):
+
+```bash
+node --help | grep -- --watch
+```
+
+Si la IA te dice que Node tiene una opción `--watch`, esta línea te enseña la opción y su descripción oficial (`run in watch mode`) en tu versión instalada. Si no aparece nada, la opción no existe en tu versión.
+
+```bash
+node -e "console.log([10,9,1].sort())"
+```
+
+Si alguien te dice que `sort()` ordena números de menor a mayor, esto da `[ 1, 10, 9 ]`: sin función de comparación ordena como texto. La forma correcta de ordenar números es:
+
+```bash
+node -e "console.log([10,9,1].sort((a,b)=>a-b))"
+```
+
+que da `[ 1, 9, 10 ]`. La prueba de ejecución desmonta una afirmación que sonaba convincente.
+
+Recuerda que los comandos varían entre sistemas: `ls --help` falla en macOS, que usa otra versión de `ls`, y funciona en la mayoría de distribuciones de Linux. Si la IA no sabe en qué sistema estás, puede darte el comando equivocado. Dile siempre tu sistema operativo.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Un prompt para aprender y cómo revisarlo">
+
+Queremos entender la diferencia entre `PUT` y `PATCH`. Prompt con el método:
+
+```text
+Contexto: soy principiante en QA, conozco los métodos GET y POST.
+Tarea: explícame la diferencia entre PUT y PATCH.
+Formato: máximo 6 líneas y un ejemplo con un producto de una tienda.
+Verificar: dime qué documentación oficial puedo consultar para confirmarlo.
+```
+
+Supongamos que responde que `PUT` reemplaza el recurso entero y `PATCH` modifica solo una parte. Revisamos así:
+
+1. Buscamos «PUT» y «PATCH» en la documentación de MDN sobre métodos HTTP. Confirmamos la idea general.
+2. Miramos si la API que probamos lo respeta. La documentación de QA Arena (`http://localhost:18080/docs`) usa `PATCH` para cambiar el estado de un pedido y `PUT` para fijar el inventario de un producto.
+3. Anotamos: «lo explicó bien, pero no sabía qué hace la Arena; eso lo comprobé yo en `/docs`».
+
+Una respuesta de IA es buena para entender el concepto. La verificación te dice cómo aplica en tu caso concreto.
+
+Para registrar el trabajo usamos una tabla como esta:
+
+| Fecha  | Prompt (resumido)            | Qué obtuve           | Cómo lo verifiqué | ¿Útil? |
+| ------ | ---------------------------- | -------------------- | ----------------- | ------ |
+| 06-nov | Diferencia entre PUT y PATCH | Explicación correcta | MDN y `/docs`     | Sí     |
+
+</Ejemplo>
+
+Prompts concretos para aprender QA. Cada uno lleva lo que debes revisar.
+
+| Prompt                                                                                                    | Qué revisar                                                                               |
+| --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| «Soy principiante. Explícame qué es una prueba de regresión con un ejemplo de una tienda online.»         | Que el ejemplo tenga sentido y que el concepto coincida con lo que viste en el curso      |
+| «Dame 5 casos de prueba para un formulario de login: 3 correctos y 2 incorrectos. Usa una tabla.»         | Que no repita casos y que tú puedas ejecutarlos en la Arena                               |
+| «Esta respuesta de una API devolvió 500: [pega la respuesta sin datos privados]. ¿Qué podría significar?» | Que te dé hipótesis y no certezas; compruébalas con `curl`                                |
+| «Hazme 3 preguntas para comprobar si entendí la diferencia entre 4xx y 5xx.»                              | Que las preguntas tengan una única respuesta correcta; respóndelas antes de mirar la suya |
+| «Explica este comando línea a línea: `curl -s -i http://localhost:18080/api/products/1`.»                 | Que cada opción coincida con `curl --help`                                                |
+| «¿Qué opciones tiene este comando? Dime cómo comprobar que existen.»                                      | Ejecuta `--help` y descarta cualquier opción que no aparezca                              |
+
+## 4. Ejercicios guiados
+
+<Ejercicio id="ej-0-5-prompt-con-metodo">
+  Elige un concepto del curso que aún no tengas claro. Escribe un prompt con las cuatro partes
+  (contexto, tarea, formato, verificar), envíalo a tu asistente y copia la respuesta. Anota qué
+  parte del prompt cambió más la calidad de la respuesta.
+</Ejercicio>
+
+<Ejercicio id="ej-0-5-verificar-opcion">
+  Pide a tu asistente tres opciones de `curl` que sirvan para ver cabeceras o el estado de una
+  respuesta. Comprueba cada una con `curl --help all` y marca cuáles existen de verdad y cuáles no.
+</Ejercicio>
+
+<Ejercicio id="ej-0-5-ejecutar-codigo">
+  Pide a la IA una línea de Node que ordene la lista `[10, 9, 1]` de menor a mayor. Ejecútala con
+  `node -e` y comprueba que el resultado sea `[ 1, 9, 10 ]`. Si no lo es, escribe qué corregiste.
+</Ejercicio>
+
+## 5. Reto sin guía
+
+<Reto titulo="Tu registro de prompts y errores de IA">
+
+Durante tu estudio de esta semana, lleva un registro propio en un archivo o cuaderno. Usa esta plantilla para los prompts:
+
+| Fecha | Prompt (resumido) | Qué obtuve | Cómo lo verifiqué | ¿Útil? |
+| ----- | ----------------- | ---------- | ----------------- | ------ |
+|       |                   |            |                   |        |
+
+Y esta otra para los errores de la IA:
+
+| Fecha | Qué afirmó la IA | Qué era correcto | Cómo lo descubrí | Qué haré distinto |
+| ----- | ---------------- | ---------------- | ---------------- | ----------------- |
+|       |                  |                  |                  |                   |
+
+Objetivo mínimo: **al menos 5 prompts** y **al menos 2 errores** de la IA encontrados. Si no encuentras errores, prueba con preguntas más específicas: opciones poco comunes de un comando, versiones concretas o cómo se comporta algo en tu sistema operativo.
+
+Este reto no tiene evaluación automática: lo corriges tú. Autocomprobación:
+
+- [ ] Hay 5 o más prompts con sus cuatro partes o con su razón para no usarlas.
+- [ ] Cada fila de «Cómo lo verifiqué» dice algo concreto (documentación oficial, comando ejecutado), no «me pareció bien».
+- [ ] Hay 2 o más errores de la IA, cada uno con la comprobación que lo demostró.
+- [ ] Ninguna fila contiene datos privados (contraseñas, tokens, correos reales).
+- [ ] Reescribiste al menos un prompt que falló y mejoró.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+**Qué pedirle.** Explicaciones de conceptos a tu nivel, ejemplos, preguntas para autoevaluarte y la revisión de un prompt tuyo («¿qué le falta a este prompt?»).
+
+**Qué revisar.** Todo lo que sea comprobable: opciones de comandos (con `--help`), comportamientos de código (ejecutándolo), conceptos (en documentación oficial). Mira también si la respuesta encaja con tu sistema operativo y tu versión.
+
+**Qué rechazar.**
+
+- Cualquier dato que no puedas contrastar con una fuente que abras tú.
+- Enlaces, citas o nombres de funciones que no encuentres.
+- Respuestas que prometen certeza («esto siempre funciona») sin explicar por qué.
+- Que haga por ti el reto de esta fase: la práctica es tuya.
+
+No pegues contraseñas, tokens ni datos personales en un chat de IA.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Copiar y pegar sin ejecutar">
+
+Un comando que parece correcto puede no funcionar en tu sistema. Ejecútalo siempre en una carpeta de pruebas antes de usarlo.
+
+</ErrorComun>
+
+<ErrorComun titulo="Preguntar sin contexto">
+
+Sin saber tu nivel ni tu sistema operativo, la IA responde para un usuario promedio imaginario. Incluye tu contexto.
+
+</ErrorComun>
+
+<ErrorComun titulo="Fiarse del tono seguro">
+
+Una respuesta confiada no es una respuesta correcta. La seguridad del tono no es una prueba.
+
+</ErrorComun>
+
+<ErrorComun titulo="Verificar con la misma IA">
+
+Preguntarle «¿seguro?» a la misma IA no es una verificación. Comprueba con una fuente independiente: documentación oficial o ejecución.
+
+</ErrorComun>
+
+<ErrorComun titulo="No anotar los errores">
+
+Si no apuntas un error, lo olvidas y vuelves a caer. El registro de errores es la parte más valiosa de tu entrenamiento.
+
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Un buen prompt tiene contexto, tarea, formato y una petición de verificación.
+- Dile a la IA tu nivel y tu sistema operativo; pide ejemplos y explicaciones de otra forma si no entiendes.
+- La IA puede inventar opciones, funciones o enlaces que parecen reales.
+- Comprueba con documentación oficial y ejecutando el código o comando.
+- Preguntarle «¿seguro?» a la misma IA no cuenta como verificación.
+- Guarda un registro de prompts útiles y de errores encontrados.
+- No pegues datos privados en el chat.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

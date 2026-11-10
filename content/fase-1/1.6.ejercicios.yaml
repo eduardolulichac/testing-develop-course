@@ -1,0 +1,100 @@
+ejercicios:
+  - slug: ej-1-6-leer-el-error
+    tipo: guiado
+    titulo: "Lee el error y arregla los tests 1 y 4"
+    escenario: fase1-fallos-sembrados
+    pistas:
+      - 'Ejecuta solo el test: `npx playwright test -g "1. la pantalla"`. Lee de arriba abajo: aserción que falló, localizador, esperado y recibido, línea marcada con `^`.'
+      - "En el test 1 el mensaje es `element(s) not found`: abre la traza (`npx playwright show-trace <ruta>`) y mira, en la captura de la página, cómo se escribe de verdad el título. En el test 4 el error compara una dirección con un patrón: lee el valor `Received string`."
+      - "Corrige solo el dato equivocado del test, no la aserción. En el test 1, el texto real del título; en el test 4, la parte de la dirección que cambia entre lo esperado y lo recibido."
+    solucion: |
+      Test 1: el error es `element(s) not found` para `getByRole('heading', { name: 'Iniciar sesión' })`. La aplicación escribe el título sin tilde. Arreglo:
+
+      ```ts
+      await expect(page.getByRole("heading", { name: "Iniciar sesion" })).toBeVisible();
+      ```
+
+      Test 4: el error es `Expected pattern: /\/pedidos\/\d+/` y `Received string: "http://localhost:18080/orders/3?paid=1"`. La aplicación usa `/orders/`, no `/pedidos/`. Arreglo:
+
+      ```ts
+      await expect(page).toHaveURL(/\/orders\/\d+/);
+      ```
+
+      Ambos son errores del test; la aplicación está bien. Verificado en `v1.4.0`: los dos pasan tras el cambio.
+  - slug: ej-1-6-esperas-y-await
+    tipo: guiado
+    titulo: "Arregla los tests 2 y 3: localizador ambiguo y await olvidado"
+    escenario: fase1-fallos-sembrados
+    pistas:
+      - "El test 2 dice `strict mode violation ... resolved to 2 elements` y Playwright lista los dos elementos con una sugerencia de localizador (`aka getByTestId(...)`). Elige el de la línea que quieres quitar."
+      - "En el test 3, mira la línea del `click`: ¿tiene `await`? Lee también el mensaje `Test ended`: algo seguía en marcha cuando el test terminó."
+      - "Para el test 3, después del clic espera una señal de que el producto se agregó (el mensaje `product-message`) antes de `page.goto('/cart')`. Verifica los dos con `--repeat-each=5`."
+    solucion: |
+      Test 2: usa el identificador de la línea que quieres quitar.
+
+      ```ts
+      await page.getByTestId("cart-remove-1").click();
+      ```
+
+      Test 3: espera el clic y confirma el resultado antes de cambiar de página.
+
+      ```ts
+      await page.getByTestId("add-to-cart").click();
+      await expect(page.getByTestId("product-message")).toHaveText("Agregado al carrito");
+      await page.goto("/cart");
+      ```
+
+      Verificado: con `npx playwright test -g "2. quitar|3. agregar" --repeat-each=5` pasan las diez ejecuciones. Los dos son errores del test.
+  - slug: ej-1-6-el-pago-intermitente
+    tipo: guiado
+    titulo: "Reproduce y reporta el pago que falla una de cada diez veces"
+    escenario: fase1-fallos-sembrados
+    pistas:
+      - 'Reinicia los datos (`curl -X POST http://localhost:18080/__arena/reset`) y ejecuta `npx playwright test -g "5. pagar" --repeat-each=10`. Anota en qué repetición falla y cuántas veces.'
+      - "Abre la traza del fallo (Playwright imprime su ruta). En la pestaña **Network** busca la petición `POST /api/checkout` y mira su estado. En **Before/After** mira el mensaje que ve el usuario. También sirve `npx playwright trace requests`."
+      - "Reporta lo que viste: versión, pasos, esperado, obtenido, frecuencia y evidencia. No supongas la causa interna del servidor; solo describe el comportamiento."
+    solucion: |
+      Con los datos recién reiniciados, una de las diez repeticiones falla y las otras nueve pasan (en nuestra prueba, la sexta; la tuya puede ser otra). En la traza, la pestaña Network muestra `POST /api/checkout` con estado `503`, y la pantalla de pago muestra una alerta «Service error (service_unavailable)». Los 9 pagos restantes devuelven 201.
+
+      Reporte de ejemplo:
+
+      - **Título**: el pago falla con 503 de forma intermitente.
+      - **Versión y ambiente**: `v1.4.0`, local.
+      - **Pasos**: reiniciar datos; iniciar sesión como Ana; agregar el producto 24; pagar con la tarjeta de prueba `4242 4242 4242 4242`; repetirlo diez veces.
+      - **Esperado**: los diez pagos se aprueban.
+      - **Obtenido**: uno de los diez (en nuestra prueba, el sexto) responde `503` y la pantalla muestra «Service error (service_unavailable)».
+      - **Frecuencia**: 1 de 10 en una ejecución de 10 repeticiones.
+      - **Evidencia**: traza del fallo con `POST /api/checkout` → `503`.
+
+      Es un defecto de la aplicación. No se arregla con `retries`.
+  - slug: ej-1-6-la-regresion-del-viernes
+    tipo: guiado
+    titulo: "Localiza la regresión del deploy del viernes"
+    escenario: fase1-fallos-sembrados
+    pistas:
+      - 'Ejecuta el test 6 en `v1.4.0` (pasa) y luego cambia a `v1.5.0` con `curl -X PUT ... -d ''{"id":"fase1-fallos-sembrados","release":"v1.5.0"}''`, seguido de un `reset`. Ejecútalo otra vez.'
+      - "Mira la alerta de la pantalla de pago en la captura o en la traza: el mensaje habla de la dirección. Prueba a mano tres direcciones: con tilde, con `#` y sin ninguna de las dos."
+      - |
+        Con `curl` puedes comparar el estado HTTP de cada dirección contra `POST /api/checkout`. Primero la llave (login como Ana), y luego, por cada dirección, un producto en el carrito y el pago. Cambia el puerto si tu Arena no usa el 18080:
+
+        ```bash
+        TOKEN=$(curl -s http://localhost:18080/api/auth/login -H 'content-type: application/json' -d '{"email":"ana@arena.test","password":"Cliente123!"}' | node -pe 'JSON.parse(require("fs").readFileSync(0)).token')
+        curl -s -o /dev/null -X POST http://localhost:18080/api/cart/items -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"productId":1,"quantity":1}'
+        curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:18080/api/checkout -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"shippingAddress":"Calle Pena 12","payment":{"cardNumber":"4242 4242 4242 4242","expMonth":12,"expYear":2030,"cvc":"123"}}'
+        ```
+
+        Repite las dos últimas líneas cambiando `shippingAddress` por «Calle Peña 12» y por «Calle Pena #12». Anota cuáles se rechazan y con qué código.
+    solucion: |
+      En `v1.4.0` el test pasa; en `v1.5.0` falla porque la alerta dice «Shipping address contains invalid characters». La petición `POST /api/checkout` responde `422`. Comprobado con `curl`: «Calle Peña 12» (tilde) → 422, «Calle Pena #12» (con `#`) → 422 y «Calle Pena 12» → 201.
+
+      Reporte de ejemplo:
+
+      - **Título**: regresión en v1.5.0: el pago rechaza direcciones con tildes o `#`.
+      - **Versión**: funciona en `v1.4.0`, falla desde `v1.5.0` (deploy del viernes).
+      - **Pasos**: iniciar sesión, agregar un producto, pagar con la dirección «Calle Peña #12».
+      - **Esperado**: el pedido se crea (en `v1.4.0` se crea).
+      - **Obtenido**: `422` y el mensaje «Shipping address contains invalid characters».
+      - **Frecuencia**: siempre con esas direcciones.
+      - **Evidencia**: traza con `POST /api/checkout` → `422` y los resultados de `curl`.
+
+      El test está bien: el defecto es de la aplicación y llegó con el deploy.

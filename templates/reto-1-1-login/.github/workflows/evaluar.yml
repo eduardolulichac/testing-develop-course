@@ -1,0 +1,16 @@
+name: Evaluar reto
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  evaluar:
+    # Reemplazado por el SHA de 40 caracteres y la etiqueta al publicar (scripts/publish.ts).
+    uses: eduardolulichac/qa-course-evaluator/.github/workflows/evaluate.yml@__EVALUATOR_SHA__ # __EVALUATOR_VERSION__
+    with:
+      exercise: reto-1-1-login
+      key_id: ${{ vars.COURSE_KEY_ID }}
+    secrets:
+      COURSE_CHALLENGE_KEY: ${{ secrets.COURSE_CHALLENGE_KEY }}

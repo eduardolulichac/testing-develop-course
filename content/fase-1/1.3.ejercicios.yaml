@@ -1,0 +1,43 @@
+ejercicios:
+  - slug: ej-1-3-pago-rechazado
+    tipo: guiado
+    titulo: "Prueba un pago con tarjeta rechazada"
+    pistas:
+      - "Antes del pago hace falta un producto en el carrito y una sesión iniciada. Reutiliza `iniciarSesion` y `agregarProducto` de `tests/support/tienda.ts`; la ayuda `pagar` también acepta la tarjeta como tercer argumento."
+      - "El número de tarjeta viene precargado: usa `fill` para reemplazarlo por la tarjeta rechazada `4000 0000 0000 0002`, escribe la dirección y pulsa «Pagar ahora»."
+      - 'El mensaje de error aparece como una alerta (`getByRole("alert")`). Comprueba su texto con `toHaveText` y la dirección con `toHaveURL`.'
+    solucion: 'Tras `await iniciarSesion(page)` y `await agregarProducto(page)`: `await pagar(page, "Calle Falsa 123", "4000 0000 0000 0002")`, que abre `/checkout`, rellena la dirección y la tarjeta y pulsa «Pagar ahora». Después `await expect(page.getByRole("alert")).toHaveText("Pago rechazado: Tarjeta rechazada")` y `await expect(page).toHaveURL("/checkout")`.'
+  - slug: ej-1-3-carga-tardia
+    tipo: guiado
+    titulo: "Haz que tu test aguante una carga tardía"
+    escenario: fase1-compra
+    pistas:
+      - 'Activa `fase1-compra` y escribe una versión mala: `expect(await page.getByTestId("cart-subtotal").isVisible()).toBe(true)` justo después de `page.goto("/cart")`.'
+      - "Falla con `Received: false` porque `isVisible()` no espera: toma una foto del instante, y el carrito aún muestra «Cargando...». No arregles esto con una pausa fija."
+      - 'Cambia la lectura por una aserción que reintente, como `toBeVisible()` o `toHaveText(...)`, y comprueba el encabezado con `getByRole("heading", { name: "Carrito" })`.'
+    solucion: 'Tras `await iniciarSesion(page)` y `await agregarProducto(page)` y `await abrir(page, "/cart")`: `await expect(page.getByRole("heading", { name: "Carrito" })).toBeVisible()` y `await expect(page.getByTestId("cart-subtotal")).toHaveText("$9.90")`. La versión con `isVisible()` falla con `Received: false`; las aserciones esperan solas la carga tardía, y la configuración con `expect: { timeout: 10_000 }` da margen de sobra.'
+  - slug: ej-1-3-doble-clic-cupon
+    tipo: guiado
+    titulo: "Prueba un doble clic en Aplicar"
+    escenario: fase1-compra
+    pistas:
+      - "Prepara un carrito con dos unidades de «Auriculares BT» (subtotal `$19.80`), abre `/cart` y escribe `SAVE5` en el campo del cupón."
+      - "Playwright tiene una acción para el doble clic sobre un elemento. Úsala en el botón «Aplicar» en lugar de `click()`."
+      - 'Comprueba el descuento con `await expect(page.getByTestId("cart-discount")).toHaveText("-$5.00")` y ejecuta el test con `baseline` y con `fase1-compra`. Compara los resultados.'
+    solucion: 'Con dos unidades y `await abrir(page, "/cart")`: `await page.getByLabel("Cupon").fill("SAVE5")`, `await page.getByRole("button", { name: "Aplicar" }).dblclick()` y `await expect(page.getByTestId("cart-discount")).toHaveText("-$5.00")`. Con `baseline` pasa. Con `fase1-compra` falla con `Expected: "-$5.00"` y `Received: "-$10.00"`: un doble clic rápido aplica el cupón dos veces. Es un defecto real (el cupón se descuenta más de una vez) y tu test lo detecta.'
+  - slug: ej-1-3-carrito-y-cantidades
+    tipo: guiado
+    titulo: "Cambia la cantidad y quita un producto del carrito"
+    pistas:
+      - "Agrega dos unidades de «Auriculares BT» y abre `/cart`. El campo de cantidad de cada producto tiene una etiqueta con su nombre: «Cantidad de Auriculares BT»."
+      - 'El carrito se actualiza cuando el campo pierde el foco. Después de `fill("3")`, usa `blur()` y espera el nuevo subtotal con `toHaveText`.'
+      - "Para quitar el producto usa el botón «Quitar» con `exact: true`, porque con un cupón aplicado habría otro botón que contiene esa palabra. El carrito vacío muestra el texto «Tu carrito esta vacio.»."
+    solucion: 'Tras `await agregarProducto(page, 2)` y `await abrir(page, "/cart")`: `await page.getByLabel("Cantidad de Auriculares BT").fill("3")`, `await page.getByLabel("Cantidad de Auriculares BT").blur()` y `await expect(page.getByTestId("cart-subtotal")).toHaveText("$29.70")`. Luego `await page.getByRole("button", { name: "Quitar", exact: true }).click()` y `await expect(page.getByText("Tu carrito esta vacio.")).toBeVisible()`.'
+  - slug: ej-1-3-ordenar-catalogo
+    tipo: guiado
+    titulo: "Ordena el catálogo y comprueba el resultado"
+    pistas:
+      - "El selector de orden es una lista desplegable con etiqueta «Orden». Para elegir una opción por su texto visible usa `selectOption({ label: ... })`."
+      - "La opción se llama «Precio: menor a mayor». Después de elegirla, la lista se vuelve a pedir al servidor: el primer producto no cambia al instante."
+      - 'Comprueba el primer elemento con `await expect(page.getByRole("listitem").first()).toContainText("Auriculares BT")`: la aserción reintenta hasta que la lista se actualiza.'
+    solucion: 'Con `await page.goto("/")`: `await page.getByLabel("Orden").selectOption({ label: "Precio: menor a mayor" })` y `await expect(page.getByRole("listitem").first()).toContainText("Auriculares BT")`. Una aserción reintenta hasta que la lista cambia; leer el texto de la primera tarjeta con `innerText()` justo después de elegir el orden podría devolver todavía el producto anterior.'

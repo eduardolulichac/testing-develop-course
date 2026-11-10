@@ -1,0 +1,528 @@
+---
+modulo: "1.8"
+titulo: "IA como copiloto de código"
+fase: 1
+nivel: "Junior"
+duracion_min: 180
+prerequisitos: ["1.7"]
+escenario: "fase1-ia-copiloto"
+version: "2026-11"
+herramientas: ["Playwright 1.64.1", "Asistente de IA"]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+
+Al terminar este módulo sabrás:
+
+- Pedirle a una IA un test de Playwright con un prompt que dé buen contexto.
+- Revisar un test generado con una lista de verificación de 10 puntos.
+- Descubrir con una «prueba de ruptura» si un test que pasa realmente prueba algo.
+- Decidir con criterios si aceptas el test, lo corriges o lo rechazas.
+- Registrar qué pediste, qué aceptaste y qué corregiste.
+
+</Objetivo>
+
+Una IA escribe un test en segundos. Eso es una ventaja y un peligro. El peligro: **un test que pasa en verde no es un test que prueba algo**. La IA produce código con el aspecto de un buen test, y el aspecto engaña.
+
+Quien sabe probar software tiene aquí una ventaja: tu trabajo ya es sospechar, buscar el caso que se olvidó y comprobar con tus propios ojos. En este módulo conviertes esa costumbre en un método.
+
+Reglas del módulo:
+
+- La IA escribe un **borrador**. Tú eres quien firma el test.
+- No importa qué herramienta uses. Lo que se enseña sirve para cualquiera, y su respuesta de hoy puede ser distinta de la de mañana.
+- No se pegan claves, contraseñas reales ni datos personales en ninguna conversación. Las credenciales de práctica de QA Arena (`ana@arena.test`) son públicas y no cuentan.
+
+Para este módulo necesitas QA Arena levantada (módulo 0.1) y un proyecto de Playwright (módulo 1.1). En la carpeta de tu proyecto, el archivo `playwright.config.ts` debe fijar la dirección de la Arena y ejecutar los tests de uno en uno (módulo 1.3):
+
+```ts
+import { defineConfig } from "@playwright/test";
+
+export default defineConfig({
+  testDir: "./tests",
+  workers: 1, // los tests comparten el carrito de Ana: uno a la vez (también con --repeat-each)
+  use: {
+    baseURL: process.env.ARENA_URL ?? "http://localhost:18080",
+    trace: "retain-on-failure",
+  },
+});
+```
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="El ciclo: pedir, leer, ejecutar, romper, decidir, registrar">
+Trabajar con una IA como copiloto es un ciclo corto:
+
+1. **Pedir** con un prompt claro.
+2. **Leer** el código antes de ejecutarlo.
+3. **Ejecutar** y mirar el resultado.
+4. **Romper a propósito** para ver si el test falla cuando debe.
+5. **Decidir**: aceptar, corregir o rechazar.
+6. **Registrar** lo que hiciste.
+
+Los pasos 2 y 4 son los que casi todo el mundo se salta. Son los que importan.
+
+</Paso>
+
+<Paso numero={2} titulo="Cómo pedir un test">
+El método del módulo 0.5 (contexto, tarea, formato, verificar) sirve igual aquí. Un prompt para un test:
+
+> **Contexto.** Uso Playwright 1.64 con TypeScript. La aplicación es QA Arena, una tienda en línea. La dirección base ya está en `playwright.config.ts` (`baseURL`), así que usa rutas relativas como `/login`. Los elementos importantes tienen `data-testid` (`cart-total`, `coupon-input`, `cart-error`, `cart-discount`).
+>
+> **Tarea.** Escribe un test para este caso: al aplicar el cupón `EXPIRED20` en el carrito, se rechaza porque venció. El usuario es `ana@arena.test`.
+>
+> **Formato.** Un solo archivo. Localiza con `getByRole`, `getByLabel` o `getByTestId`. No uses `waitForTimeout` ni selectores CSS. Un `test` por comportamiento. Define los datos como constantes arriba.
+>
+> **Verificar.** Al final, lista todas las suposiciones que hiciste sobre la aplicación (textos, `data-testid`, precios) para que yo las compruebe.
+
+Qué logra cada parte:
+
+- El **contexto** evita que invente la aplicación.
+- La **tarea** concreta evita un test gigante que prueba diez cosas.
+- El **formato** impone tus reglas desde el principio (ahorra correcciones).
+- La **verificación** te da la lista de lo que debes comprobar tú, porque una IA a veces inventa un `data-testid` o un texto que suena plausible.
+
+</Paso>
+
+<Paso numero={3} titulo="Leer antes de ejecutar: la lista de verificación">
+Ejecutar un test que no entiendes es como firmar sin leer. Recorre estas diez preguntas. Cada una apunta a una falla que las IAs cometen con frecuencia:
+
+| #   | Pregunta                                                         | Señal de alarma                                                          |
+| --- | ---------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 1   | ¿Cada test tiene una aserción que **puede fallar**?              | `toBeDefined()`, `expect(true)`, o ningún `expect`                       |
+| 2   | ¿Comprueba el resultado que importa y no solo que «algo existe»? | Solo `toBeVisible` sobre la página, sin mirar el valor                   |
+| 3   | ¿Los selectores son por rol, etiqueta o `data-testid`?           | Clases CSS, `nth-child`, `.nth(3)`, XPath largo                          |
+| 4   | ¿No hay esperas fijas?                                           | `waitForTimeout`, `sleep`                                                |
+| 5   | ¿Los datos y la dirección están fuera del código?                | `http://localhost:18080` escrito en cada paso, claves en el archivo      |
+| 6   | ¿Es repetible e independiente?                                   | Falla al ejecutarlo dos veces o fuera de orden                           |
+| 7   | ¿Incluye el camino negativo que importa?                         | Solo el «camino feliz»                                                   |
+| 8   | ¿Prueba una sola cosa, con un nombre claro?                      | «el cupón funciona», un test que hace todo                               |
+| 9   | ¿Todo lo que usa existe de verdad?                               | Un `data-testid`, una opción o un método de Playwright que no encuentras |
+| 10  | ¿Falla cuando debe?                                              | Nunca lo has visto fallar                                                |
+
+Una revisión rápida con `grep` encuentra varias señales sin leer línea por línea. No sustituye a la lectura, pero ayuda:
+
+```bash
+grep -nE "waitForTimeout|toBeDefined\(\)|nth\(|nth-child|localhost" tests/cupon-ia.spec.ts
+```
+
+Cada línea que devuelva es un sospechoso que debes explicar o corregir.
+
+</Paso>
+
+<Paso numero={4} titulo="Ejecutar y romper a propósito">
+Que el test pase no significa nada todavía. La **prueba de ruptura** es simple: cambia algo para que el test **deba** fallar y comprueba que falla.
+
+- Cambia el valor esperado por uno falso. ¿Falla?
+- Apunta a un `data-testid` que no existe. ¿Falla?
+- Ejecútalo dos veces seguidas con `npx playwright test --repeat-each=2`. ¿Pasa las dos?
+- Activa un escenario con un defecto real y comprueba que el test lo detecta.
+
+Si el test sigue verde cuando lo rompes, no protege nada. Puedes ver todos estos casos funcionando en el ejemplo de la sección 3.
+
+</Paso>
+
+<Paso numero={5} titulo="Aceptar, corregir o rechazar">
+Después de leer, ejecutar y romper, decide:
+
+- **Aceptar**: pasa la lista, falla cuando lo rompes y lo entiendes línea por línea.
+- **Corregir**: la estructura es buena y las fallas son pocas y claras (una espera, un selector). Corrígelas tú o pídele a la IA que las arregle y **vuelve a revisar**.
+- **Rechazar**: pasa alguna de estas: no entiendes lo que hace, usa una API que no existe, sus aserciones son casi todas triviales, o corregirlo cuesta más que escribirlo tú. Rechazar es una decisión profesional, no un fracaso.
+
+Una regla para no equivocarte: **si no puedes explicar cada línea, el test no entra al repositorio**.
+
+</Paso>
+
+<Paso numero={6} titulo="Registrar el uso de IA">
+Anota tres cosas, en pocas líneas:
+
+1. **Qué pediste**: un resumen del prompt (no hace falta pegarlo completo).
+2. **Qué aceptaste**: aceptaste, modificaste o rechazaste.
+3. **Qué corregiste y por qué**: por ejemplo, «cambié los tres `waitForTimeout` por aserciones web-first porque duraba 7 s y podía fallar».
+
+**No escribas claves, contraseñas reales ni datos personales** en el registro, ni en tus prompts. En los retos de la plataforma que usan IA (desde este módulo en adelante) verás un panel «Registro de uso de IA» con estos mismos tres campos; ese registro lo ve la persona que revisa tu trabajo y no cambia tu nota. Este módulo no tiene reto, así que aquí practicarás el mismo formato en un archivo `registro-ia.md`.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Un test «generado» que pasa, y por qué no vale">
+Este es un test como los que una IA suele entregar para el caso «el cupón funciona». Lo escribimos a mano con las fallas más habituales; no pertenece a ninguna herramienta concreta. Guárdalo como `tests/cupon-ia.spec.ts` y comprueba que la Arena está en `baseline`.
+
+```ts
+import { test, expect } from "@playwright/test";
+
+test("el cupón funciona", async ({ page }) => {
+  await page.goto("http://localhost:18080/login");
+  await page.fill("input[type=email]", "ana@arena.test");
+  await page.fill("input[type=password]", "Cliente123!");
+  await page.click("button.primary");
+  await page.waitForTimeout(3000);
+
+  await page.goto("http://localhost:18080/");
+  await page.click("ul.grid > li:nth-child(2) a");
+  await page.click("button.primary");
+  await page.waitForTimeout(2000);
+
+  await page.goto("http://localhost:18080/cart");
+  await page.fill("input[placeholder='Codigo de cupon']", "WELCOME10");
+  await page.click("div.summary > div.row > button:nth-child(2)");
+  await page.waitForTimeout(2000);
+
+  const total = await page.locator("dd").nth(3).textContent();
+  expect(total).toBe("$13.91");
+  expect(page.locator("[data-testid='cart-total']")).toBeDefined();
+});
+```
+
+Si lo ejecutas con `npx playwright test`, **pasa** y tarda unos 7 segundos. Parece correcto. Veamos qué esconde.
+
+**Revisión rápida con `grep`:**
+
+```bash
+grep -nE "waitForTimeout|toBeDefined\(\)|nth\(|nth-child|localhost" tests/cupon-ia.spec.ts
+```
+
+Devuelve 10 líneas: las direcciones escritas a mano (4, 10 y 15), las esperas fijas (8, 13 y 18), los selectores por posición (11, 17 y 20) y la aserción vacía (22).
+
+**Las fallas, una por una:**
+
+| #   | Falla                     | Dónde                                                                                                              | Cómo se comprueba                                                                                                                     |
+| --- | ------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Espera fija**           | `waitForTimeout(3000)`, `(2000)`, `(2000)`                                                                         | Siete segundos de espera en total. Si la Arena tarda más, falla de forma intermitente; si tarda menos, se pierde tiempo               |
+| 2   | **Selector frágil**       | `button.primary`, `ul.grid > li:nth-child(2) a`, `div.summary > div.row > button:nth-child(2)`, `dd` con `.nth(3)` | Dependen de clases de estilo y de la posición. Lo demostramos abajo (ruptura B)                                                       |
+| 3   | **Aserción vacía**        | `expect(page.locator(...)).toBeDefined()`                                                                          | Un objeto `Locator` siempre está definido, exista o no el elemento. Lo demostramos abajo (ruptura A)                                  |
+| 4   | **Datos escritos a mano** | `http://localhost:18080` tres veces, `$13.91`, el producto elegido por posición                                    | El `$13.91` solo es correcto con el carrito vacío. Lo demostramos abajo (ruptura C)                                                   |
+| 5   | **Lectura sin reintento** | `textContent()` y `toBe`                                                                                           | Lee el texto en un instante. Una aserción web-first reintenta hasta que el valor aparece                                              |
+| 6   | **Sin independencia**     | No reinicia el estado                                                                                              | El carrito vive en el servidor: la segunda ejecución encuentra dos unidades. El reinicio de la Arena va en la terminal, no en el test |
+| 7   | **Solo camino feliz**     | Ningún cupón rechazado                                                                                             | Lo demostramos abajo (ruptura D)                                                                                                      |
+| 8   | **Nombre vago**           | «el cupón funciona»                                                                                                | No dice qué cupón ni qué resultado se espera                                                                                          |
+
+**Ruptura A: la aserción vacía.** Borra la línea del `$13.91` y cambia `cart-total` por `no-existe` en la última aserción. El test **sigue pasando**, aunque en la página no existe ningún elemento con ese `data-testid`.
+
+**Ruptura B: el selector por posición.** Reinicia la Arena y, como administrador, agrega un producto que empieza antes por orden alfabético. Los comandos (cambia el puerto si tu Arena no usa el 18080):
+
+```bash
+curl -s -X POST http://localhost:18080/__arena/reset
+TOKEN=$(curl -s http://localhost:18080/api/auth/login -H 'content-type: application/json' -d '{"email":"admin@arena.test","password":"Admin123!"}' | node -pe 'JSON.parse(require("fs").readFileSync(0)).token')
+curl -s -X POST http://localhost:18080/api/admin/products -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"sku":"ARN-900","name":"Aaa Accesorio","description":"producto de prueba","priceCents":1500,"category":"Hogar","stock":5}'
+npx playwright test
+```
+
+El test **falla** con `Expected: "$13.91"` y `Received: "$24.26"`, aunque la aplicación no tiene ningún defecto: el segundo producto del catálogo ahora es otro. Un test que falla sin que haya un defecto es un **falso positivo**: te hace perder tiempo y confianza.
+
+**Ruptura C: ejecutarlo dos veces.** Reinicia (`curl -s -X POST http://localhost:18080/__arena/reset`) y ejecuta `npx playwright test --repeat-each=2`. La primera pasa; la segunda falla con `Received: "$22.82"`, porque el carrito de Ana ya tenía una unidad.
+
+**Ruptura D: el defecto que no ve.** Activa el escenario de este módulo, que hace que la Arena acepte un cupón vencido (el defecto se llama `coupon.expired_accepted`):
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase1-ia-copiloto"}'
+curl -X POST http://localhost:18080/__arena/reset
+npx playwright test
+```
+
+El test **pasa**. Ahora la tienda acepta `EXPIRED20` y regala dinero, y tu test sigue en verde porque nunca prueba un cupón vencido. Esa es la falla más cara: **la suite da una falsa sensación de seguridad**.
+
+**Decisión: corregir.** La idea del test es razonable (iniciar sesión, agregar, aplicar un cupón), así que se arregla. Esta es la versión revisada, con dos tests (cupón válido y cupón vencido), las ayudas de `tests/support/tienda.ts` (módulo 1.3), datos como constantes, localizadores estables y sin esperas:
+
+```ts
+import { test, expect, type Page } from "@playwright/test";
+import { abrir, agregarProducto, iniciarSesion, vaciarCarrito } from "./support/tienda";
+
+// Producto 1 de la semilla: "Auriculares BT", 990 centavos. Envío fijo de 500 por debajo de 5000.
+const PRECIO_CENTS = 990;
+const ENVIO_CENTS = 500;
+
+const usd = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
+
+test.beforeEach(async ({ page }) => {
+  // Partimos siempre con el carrito de Ana vacío, sin depender de lo que dejó otro test.
+  await iniciarSesion(page);
+  await vaciarCarrito(page);
+
+  await agregarProducto(page);
+  await abrir(page, "/cart");
+});
+
+async function aplicarCupon(page: Page, codigo: string): Promise<void> {
+  await page.getByTestId("coupon-input").fill(codigo);
+  await page.getByRole("button", { name: "Aplicar" }).click();
+}
+
+test("WELCOME10 descuenta el 10 % del subtotal", async ({ page }) => {
+  const descuento = Math.floor((PRECIO_CENTS * 10) / 100);
+
+  await aplicarCupon(page, "WELCOME10");
+
+  await expect(page.getByTestId("cart-discount")).toHaveText(`-${usd(descuento)}`);
+  await expect(page.getByTestId("cart-total")).toHaveText(
+    usd(PRECIO_CENTS - descuento + ENVIO_CENTS),
+  );
+});
+
+test("EXPIRED20 se rechaza porque ya venció", async ({ page }) => {
+  await aplicarCupon(page, "EXPIRED20");
+
+  await expect(page.getByTestId("cart-error")).toBeVisible();
+  await expect(page.getByTestId("cart-discount")).toHaveText("-$0.00");
+  await expect(page.getByTestId("cart-total")).toHaveText(usd(PRECIO_CENTS + ENVIO_CENTS));
+  await expect(page.getByTestId("coupon-remove")).toHaveCount(0);
+});
+```
+
+Cada cambio responde a una falla de la tabla: `baseURL` y rutas relativas (4), `getByLabel`/`getByRole`/`getByTestId` (2), aserciones web-first sin `waitForTimeout` (1 y 5), `iniciarSesion` y `vaciarCarrito` antes de cada test (6), un test para `EXPIRED20` (7) y títulos descriptivos (8). Los importes se calculan a partir de constantes y no están pegados a mano.
+
+Fíjate en que el código del test **no nombra `/__arena`**. El reinicio de la Arena (`curl -X POST http://localhost:18080/__arena/reset`) se hace en la terminal, antes de ejecutar. Dentro del test, `vaciarCarrito` (la ayuda del módulo 1.4) deja vacío el carrito de Ana por la interfaz, sin saltarse la aplicación. Así el test se podría ejecutar también contra una Arena que no controlas, y los retos con evaluador no lo rechazan.
+
+**Comprobación de la versión revisada.** Con `baseline`, ambos tests pasan, y también al repetirlos (`--repeat-each=3`: seis ejecuciones, todas en verde). Con el escenario `fase1-ia-copiloto`:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase1-ia-copiloto"}'
+npx playwright test
+```
+
+El test de `WELCOME10` pasa y el de `EXPIRED20` **falla** en `await expect(page.getByTestId("cart-error")).toBeVisible()`: la Arena no mostró ningún error, porque aceptó el cupón vencido. Eso es lo que debe hacer un buen test: detectar el defecto. Para terminar, vuelve a la base:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"baseline"}'
+```
+
+**Registro de uso de IA para este ejemplo:**
+
+- **Qué pedí**: un test para aplicar un cupón y comprobar el total.
+- **Qué hice**: modifiqué.
+- **Qué corregí y por qué**: cambié esperas fijas, selectores y datos escritos a mano; agregué el caso del cupón vencido, que el borrador no tenía; reinicié el estado antes de cada test.
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+<Ejercicio id="ej-1-8-escanear-con-grep">
+  Guarda el test generado de la sección 3 como `tests/cupon-ia.spec.ts` y ejecútalo con la Arena en
+  `baseline`. Después corre la revisión rápida con `grep` y anota para cada línea que aparezca a qué
+  fila de la lista de verificación corresponde.
+</Ejercicio>
+
+<Ejercicio id="ej-1-8-prueba-de-ruptura">
+  Con el mismo test, haz la ruptura A: borra la línea del importe `$13.91`, cambia `cart-total` por
+  `no-existe` en la última aserción y vuelve a ejecutar. Explica por qué sigue en verde y cuál es el
+  cambio mínimo para que esa aserción sí pueda fallar.
+</Ejercicio>
+
+<Ejercicio id="ej-1-8-repetir-y-descubrir">
+  Deja el carrito de Ana vacío (reinicia la Arena) y ejecuta el test generado con `--repeat-each=2`.
+  Anota qué ejecución falla, con qué valor recibido, y explica la causa en una frase.
+</Ejercicio>
+
+<Ejercicio id="ej-1-8-escribir-el-prompt">
+  Escribe tu propio prompt de cuatro partes (contexto, tarea, formato, verificar) para pedirle a una
+  IA un test del caso «aplicar `WELCOME10` descuenta el 10 %». No pegues ninguna clave real. Si
+  quieres, envíaselo a la IA que uses y guarda su respuesta.
+</Ejercicio>
+
+<Ejercicio id="ej-1-8-detectar-el-defecto">
+  Activa el escenario `fase1-ia-copiloto` y ejecuta la versión revisada del test (dos casos).
+  Describe qué test falla, en qué aserción y qué defecto de la Arena revela. Al terminar, restaura
+  `baseline`.
+</Ejercicio>
+
+<Ejercicio id="ej-1-8-aceptar-corregir-rechazar">
+  Decide si aceptas, corriges o rechazas cada fragmento y justifícalo. Fragmento A: `await
+  page.waitForTimeout(500)` antes de leer el total. Fragmento B: `expect(await
+  page.locator("li").count()).toBeGreaterThanOrEqual(0)`. Fragmento C: un test que hace clic en un
+  enlace «Recuperar contraseña». Fragmento D: `getByTestId("cart-total")` con `toHaveText("$13.91")`
+  después de reiniciar la Arena y agregar un solo «Auriculares BT» con `WELCOME10`.
+</Ejercicio>
+
+## 5. Reto sin guía
+
+<Reto titulo="Tu test frente al de la IA">
+  Es una práctica abierta: nadie la corrige por ti, así que tú decides si está bien con esta lista.
+
+Elige un caso del catálogo del módulo 1.7 (por ejemplo C46, C48 o C62), y trabaja con una carpeta nueva.
+
+1. Escribe tu propio test del caso, **sin** IA.
+2. Pídele a una IA el test del mismo caso con un prompt de cuatro partes.
+3. Ejecuta los dos contra la Arena en `baseline` y haz con los dos la prueba de ruptura.
+4. Guarda una tabla `comparacion-ia.md` con las fallas del test de la IA: qué falla, en qué línea, qué gravedad tiene y cómo la corregiste.
+5. Guarda `registro-ia.md` con el formato de la sección 2, paso 6.
+
+Criterios de autocomprobación:
+
+- Los dos tests existen, se entienden y pasan en `baseline`.
+- Probaste los dos con una ruptura y anotaste si fallaron cuando debían.
+- Ejecutaste los dos con `--repeat-each=2` y los dos pasan.
+- Tu lista tiene al menos 5 fallas del test de la IA, cada una con línea, gravedad y corrección. Si encontraste menos, revisa de nuevo con las diez preguntas.
+- Para cada falla dices si la corregirías o si rechazarías el test, y por qué.
+- El caso incluye un camino negativo y puedes explicar qué defecto de la Arena detectaría.
+- Tu `registro-ia.md` dice qué pediste, qué aceptaste y qué corregiste, y no contiene claves ni datos personales.
+- Otra persona entendería tu decisión solo leyendo los dos archivos.
+
+Si cumples todos los puntos, ya puedes usar una IA como copiloto sin perder el control del código.
+
+</Reto>
+
+### Cierre de la Fase 1: tu suite de 25 tests UI estables
+
+Con este reto termina la Fase 1. Juntas todo lo aprendido: localizadores estables (1.2), acciones y esperas (1.3), aserciones que pueden fallar (1.4), configuración por ambiente (1.5), depuración (1.6), elección de casos (1.7) y revisión crítica del código que escribe una IA (1.8).
+
+Implementas en un repositorio los **25 casos de capa UI que elegiste en el módulo 1.7**. No es una suite cualquiera: tiene que cumplir dos cosas a la vez.
+
+- **Estabilidad**: pasa siempre que la Arena no tiene defectos y también cuando la Arena es lenta o cambia sus identificadores.
+- **Detección**: falla cuando la Arena tiene un defecto en lo que dice probar.
+
+Un test que no hace lo primero es inestable. Uno que no hace lo segundo da una falsa sensación de seguridad.
+
+<Reto titulo="Tu suite de 25 tests UI estables">
+  Es una práctica abierta: nadie la corrige por ti. Por ahora te autoevalúas con la lista; más
+  adelante será un reto con evaluador automático.
+
+Trabaja en una carpeta nueva con Playwright (puede ser un repositorio de Git).
+
+1. Copia `tests/support/tienda.ts` de tu proyecto de práctica (con `vaciarCarrito` del módulo 1.4). Es la única fuente de ayudas: no escribas otras.
+2. Usa la configuración del módulo 1.5 (`.env.<ENTORNO>` y `ARENA_URL`) y añade las dos opciones que ya conoces del módulo 1.3: `workers: 1` y `expect: { timeout: 10_000 }`.
+3. Escribe un test por cada uno de tus 25 casos, con el ID al principio del título: `test("C41 WELCOME10 descuenta ...", ...)`. Agrupa por flujo con `test.describe`.
+4. No uses `waitForTimeout`, selectores CSS ni `/__arena`. Para el usuario, no uses `requerida` (la ayuda `iniciarSesion` ya trae a Ana por defecto).
+5. Ejecuta tu suite contra cada escenario de la tabla de abajo. Antes de cada ejecución, cambia el escenario y reinicia la Arena **desde la terminal**.
+6. Si un criterio falla, corrige la causa y vuelve a ejecutar. No debilites las aserciones para que pase.
+
+Un test típico tiene esta forma (el reinicio del carrito sale de la ayuda, no de la Arena):
+
+```ts
+import { test, expect } from "@playwright/test";
+import { abrir, agregarProducto, iniciarSesion, vaciarCarrito } from "./support/tienda";
+
+test.describe("Cupones", () => {
+  test.beforeEach(async ({ page }) => {
+    await iniciarSesion(page);
+    await vaciarCarrito(page);
+    await agregarProducto(page);
+    await abrir(page, "/cart");
+  });
+
+  test("C46 EXPIRED20 se rechaza", async ({ page }) => {
+    await page.getByLabel("Cupon").fill("EXPIRED20");
+    await page.getByRole("button", { name: "Aplicar" }).click();
+    await expect(page.getByRole("alert")).toHaveText("Coupon has expired");
+    await expect(page.getByTestId("cart-total")).toHaveText("$14.90");
+  });
+});
+```
+
+Para cambiar de escenario usa estos dos comandos (cambia `fase1-login` por el que toque):
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase1-login"}'
+curl -X POST http://localhost:18080/__arena/reset
+```
+
+Criterios de aceptación:
+
+| Escenario             | Qué debe pasar con tu suite                          |
+| --------------------- | ---------------------------------------------------- |
+| `baseline`            | Pasa **3 veces seguidas**                            |
+| `fase1-localizadores` | Pasa (los identificadores rotan; tú no los usas)     |
+| `fase1-compra`        | Pasa (la tienda carga tarde; tus aserciones esperan) |
+| `fase1-login`         | **Falla** (al menos un test)                         |
+| `fase1-aserciones`    | **Falla** (al menos un test)                         |
+| `fase1-ia-copiloto`   | **Falla** (al menos un test)                         |
+
+Criterios de autocomprobación:
+
+- Hay 25 tests y cada título empieza con el ID de un caso de tu selección del módulo 1.7.
+- Los 25 casos son de capa UI y ninguno es C48 ni C66 (los defectos de `fase1-compra` están sembrados para que esos dos fallen; los probarás en la Fase 2).
+- La suite pasa tres veces seguidas en `baseline`, con `workers: 1` y sin `waitForTimeout`.
+- Pasa con `fase1-localizadores` y con `fase1-compra`.
+- Falla con `fase1-login`, `fase1-aserciones` y `fase1-ia-copiloto`, y puedes decir qué test falla en cada uno y qué defecto revela.
+- Ningún archivo contiene `/__arena` ni variables `ARENA_*` distintas de `ARENA_URL`.
+- Si usaste una IA para escribir algún test, tu `registro-ia.md` dice qué pediste, qué aceptaste y qué corregiste.
+
+Si una suite no falla donde debe, no hay que añadir más tests sin pensar: pregúntate qué defecto no está viendo. Cada escenario siembra sus defectos en la zona de su módulo (1.1 el acceso, 1.4 los importes y contadores, 1.8 los cupones). Si alguno sigue en verde, tu selección tiene un hueco: mira la guía del módulo 1.7 y decide si cambias un caso por otro.
+
+</Reto>
+
+Más adelante, con las plantillas de reto de la plataforma (E4-TPL), este proyecto se convertirá en un reto evaluado: el evaluador ya sabe ejecutar una suite contra varios escenarios, comprobar que pasa en unos (`suite_pasa`) y que falla en otros (`suite_detecta`). Cuando lleve evaluación verás, además, el panel «Registro de uso de IA» del paso 6, y este módulo 1.8 será requisito previo del reto. Hasta entonces, la autoevaluación con la tabla es tu forma de comprobarlo.
+
+## 6. Uso de IA en este módulo
+
+En este módulo la IA es a la vez el tema y la herramienta. Úsala para ir más rápido, no para pensar menos.
+
+**Qué pedirle:**
+
+- Un **primer borrador** de un test para un caso concreto, con el prompt de cuatro partes.
+- Que **explique** un test que no entiendes, línea por línea.
+- Que **revise** tu test con la lista de verificación y te diga qué cambiaría.
+- Que proponga **casos negativos** que te falten: «¿qué otros cupones o pagos debería rechazar este flujo?».
+- Que te ayude a **entender un error** de Playwright. Pégale el mensaje completo.
+
+**Qué revisar siempre:**
+
+- Cada punto de la lista de diez preguntas de la sección 2, paso 3.
+- Que cada `data-testid`, texto, ruta y precio exista en la Arena. Compruébalo en el navegador o ejecutando.
+- Que cada método o configuración de Playwright exista. Contrástalo con la documentación oficial (`playwright.dev/docs`), sobre todo las opciones poco habituales. A veces la IA inventa nombres que suenan bien.
+- Que el test falle cuando lo rompes (la prueba de ruptura).
+- Que no hay claves, contraseñas reales ni datos personales en el código ni en el prompt.
+
+**Qué rechazar:**
+
+- Un test que no entiendes, aunque pase.
+- Aserciones triviales (`toBeDefined`, `expect(true)`) o tests sin ninguna aserción.
+- Esperas fijas «para que sea estable».
+- Código que usa una función de la aplicación que no existe.
+- Un test que «arregla» un fallo debilitando la aserción en lugar de buscar la causa.
+- Cualquier sugerencia que implique pegar secretos, instalar paquetes desconocidos o ejecutar comandos que no comprendes (módulo 0.1).
+
+**Registrar el uso.** Después de cada sesión, escribe tres líneas: qué pediste, qué aceptaste y qué corregiste. Sirve para dos cosas: aprendes de tus propios patrones, y quien revisa tu trabajo ve **cómo** pensaste, no solo el resultado. Un buen registro tiene decisiones, incluidos los rechazos.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Confiar en el verde">
+  Un test que pasa solo demuestra que no encontró nada que le haga fallar. Rómpelo a propósito para
+  ver si realmente protege algo.
+</ErrorComun>
+
+<ErrorComun titulo="Ejecutar antes de leer">
+  Sin leer el código no sabes qué hace. Léelo con la lista de verificación y busca cada
+  `data-testid` y cada texto en la Arena antes de ejecutar.
+</ErrorComun>
+
+<ErrorComun titulo="Arreglar con más esperas">
+  Cuando un test falla a veces, agregar `waitForTimeout` lo oculta, no lo resuelve. Usa aserciones
+  web-first, que esperan lo justo.
+</ErrorComun>
+
+<ErrorComun titulo="Pedir «un test» sin decir qué caso">
+  Si el prompt es vago, el resultado también: un test enorme que prueba de todo y no se sabe qué.
+  Pide un comportamiento por test.
+</ErrorComun>
+
+<ErrorComun titulo="Debilitar la aserción para que pase">
+  Si el test falla y la IA propone cambiar el valor esperado por algo más amplio, primero comprueba
+  si el fallo es un defecto real. Puede que el test tenga razón.
+</ErrorComun>
+
+<ErrorComun titulo="Pegar datos sensibles en el prompt">
+  Claves, contraseñas reales o datos de clientes no se comparten con una herramienta externa. Usa
+  siempre los datos de práctica de la Arena.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Una IA entrega un borrador rápido; la responsabilidad del test es tuya.
+- Un prompt con contexto, tarea, formato y verificación evita la mayoría de las fallas.
+- La lista de diez preguntas encuentra aserciones vacías, selectores frágiles, esperas fijas y datos escritos a mano.
+- La prueba de ruptura (romper a propósito, repetir, activar un defecto) dice si un test que pasa realmente prueba algo.
+- Un test que solo cubre el camino feliz no detecta un cupón vencido aceptado.
+- Decide con criterios: aceptar, corregir o rechazar. Si no entiendes cada línea, no entra.
+- Comprueba que todo lo que usa el test existe: `data-testid`, textos y métodos de Playwright.
+- Registra qué pediste, qué aceptaste y qué corregiste, sin claves ni datos personales.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

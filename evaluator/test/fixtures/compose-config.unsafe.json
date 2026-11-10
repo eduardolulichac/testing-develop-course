@@ -1,0 +1,43 @@
+{
+  "name": "demo",
+  "services": {
+    "tests": {
+      "build": {
+        "context": "/repo",
+        "dockerfile": "Dockerfile"
+      },
+      "cap_add": ["SYS_ADMIN"],
+      "command": null,
+      "entrypoint": null,
+      "network_mode": "host",
+      "pid": "host",
+      "privileged": true,
+      "security_opt": ["seccomp:unconfined"],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/var/run/docker.sock",
+          "target": "/var/run/docker.sock",
+          "bind": {}
+        },
+        {
+          "type": "volume",
+          "source": "hostroot",
+          "target": "/host",
+          "volume": {}
+        }
+      ]
+    }
+  },
+  "volumes": {
+    "hostroot": {
+      "name": "demo_hostroot",
+      "driver": "local",
+      "driver_opts": {
+        "device": "/",
+        "o": "bind",
+        "type": "none"
+      }
+    }
+  }
+}

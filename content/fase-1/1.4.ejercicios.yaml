@@ -1,0 +1,85 @@
+ejercicios:
+  - slug: ej-1-4-aserciones-de-la-ficha
+    tipo: guiado
+    titulo: "Aserciones web-first sobre la ficha de un producto"
+    escenario: baseline
+    pistas:
+      - "Abre la ficha con `abrir(page, '/products/1')`. Cada dato que quieres comprobar tiene su `data-testid`: `product-name`, `product-price` y `product-qty`; el botón se busca por su rol y nombre: `getByRole('button', { name: 'Agregar al carrito' })`."
+      - "El nombre y el precio se comprueban con `toHaveText`; la cantidad, que es un campo de formulario, con `toHaveValue`; el botón activo, con `toBeEnabled`."
+      - "Cada línea empieza por `await expect(page.getByTestId('...'))`. Si la aserción falla, lee el valor recibido del mensaje y compáralo con el que esperabas."
+    solucion: |
+      ```ts
+      test("ficha del producto 1", async ({ page }) => {
+        await abrir(page, "/products/1");
+        await expect(page.getByTestId("product-name")).toHaveText("Auriculares BT");
+        await expect(page.getByTestId("product-price")).toHaveText("$9.90");
+        await expect(page.getByRole("button", { name: "Agregar al carrito" })).toBeEnabled();
+        await expect(page.getByTestId("product-qty")).toHaveValue("1");
+      });
+      ```
+      Los cuatro `expect` llevan `await` y reciben un localizador, así que reintentan solos. Verificado: pasa en `baseline` y en `fase1-aserciones`.
+  - slug: ej-1-4-descuento-por-cupon
+    tipo: guiado
+    titulo: "Un cupón de descuento fijo pasa en los dos escenarios"
+    escenario: fase1-aserciones
+    pistas:
+      - "Parte del test del ejemplo resuelto: mismo `beforeEach`, `agregarProducto(page, 1, 15)` (cantidad 1, producto 15), ir al carrito con `abrir` y escribir el cupón en el campo «Cupon». Usa `SAVE5`."
+      - "Aplica `SAVE5` a mano en la Arena y anota subtotal, descuento y total. El envío cuenta: hay que sumarlo al total. Los valores esperados salen de ahí, no de adivinar."
+      - "Si el test pasa en los dos escenarios, el defecto no está en los cupones de importe fijo. Piensa qué tipo de descuento redondea: el que calcula un porcentaje."
+    solucion: |
+      ```ts
+      await page.getByTestId("coupon-input").fill("SAVE5");
+      await page.getByRole("button", { name: "Aplicar" }).click();
+      await expect(page.getByTestId("cart-subtotal")).toHaveText("$50.90");
+      await expect(page.getByTestId("cart-discount")).toHaveText("-$5.00");
+      await expect(page.getByTestId("cart-total")).toHaveText("$50.90");
+      ```
+      El total vale $50.90 porque 5090 - 500 de descuento + 500 de envío = 5090. Verificado: el test pasa en `baseline` y también en `fase1-aserciones`, porque `SAVE5` descuenta un importe fijo y el defecto redondea el descuento **porcentual**. Para detectarlo hace falta un cupón porcentual como `BIGSPEND`. Moraleja: que un test pase en el escenario con defectos no significa que la aplicación esté bien; significa que ese test no mira donde está el defecto.
+  - slug: ej-1-4-contador-del-carrito
+    tipo: guiado
+    titulo: "Comprueba que el contador del carrito baja"
+    escenario: fase1-aserciones
+    pistas:
+      - "Usa `abrir(page, ...)` y las ayudas de `tienda.ts`: esperan al marcador `arena-ready` antes de actuar. El front lee los defectos activos después de dibujar la página."
+      - "Agrega dos productos con `agregarProducto`, abre el carrito con `abrir(page, '/cart')`, comprueba que `cart-count` vale `2`, quita uno con `cart-remove-<id>` y comprueba el contador otra vez."
+      - "Después de quitar la línea, comprueba primero que `cart-item-<id>` ya no existe (`toHaveCount(0)`) y después que `cart-count` vale `1`. En `baseline` pasa; en `fase1-aserciones` el contador sigue en `2`."
+    solucion: |
+      ```ts
+      test("el contador baja al quitar una línea", async ({ page }) => {
+        await agregarProducto(page, 1, 15);
+        await agregarProducto(page, 1, 1);
+        await abrir(page, "/cart");
+        await expect(page.getByTestId("cart-count")).toHaveText("2");
+
+        await page.getByTestId("cart-remove-1").click();
+
+        await expect(page.getByTestId("cart-item-1")).toHaveCount(0);
+        await expect(page.getByTestId("cart-count")).toHaveText("1");
+      });
+      ```
+      Verificado: pasa en `baseline`. En `fase1-aserciones` falla con `Expected: "1"` y `Received: "2"`: la línea desapareció de la tabla pero la cabecera no se actualizó. Es un defecto de la interfaz, no del test.
+  - slug: ej-1-4-tests-que-no-prueban
+    tipo: guiado
+    titulo: "Detecta y arregla seis tests que pasan sin probar nada"
+    escenario: fase1-aserciones
+    pistas:
+      - "Aplica «romper a propósito»: cambia el valor esperado de cada test por uno absurdo y ejecútalo. Los que siguen pasando no prueban nada. Pregúntate de cada uno: ¿qué tendría que estar mal en la tienda para que fallara?"
+      - "Ninguno compara el descuento con un valor exacto. A afirma algo siempre cierto; B y C comprueban cosas que nunca fallan (un conteo mayor o igual a cero y un localizador que siempre existe); E no ejecuta su aserción porque `cart-error` no se ve; F acepta cualquier texto con un `$`."
+      - "Reescribe cada test con una aserción web-first de valor exacto, sin `if`: el descuento debe ser `-$7.63`, el total `$48.27`, y de D puedes comprobar que la tabla tiene dos filas (encabezado y una línea) y que no hay `cart-error`."
+    solucion: |
+      A se borra (no comprueba nada). Los demás quedan así:
+      ```ts
+      test("el descuento es el 15 % truncado", async ({ page }) => {
+        await expect(page.getByTestId("cart-discount")).toHaveText("-$7.63");
+      });
+
+      test("el total suma envío y resta descuento", async ({ page }) => {
+        await expect(page.getByTestId("cart-total")).toHaveText("$48.27");
+      });
+
+      test("el carrito tiene una sola línea y sin errores", async ({ page }) => {
+        await expect(page.getByTestId("cart-table").getByRole("row")).toHaveCount(2);
+        await expect(page.getByTestId("cart-error")).toHaveCount(0);
+      });
+      ```
+      Verificado: los tres pasan en `baseline`; en `fase1-aserciones` fallan el descuento y el total (`-$7.64` y `$48.26`) y el tercero sigue pasando, como debe ser: no mide el redondeo. Equivalencias: B y F se sustituyen por el primero, C por el segundo, y D y E por el tercero.

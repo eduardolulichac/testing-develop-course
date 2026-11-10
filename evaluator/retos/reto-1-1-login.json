@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "arena": {
+    "escenario": "fase1-login",
+    "release": null,
+    "semilla": 1046
+  },
+  "umbral": 70,
+  "obligatorios": [
+    "suite-verde-baseline",
+    "detecta-fase1-login",
+    "sin-arena-interna"
+  ],
+  "criterios": [
+    {
+      "id": "suite-ejecuta",
+      "titulo": "La suite tiene al menos 3 tests",
+      "peso": 10,
+      "competencia": "tecnica",
+      "feedback_fallo": "Escribe al menos tres tests: login correcto, contraseña incorrecta y correo con otro formato.",
+      "tipo": "suite_ejecuta",
+      "min": 3
+    },
+    {
+      "id": "suite-verde-baseline",
+      "titulo": "Todos los tests pasan contra la Arena sin defectos",
+      "peso": 30,
+      "competencia": "tecnica",
+      "feedback_fallo": "Un test que falla contra la versión correcta no es fiable. Ejecútalo en local contra la Arena con baseline.",
+      "tipo": "suite_pasa",
+      "escenario": "baseline"
+    },
+    {
+      "id": "detecta-fase1-login",
+      "titulo": "Tu suite detecta el defecto del login",
+      "peso": 35,
+      "competencia": "analisis",
+      "feedback_fallo": "Tu suite no detectó el defecto: o ninguno de tus tests falla con `fase1-login` activo, o tu suite ya falla sin él. Primero comprueba que pasa en `baseline`; después prueba variantes del correo y revisa los mensajes de error.",
+      "tipo": "suite_detecta",
+      "escenario": "fase1-login",
+      "release": null
+    },
+    {
+      "id": "sin-esperas-fijas",
+      "titulo": "Sin esperas fijas",
+      "peso": 15,
+      "competencia": "tecnica",
+      "feedback_fallo": "Evita waitForTimeout: usa las esperas automáticas de Playwright.",
+      "tipo": "estatico",
+      "regla": "sin-esperas-fijas"
+    },
+    {
+      "id": "localizadores-por-rol",
+      "titulo": "Localizadores accesibles",
+      "peso": 10,
+      "competencia": "tecnica",
+      "feedback_fallo": "Prefiere getByRole o getByLabel antes que selectores CSS.",
+      "tipo": "estatico",
+      "regla": "localizadores-por-rol"
+    },
+    {
+      "id": "sin-arena-interna",
+      "titulo": "La suite no usa los endpoints internos de la Arena",
+      "peso": 0,
+      "competencia": "autonomia",
+      "feedback_fallo": "Los tests no deben llamar a /__arena ni leer variables ARENA_*: prueba la tienda como lo haría un usuario.",
+      "tipo": "estatico",
+      "regla": "sin-arena-interna"
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+preguntas:
+  - id: esp-que-espera
+    enunciado: "Antes de hacer `click()` sobre un botón, ¿qué comprueba Playwright de forma automática?"
+    opciones:
+      [
+        "Solo que el botón existe en el HTML",
+        "Que el elemento es visible, estable, está habilitado y recibe los clics",
+        "Que han pasado al menos 3 segundos desde la carga",
+        "Nada: hace clic de inmediato",
+      ]
+    correcta: 1
+    explicacion: "Playwright reintenta hasta que el elemento está visible, estable (sin moverse), habilitado y puede recibir el clic. Si se agota el tiempo, falla con un mensaje que indica qué no se cumplió."
+  - id: esp-isvisible
+    enunciado: "Escribes `expect(await x.isVisible()).toBe(true)` justo después de `page.goto`. ¿Qué problema tiene?"
+    opciones:
+      [
+        "Ninguno: isVisible espera hasta 5 segundos",
+        "isVisible devuelve lo que hay en ese instante y no reintenta, así que puede dar false y hacer fallar el test de forma intermitente",
+        "Solo funciona con botones",
+        "Cierra el navegador",
+      ]
+    correcta: 1
+    explicacion: "`isVisible()`, `count()` y similares no esperan. La forma correcta es una aserción que reintenta: `await expect(x).toBeVisible()`."
+  - id: esp-waitfortimeout
+    enunciado: "¿Por qué `waitForTimeout(3000)` es una mala solución para un test inestable?"
+    opciones:
+      [
+        "Porque no existe en Playwright",
+        "Porque detiene el test un tiempo fijo: sobra cuando la página es rápida y falta cuando es lenta",
+        "Porque solo funciona en Firefox",
+        "Porque borra las cookies",
+      ]
+    correcta: 1
+    explicacion: "La espera fija no responde a ninguna condición. Con una página lenta falla de todos modos y con una rápida alarga la suite. Es mejor esperar por una condición real: un elemento, un texto o una respuesta."
+  - id: esp-orden-respuesta
+    enunciado: "Quieres comprobar que la API respondió 200 al pulsar «Aplicar». ¿Cuál es el orden correcto?"
+    opciones:
+      [
+        "Hacer clic y luego crear `waitForResponse`",
+        "Crear `waitForResponse` sin await, hacer clic y esperar el resultado",
+        "Esperar 2 segundos y leer la red",
+        "Hacer clic dos veces",
+      ]
+    correcta: 1
+    explicacion: "Primero se empieza a escuchar, luego se dispara la acción y al final se espera el resultado. Si escuchas después del clic, la respuesta puede haber llegado ya y la espera no termina."
+  - id: esp-lento-no-defecto
+    enunciado: "Con un escenario, la tienda muestra «Cargando...» 3 segundos y tu test falla por timeout de 5 segundos al leer el carrito. ¿Qué haces primero?"
+    opciones:
+      [
+        "Reportar un defecto de rendimiento sin más",
+        "Aumentar el timeout global a 5 minutos",
+        "Revisar que usas aserciones que reintentan y un plazo razonable, y valorar aparte si la lentitud es un problema del producto",
+        "Quitar la comprobación",
+      ]
+    correcta: 2
+    explicacion: "Una carga lenta no es lo mismo que un defecto de lógica. Primero asegura que tu test espera por la condición correcta con un plazo razonable; después valora, como asunto aparte, si la lentitud merece reportarse. Subir el timeout sin criterio o quitar la comprobación esconden el problema."
+  - id: esp-independencia
+    enunciado: "Tus dos tests de compra pasan por separado, pero juntos el segundo falla porque el carrito ya tenía productos. ¿Qué principio rompiste?"
+    opciones:
+      [
+        "Los tests deben ser independientes: cada uno empieza con datos limpios",
+        "Los tests deben compartir datos para ir más rápido",
+        "Nunca se deben probar carritos",
+        "Los tests deben ejecutarse en paralelo",
+      ]
+    correcta: 0
+    explicacion: "Un test no debe depender de lo que dejó otro. En la práctica local, reinicia la tienda antes de cada test (y ejecuta de uno en uno si los datos son compartidos)."
+  - id: esp-doble-clic
+    enunciado: "¿Qué aporta probar un doble clic rápido en un botón como «Aplicar»?"
+    opciones:
+      [
+        "Porque Playwright siempre hace dos clics",
+        "Porque una persona real puede hacerlo, y revela si la acción se repite más de una vez",
+        "Porque acelera el test",
+        "Porque así se evita el modo estricto",
+      ]
+    correcta: 1
+    explicacion: "Las personas hacen clics repetidos por impaciencia o por lentitud. Probar `dblclick()` revela defectos de duplicación que el clic simple nunca encuentra."

@@ -1,0 +1,563 @@
+{
+  "config": {
+    "argv": ["/usr/local/bin/node", "/tmp/work/r/node_modules/.bin/playwright", "test"],
+    "configFile": "/tmp/work/r/playwright.config.ts",
+    "rootDir": "/tmp/work/r/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/tmp/work/r/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "/tmp/work/r/tests",
+        "testIgnore": [],
+        "testMatch": ["**/*.@(spec|test).?(c|m)[jt]s?(x)"],
+        "timeout": 30000
+      }
+    ],
+    "filteredProjects": [
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "/tmp/work/r/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "",
+        "testDir": "/tmp/work/r/tests",
+        "snapshotDir": "/tmp/work/r/tests",
+        "testIgnore": [],
+        "testMatch": "**/*.@(spec|test).?(c|m)[jt]s?(x)",
+        "timeout": 30000,
+        "use": {
+          "baseURL": "http://localhost:18080",
+          "trace": "retain-on-failure"
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": ""
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      ["list", null],
+      [
+        "json",
+        {
+          "outputFile": "resultados/informe.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "default",
+    "updateSourceMethod": "patch",
+    "version": "1.64.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "api.spec.ts",
+      "file": "api.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "GET /api/products devuelve el catálogo paginado",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 86,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-07T22:17:37.686Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "1ea1b1599cbc08f16936-a589e806aa90a16820f1",
+          "file": "api.spec.ts",
+          "line": 6,
+          "column": 5
+        },
+        {
+          "title": "POST /api/auth/login rechaza una contraseña incorrecta",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 15,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-07T22:17:37.787Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "1ea1b1599cbc08f16936-f5bce4fa9b20801ffe16",
+          "file": "api.spec.ts",
+          "line": 14,
+          "column": 5
+        },
+        {
+          "title": "cerrar sesión invalida el token",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [
+                {
+                  "type": "requisito",
+                  "description": "REQ-10",
+                  "location": {
+                    "file": "/tmp/work/r/tests/api.spec.ts",
+                    "line": 22,
+                    "column": 5
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 20,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-07T22:17:37.807Z",
+                  "annotations": [
+                    {
+                      "type": "requisito",
+                      "description": "REQ-10",
+                      "location": {
+                        "file": "/tmp/work/r/tests/api.spec.ts",
+                        "line": 22,
+                        "column": 5
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "1ea1b1599cbc08f16936-8906d7bdc83b525b5fc4",
+          "file": "api.spec.ts",
+          "line": 22,
+          "column": 5
+        }
+      ]
+    },
+    {
+      "title": "combinado.spec.ts",
+      "file": "combinado.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "el envío gratis se juzga después del descuento del cupón",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [
+                {
+                  "type": "requisito",
+                  "description": "REQ-3",
+                  "location": {
+                    "file": "/tmp/work/r/tests/combinado.spec.ts",
+                    "line": 17,
+                    "column": 5
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 29,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-07T22:17:37.834Z",
+                  "annotations": [
+                    {
+                      "type": "requisito",
+                      "description": "REQ-3",
+                      "location": {
+                        "file": "/tmp/work/r/tests/combinado.spec.ts",
+                        "line": 17,
+                        "column": 5
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4dc03b332c77d4811b92-4459fb3f637283df926c",
+          "file": "combinado.spec.ts",
+          "line": 17,
+          "column": 5
+        },
+        {
+          "title": "un cupón aplica su descuento también cuando la línea llega al stock",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [
+                {
+                  "type": "requisito",
+                  "description": "REQ-4",
+                  "location": {
+                    "file": "/tmp/work/r/tests/combinado.spec.ts",
+                    "line": 35,
+                    "column": 5
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 27,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-07T22:17:37.867Z",
+                  "annotations": [
+                    {
+                      "type": "requisito",
+                      "description": "REQ-4",
+                      "location": {
+                        "file": "/tmp/work/r/tests/combinado.spec.ts",
+                        "line": 35,
+                        "column": 5
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4dc03b332c77d4811b92-37da13b4ac2e9847ec65",
+          "file": "combinado.spec.ts",
+          "line": 35,
+          "column": 5
+        },
+        {
+          "title": "el carrito no admite más de 10 unidades de un producto",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [
+                {
+                  "type": "requisito",
+                  "description": "REQ-5",
+                  "location": {
+                    "file": "/tmp/work/r/tests/combinado.spec.ts",
+                    "line": 52,
+                    "column": 5
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 14,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-07T22:17:37.898Z",
+                  "annotations": [
+                    {
+                      "type": "requisito",
+                      "description": "REQ-5",
+                      "location": {
+                        "file": "/tmp/work/r/tests/combinado.spec.ts",
+                        "line": 52,
+                        "column": 5
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4dc03b332c77d4811b92-ff7737711c10409fca90",
+          "file": "combinado.spec.ts",
+          "line": 52,
+          "column": 5
+        }
+      ]
+    },
+    {
+      "title": "tienda.spec.ts",
+      "file": "tienda.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "el catálogo muestra productos",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [
+                {
+                  "type": "requisito",
+                  "description": "REQ-2",
+                  "location": {
+                    "file": "/tmp/work/r/tests/tienda.spec.ts",
+                    "line": 7,
+                    "column": 5
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 80,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-07T22:17:37.917Z",
+                  "annotations": [
+                    {
+                      "type": "requisito",
+                      "description": "REQ-2",
+                      "location": {
+                        "file": "/tmp/work/r/tests/tienda.spec.ts",
+                        "line": 7,
+                        "column": 5
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "76f57579722382bebb4a-8f34e6c59566ee4ce846",
+          "file": "tienda.spec.ts",
+          "line": 7,
+          "column": 5
+        },
+        {
+          "title": "iniciar sesión con credenciales correctas habilita el carrito",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [
+                {
+                  "type": "requisito",
+                  "description": "REQ-1",
+                  "location": {
+                    "file": "/tmp/work/r/tests/tienda.spec.ts",
+                    "line": 13,
+                    "column": 5
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 155,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-07T22:17:38.062Z",
+                  "annotations": [
+                    {
+                      "type": "requisito",
+                      "description": "REQ-1",
+                      "location": {
+                        "file": "/tmp/work/r/tests/tienda.spec.ts",
+                        "line": 13,
+                        "column": 5
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "76f57579722382bebb4a-55d2dd5713d319d07ece",
+          "file": "tienda.spec.ts",
+          "line": 13,
+          "column": 5
+        },
+        {
+          "title": "iniciar sesión con una contraseña incorrecta muestra un error",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [
+                {
+                  "type": "requisito",
+                  "description": "REQ-1",
+                  "location": {
+                    "file": "/tmp/work/r/tests/tienda.spec.ts",
+                    "line": 25,
+                    "column": 5
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 151,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-07T22:17:38.221Z",
+                  "annotations": [
+                    {
+                      "type": "requisito",
+                      "description": "REQ-1",
+                      "location": {
+                        "file": "/tmp/work/r/tests/tienda.spec.ts",
+                        "line": 25,
+                        "column": 5
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "76f57579722382bebb4a-b87674fb79479442991d",
+          "file": "tienda.spec.ts",
+          "line": 25,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-11-07T22:17:37.527Z",
+    "duration": 874.1599999999999,
+    "expected": 9,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

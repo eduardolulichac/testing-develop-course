@@ -1,0 +1,386 @@
+---
+modulo: "1.2"
+titulo: "Localizadores"
+fase: 1
+nivel: "Junior"
+duracion_min: 90
+prerequisitos: ["1.1"]
+escenario: "fase1-localizadores"
+version: "2026-11"
+herramientas: ["Playwright 1.64.1", "Node 24 (verificado 24.14)", "QA Arena (local)"]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Al terminar sabrás elegir, para cada elemento de la pantalla, el localizador más estable
+  (`getByRole`, `getByLabel`, `getByText`, `getByTestId`, CSS o XPath), combinarlos y filtrarlos
+  para llegar a un elemento concreto, y reescribir selectores frágiles para que tus tests no se
+  rompan con cada cambio de la aplicación.
+</Objetivo>
+
+En el módulo 1.1 usaste `getByLabel` y `getByRole` sin explicar por qué. Aquí lo explicamos. Un **localizador** es la forma de decirle a Playwright «el botón Entrar» o «el precio de este producto».
+
+El problema real de un QA que automatiza es el mantenimiento: la aplicación cambia un poco (otra clase CSS, otro orden en la página) y de pronto cien tests fallan, aunque la aplicación funcione bien. Un test que falla sin que haya un defecto es un **falso positivo**, y cuesta tiempo y confianza. La mayor parte de los falsos positivos nacen de localizadores frágiles.
+
+Lo que necesitas antes de empezar:
+
+- El proyecto `practica-playwright` del módulo 1.1 funcionando, con Playwright 1.64.1.
+- QA Arena levantada en `http://localhost:18080`.
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Un localizador describe, no busca todavía">
+Cuando escribes `page.getByLabel("Correo")` Playwright **no busca nada en ese momento**. Solo guarda la descripción. La búsqueda ocurre cuando haces algo con él (`click()`, `fill()`, `expect(...)`) y se repite hasta que lo encuentra o se acaba el tiempo. Por eso un localizador guardado en una variable sigue siendo válido aunque la página cambie:
+
+```ts
+const buscador = page.getByRole("searchbox", { name: "Buscar productos" });
+await buscador.fill("Atlas"); // aquí es cuando lo busca
+```
+
+Hay una regla importante, el **modo estricto**: si la acción necesita un solo elemento y el localizador encuentra varios, Playwright **falla** en vez de elegir uno. Es una protección, no un error de Playwright: te avisa de que tu localizador es ambiguo.
+
+</Paso>
+
+<Paso numero={2} titulo="Por rol y nombre: getByRole">
+Los navegadores asignan a cada elemento un **rol** (qué es: botón, enlace, encabezado, campo de texto…) y un **nombre accesible** (cómo se llama para un lector de pantalla: el texto del botón, la etiqueta del campo). `getByRole` busca por esa pareja:
+
+```ts
+page.getByRole("button", { name: "Entrar" });
+page.getByRole("heading", { name: "Iniciar sesion" });
+page.getByRole("link", { name: "Auriculares BT" });
+page.getByRole("searchbox", { name: "Buscar productos" });
+page.getByRole("alert"); // el mensaje de error de un formulario
+```
+
+Es el localizador preferido, por tres razones: se parece a como lo usa una persona, no depende de clases ni de la estructura del HTML y, si falla, suele indicar un problema de accesibilidad real.
+
+Dos detalles:
+
+- `name` busca por **texto parcial y sin distinguir mayúsculas**: `{ name: "Agregar" }` también encuentra «Agregar al carrito». Para exigir el texto completo añade `exact: true`.
+- Los roles más comunes: `button`, `link`, `heading`, `textbox` (campo de texto), `searchbox` (buscador), `combobox` (lista desplegable), `listitem` (elemento de una lista), `row` (fila de tabla), `alert` y `status` (mensajes).
+
+</Paso>
+
+<Paso numero={3} titulo="Por etiqueta, marcador y texto">
+Para formularios y textos hay localizadores más cortos:
+
+```ts
+page.getByLabel("Correo"); // campo con esa etiqueta
+page.getByPlaceholder("Buscar productos"); // texto de ayuda dentro del campo
+page.getByText("Agregado al carrito"); // cualquier elemento con ese texto
+```
+
+- `getByLabel` es lo mejor para campos de formulario: usa el nombre que ve la persona.
+- `getByPlaceholder` sirve si el campo no tiene etiqueta, pero el texto de ayuda desaparece al escribir y es menos fiable.
+- `getByText` es útil para mensajes y textos sueltos. Cuidado: si el texto cambia (otro idioma, otra redacción) el test falla; y encuentra cualquier elemento que lo contenga.
+
+</Paso>
+
+<Paso numero={4} titulo="Por identificador de prueba: getByTestId">
+Un `data-testid` es un atributo que el equipo de desarrollo añade al HTML **solo para los tests**:
+
+```html
+<dd data-testid="cart-total">$19.80</dd>
+```
+
+```ts
+page.getByTestId("cart-total");
+```
+
+Es útil cuando el elemento no tiene rol ni texto claros (el total del carrito, la fila de un pedido). Aguanta cambios de diseño, pero **depende de un acuerdo con desarrollo**: si alguien renombra el atributo, tu test se rompe, y no se parece a lo que ve una persona. La regla práctica es usarlo cuando no hay un rol o etiqueta mejor, y pedir a desarrollo que sean estables.
+
+</Paso>
+
+<Paso numero={5} titulo="CSS y XPath: el último recurso">
+Con `page.locator()` puedes usar selectores **CSS** (el lenguaje de estilos) o **XPath** (una ruta por el árbol del HTML):
+
+```ts
+page.locator(".pager > button:last-child"); // CSS
+page.locator("//input[@type='password']"); // XPath (empieza por //)
+```
+
+Funcionan, pero dependen de cosas que cambian sin avisar: nombres de clases, posiciones («el segundo hijo»), la estructura de contenedores. Una modificación de estilos rompe el test, aunque la tienda se vea y funcione igual. Úsalos solo cuando no existe un rol, una etiqueta, un texto o un `data-testid`, y escribe los más cortos y significativos posibles (por ejemplo `[aria-busy="true"]`), nunca cadenas largas de posiciones.
+
+</Paso>
+
+<Paso numero={6} titulo="Combinar, filtrar y acotar">
+A veces el elemento que quieres está repetido en la página, como el botón de cada tarjeta de producto. La solución es **acotar**: primero localizas el contenedor y luego buscas dentro de él.
+
+```ts
+// la tarjeta que contiene el texto "Auriculares BT"
+const tarjeta = page.getByRole("listitem").filter({ hasText: "Auriculares BT" });
+// el enlace dentro de esa tarjeta
+await tarjeta.getByRole("link", { name: "Auriculares BT" }).click();
+```
+
+- `.filter({ hasText: "..." })` se queda con los elementos que contienen ese texto.
+- `.filter({ has: otroLocalizador })` se queda con los que contienen otro elemento: `filter({ has: page.getByRole("link", { name: "Auriculares BT" }) })`.
+- `.first()`, `.last()` y `.nth(n)` eligen por posición (la primera es `nth(0)`). Son el último recurso: la posición cambia si cambia el orden.
+
+Para comprobar cuántos elementos encuentra un localizador, usa `await expect(localizador).toHaveCount(1)`. **No** uses `await localizador.count()` para esperar: devuelve el número en ese instante, sin esperar, y a veces dice 0 solo porque la página aún no cargó.
+
+</Paso>
+
+<Paso numero={7} titulo="Criterios de estabilidad: cuál elegir">
+Cuando dudes, recorre esta lista de arriba abajo y quédate con el primero que funcione:
+
+1. `getByRole` con `name` (lo que ve y oye una persona).
+2. `getByLabel` para campos de formulario.
+3. `getByText` para textos fijos y mensajes (si el texto es estable).
+4. `getByTestId`, acordado con desarrollo.
+5. CSS corto y significativo.
+6. XPath o posiciones (`nth`, `:nth-child`): casi nunca.
+
+Un buen localizador cumple tres cosas:
+
+- **Es único**: encuentra un solo elemento.
+- **Sobrevive a cambios de estilo y de orden** que no alteran la funcionalidad.
+- **Se entiende al leerlo**: `getByRole("button", { name: "Entrar" })` no necesita comentario.
+
+</Paso>
+
+<Paso numero={8} titulo="Cómo encontrar y comprobar un localizador">
+No tienes que adivinarlo:
+
+- Abre la página en tu navegador y revisa el nombre visible del elemento: casi siempre es tu `name`.
+- `npx playwright codegen http://localhost:18080` abre un navegador y un panel que **escriben código mientras haces clic**. Úsalo para obtener ideas, no para copiar a ciegas: suele elegir bien, pero revisa que el resultado sea único y legible.
+- En el modo `--ui` y en el Inspector hay un selector de elementos que propone un localizador al apuntar a la pantalla.
+- Cuando tengas uno, confírmalo con `toHaveCount(1)`.
+
+</Paso>
+
+<Paso numero={9} titulo="El escenario fase1-localizadores">
+Este módulo trae un escenario con dos problemas que te harán falta para practicar. Actívalo en tu Arena local:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase1-localizadores"}'
+```
+
+Y recuerda volver cuando termines:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"baseline"}'
+```
+
+Con el escenario activo, algunos localizadores que funcionaban con `baseline` fallan y aparecen botones repetidos en el catálogo. Descubre cuáles en los ejercicios: es justo el tipo de situación real en la que un localizador mal elegido se rompe sin que la tienda deje de funcionar.
+
+**Cuidado con una carrera de carga.** La tienda dibuja la página antes de saber qué escenario hay activo. Durante ese instante los `data-testid` todavía no llevan el sufijo que cambia. Si tu test hace clic justo después de `goto`, puede ganar la carrera y **pasar por suerte** con un localizador frágil. En nuestras pruebas, `getByTestId("add-to-cart")` pasó 1 de cada 6 veces justo después de `goto`. Para que el resultado no dependa del azar, espera a la barra del escenario después de cada `goto` cuando haya un escenario activo:
+
+```ts
+await page.goto("/products/1");
+await expect(page.getByTestId("arena-ready")).toBeAttached(); // la página ya conoce el escenario
+await page.getByTestId("add-to-cart").click(); // ahora sí falla siempre, como debe
+```
+
+La barra se ve en cualquier escenario, también en `baseline`, así que puedes dejar esa línea siempre. Cuando un localizador frágil «pasa a veces», sospecha de esta carrera antes que de la suerte.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Entrar y llegar a un producto con localizadores estables">
+Queremos iniciar sesión, encontrar la tarjeta de «Auriculares BT» y agregarla al carrito. Todo con localizadores que no dependen de clases ni de posiciones. Guárdalo como `tests/producto.spec.ts`:
+
+```ts
+import { test, expect } from "@playwright/test";
+
+test("agrega Auriculares BT al carrito con localizadores estables", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Correo").fill("ana@arena.test");
+  await page.getByLabel("Contrasena").fill("Cliente123!");
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.getByTestId("user-name")).toBeVisible();
+
+  // La tarjeta del producto: un elemento de la lista que contiene su nombre.
+  const tarjeta = page.getByRole("listitem").filter({ hasText: "Auriculares BT" });
+  await expect(tarjeta).toHaveCount(1);
+  await tarjeta.getByRole("link", { name: "Auriculares BT" }).click();
+
+  await page.getByRole("button", { name: "Agregar al carrito" }).click();
+  await expect(page.getByRole("status")).toHaveText("Agregado al carrito");
+});
+```
+
+Este test **pasa con `baseline` y también con `fase1-localizadores`**. Fíjate en lo que no usa: ninguna clase CSS, ninguna posición, ningún `data-testid` en los elementos que cambian.
+
+Ahora los problemas reales del escenario `fase1-localizadores`:
+
+**1. El `data-testid` que cambia.** Si hubieras escrito `page.getByTestId("login-submit").click()`, el test pasa con `baseline` pero con el escenario activo falla (siempre que esperes la barra del escenario después de `goto`, como en el paso 9):
+
+```text
+Test timeout of 30000ms exceeded.
+Error: locator.click: Test timeout of 30000ms exceeded.
+Call log:
+  - waiting for getByTestId('login-submit')
+```
+
+Si inspeccionas el botón, el HTML real es `<button ... data-testid="login-submit-8giv7">Entrar</button>`: el identificador lleva un sufijo que cambia de una versión a otra. El localizador por rol, `getByRole("button", { name: "Entrar" })`, sigue funcionando porque el nombre visible no cambió. Moraleja: un identificador interno que no controlas puede cambiar sin que el usuario note nada.
+
+**2. Dos botones iguales.** Con el escenario activo, cada tarjeta del catálogo muestra dos botones «Agregar». Si escribes `tarjeta.getByRole("button", { name: "Agregar" }).click()` obtienes:
+
+```text
+Error: locator.click: Error: strict mode violation: getByRole('listitem').filter({ hasText: 'Auriculares BT' }).getByRole('button', { name: 'Agregar' }) resolved to 2 elements:
+    1) <button>Agregar</button> aka getByRole('button', { name: 'Agregar' }).nth(2)
+    2) <button>Agregar</button> aka getByRole('button', { name: 'Agregar' }).nth(3)
+```
+
+El modo estricto te dice la verdad: hay dos botones indistinguibles, y eso es un problema de **accesibilidad** de la tienda (una persona con lector de pantalla oye dos veces «Agregar»). Tienes tres salidas: usar `.first()` si de verdad da igual cuál (aquí ambos te llevan a la ficha del producto), evitar esos botones y usar el enlace con el nombre del producto, como en el ejemplo, o reportar el defecto. En un test lo más sano es no depender del duplicado.
+
+Además, `page.getByRole("button", { name: "Agregar" })` sin acotar encuentra 24 elementos con 12 tarjetas, porque el nombre se compara de forma parcial y estás contando todos los botones de la página.
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+Los ejercicios 1 y 2 se hacen en `baseline`. Los ejercicios 3 y 4 necesitan el escenario `fase1-localizadores` (actívalo con el comando del paso 9). Vuelve a `baseline` al terminar. El botón abre la Arena **alojada**, solo para explorar: tus tests van contra tu Arena local.
+
+<Ejercicio id="ej-1-2-localizar-el-formulario">
+  En la página `/login`, escribe un test que localice el campo de correo, el de contraseña y el
+  botón «Entrar» sin usar CSS ni `data-testid`, y compruebe con `toHaveCount(1)` que cada
+  localizador encuentra un único elemento.
+</Ejercicio>
+
+<Ejercicio id="ej-1-2-buscador-y-filtros">
+  En el catálogo (`/`), localiza el buscador y el filtro de categoría sin CSS. Escribe «Atlas» en el
+  buscador y comprueba que queda un solo producto. Después borra el texto, elige la categoría
+  «Libros» y comprueba que el primer producto de la lista pertenece a esa categoría.
+</Ejercicio>
+
+<Ejercicio id="ej-1-2-testid-que-cambia">
+  Con el escenario `fase1-localizadores` activo, ejecuta un test de inicio de sesión que haga clic
+  con `getByTestId("login-submit")`. Mira cómo falla, inspecciona el botón en el navegador y
+  reescribe el localizador para que pase en `baseline` y con el escenario activo.
+</Ejercicio>
+
+<Ejercicio id="ej-1-2-botones-duplicados">
+  Con el escenario activo, ve al catálogo y localiza los botones «Agregar» de la tarjeta de
+  «Auriculares BT». Comprueba cuántos hay, haz clic en el primero y verifica adónde te lleva.
+  Después explica por qué el modo estricto falla si no usas `.first()`.
+</Ejercicio>
+
+<Ejercicio id="ej-1-2-filtrar-por-texto">
+  En el catálogo, localiza la tarjeta del producto «Auriculares BT» filtrando por su texto.
+  Comprueba que muestra el precio `$9.90` y que su enlace apunta a `/products/1`, sin usar
+  posiciones.
+</Ejercicio>
+
+<AbrirArena escenario="fase1-localizadores" />
+
+## 5. Reto sin guía
+
+<Reto titulo="Reescribe 10 selectores frágiles">
+  Es una práctica abierta: nadie la corrige por ti. Tú decides si está bien con la lista de
+  comprobación que hay al final.
+
+Cada uno de estos diez localizadores funciona hoy contra `baseline`, pero es frágil. Para cada uno, escribe un localizador estable que apunte al **mismo** elemento. Hazlo en un archivo `tests/localizadores.spec.ts` con una sola prueba por página.
+
+En `/login`:
+
+1. `page.locator("form > label:nth-child(1) > input")`: el campo de correo.
+2. `page.locator("//input[@type='password']")`: el campo de contraseña.
+3. `page.getByTestId("login-submit")`: el botón Entrar.
+4. `page.locator("#root h1")`: el título de la página.
+
+En `/` (catálogo):
+
+5. `page.locator(".filters > input")`: el buscador.
+6. `page.locator(".filters > select:nth-child(2)")`: el filtro de categoría.
+7. `page.locator("ul.grid li:nth-child(2) a")`: el enlace del producto «Auriculares BT».
+8. `page.locator(".pager > button:last-child")`: el botón «Siguiente».
+
+En `/products/1` (ficha del producto):
+
+9. `page.locator("input[type=number]")`: la cantidad.
+10. `page.getByTestId("add-to-cart")`: el botón «Agregar al carrito».
+
+Para cada reescritura, anota en un comentario **por qué el original era frágil** y por qué el nuevo no lo es.
+
+Criterios de autocomprobación:
+
+- Los diez nuevos localizadores encuentran exactamente un elemento (`toHaveCount(1)`).
+- Tus tests pasan con la Arena en `baseline`.
+- Tus tests también pasan con el escenario `fase1-localizadores` activo. Si alguno falla, tu localizador depende de algo que cambia.
+- Después de cada `goto` con el escenario activo esperas a `getByTestId("arena-ready")` (paso 9). Sin esa espera, un localizador frágil puede pasar por suerte y darte una falsa confianza.
+- No usas CSS ni XPath para ningún elemento que tenga rol, etiqueta o texto, y no usas `nth`, `first` ni `last` sin una razón escrita.
+- Cada localizador se entiende al leerlo, sin comentario.
+- Dejaste la Arena de nuevo en `baseline`.
+
+Si cumples todos los puntos, tus localizadores aguantan los cambios que ya sabemos que ocurren.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+La IA puede darte localizadores rápido, pero suele copiar los peores hábitos del código antiguo. Revisa lo que genera.
+
+**Qué pedirle:**
+
+- «Dame un `getByRole` para este elemento HTML» (pégale el fragmento y el nombre visible).
+- «¿Este localizador es estable? ¿Qué cambio de la página lo rompería?»
+- «Convierte este selector CSS en un localizador por rol, con el mismo objetivo».
+
+**Qué revisar antes de aceptarlo:**
+
+- Que el texto del `name` sea el que muestra de verdad la pantalla de la Arena (sin tildes: «Contrasena», «Catalogo»).
+- Que el localizador sea único: añade `toHaveCount(1)` y ejecútalo.
+- Que no dependa de posiciones: desconfía de `nth-child`, `.nth(3)` o cadenas de `>`.
+- Que funcione también con el escenario `fase1-localizadores` activo.
+
+**Qué rechazar:**
+
+- Selectores copiados tal cual del navegador («Copy selector»), larguísimos y llenos de posiciones.
+- XPath absoluto como `/html/body/div[1]/...`.
+- `.first()` o `force: true` puestos solo para silenciar el error del modo estricto.
+- `data-testid` inventados que no existen en la página: comprueba en el HTML real.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Elegir un localizador que sirve hoy pero se rompe mañana">
+  Una clase como `.primary` o `div:nth-child(3)` funciona hasta que alguien cambia el estilo o el
+  orden. Antes de aceptar un localizador, pregúntate qué cambio inofensivo de la página lo rompería.
+</ErrorComun>
+
+<ErrorComun titulo="Silenciar el modo estricto con first()">
+  Si el error dice «resolved to 2 elements», el problema es tu localizador o la página, no
+  Playwright. Acota con un contenedor o con `filter`; usa `first()` solo cuando de verdad da igual
+  cuál elemento sea.
+</ErrorComun>
+
+<ErrorComun titulo="Usar count() como si esperara">
+  `await localizador.count()` devuelve el número en ese momento. Si la página aún no cargó, da 0 y
+  tu lógica falla. Para comprobar cuántos hay, usa `await expect(localizador).toHaveCount(n)`, que
+  espera.
+</ErrorComun>
+
+<ErrorComun titulo="Poner el nombre del botón de memoria">
+  La Arena escribe «Contrasena», «Catalogo» y «Cupon» sin tilde. Copia los textos tal como aparecen
+  en pantalla. Recuerda además que `name` es parcial: «Agregar» también encuentra «Agregar al
+  carrito».
+</ErrorComun>
+
+<ErrorComun titulo="Confiar en un data-testid que no controlas">
+  Un `data-testid` es un acuerdo con desarrollo. Si no está acordado, puede cambiar o llevar
+  sufijos. Prefiere el rol y el nombre visible; usa el identificador cuando no haya otra opción, y
+  avisa al equipo.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Un localizador describe un elemento y se resuelve cuando actúas sobre él; si encuentra varios, el modo estricto falla.
+- `getByRole` con `name` es el primer candidato; `getByLabel` es el mejor para campos de formulario.
+- `getByText` sirve para textos estables y `getByTestId` para elementos sin rol claro, acordado con desarrollo.
+- CSS y XPath son el último recurso: dependen de clases y posiciones que cambian.
+- Para llegar a un elemento repetido, acota con un contenedor y `filter`; `first()` y `nth()` son el último recurso.
+- Un localizador estable es único, sobrevive a cambios de estilo y de orden, y se entiende al leerlo.
+- Comprueba la unicidad con `toHaveCount(1)`; `count()` no espera.
+- Un `data-testid` que cambia entre versiones o botones con el mismo nombre accesible son defectos que un buen test debe evitar y reportar.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

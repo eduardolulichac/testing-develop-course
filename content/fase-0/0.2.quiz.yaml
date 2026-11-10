@@ -1,0 +1,83 @@
+preguntas:
+  - id: git-commit-que-es
+    enunciado: "¿Qué es un commit?"
+    opciones:
+      [
+        "Una copia del repositorio en GitHub",
+        "Una instantánea del proyecto con un mensaje que explica el cambio",
+        "Una rama nueva",
+        "El archivo donde se guardan las contraseñas",
+      ]
+    correcta: 1
+    explicacion: "Un commit guarda el estado de los archivos que preparaste con `git add`, junto con un mensaje, autor y fecha. Forma el historial del proyecto."
+  - id: git-add-antes-commit
+    enunciado: 'Modificaste `plan.md` y ejecutas `git commit -m "cambio"` sin `git add`. ¿Qué pasa?'
+    opciones:
+      [
+        "Se guarda el cambio igualmente",
+        "Se guardan todos los archivos del disco",
+        "Git no guarda nada: dice que no hay nada preparado (staged)",
+        "Se crea una rama nueva",
+      ]
+    correcta: 2
+    explicacion: "El commit solo incluye lo que está en el área de preparación. Hay que ejecutar `git add plan.md` antes (o usar `git commit -a` para archivos ya seguidos)."
+  - id: git-gitignore
+    enunciado: "Tienes `.env` con claves y `node_modules/`. ¿Qué haces para que Git no los suba?"
+    opciones:
+      [
+        "Escribirlos en .gitignore antes de hacer `git add`",
+        "Borrarlos cada vez que haces commit",
+        "Subirlos y avisar al equipo",
+        "Cambiar el nombre de la rama",
+      ]
+    correcta: 0
+    explicacion: "Las rutas listadas en `.gitignore` no aparecen como pendientes ni se añaden con `git add`. Si un archivo ya se había subido, ignorarlo después no lo quita del historial."
+  - id: git-rama-para-que
+    enunciado: "¿Para qué sirve crear una rama (`git switch -c feature/checkout`)?"
+    opciones:
+      [
+        "Para borrar el historial",
+        "Para copiar el repositorio a otra carpeta",
+        "Para proteger el repositorio con contraseña",
+        "Para trabajar un cambio aislado sin tocar `main` hasta que esté listo",
+      ]
+    correcta: 3
+    explicacion: "Una rama es una línea de trabajo paralela. Los commits que haces en ella no afectan a `main` hasta que los unes con un merge."
+  - id: git-conflicto-marcas
+    enunciado: "Tras `git merge`, `plan.md` contiene `<<<<<<< HEAD`, `=======` y `>>>>>>> rama-a`. ¿Qué significa y qué haces?"
+    opciones:
+      [
+        "Hay un conflicto: editas el archivo, dejas el texto final sin marcas, haces `git add` y `git commit`",
+        "Git se rompió: hay que borrar el repositorio",
+        "Es normal: se deja así y se hace push",
+        "Hay que ejecutar `git init` otra vez",
+      ]
+    correcta: 0
+    explicacion: "Git no pudo decidir entre dos versiones de las mismas líneas. Tú eliges el resultado, quitas las marcas, preparas el archivo con `git add` y cierras el merge con un commit."
+  - id: git-pull-request
+    enunciado: "¿Qué es un pull request en GitHub?"
+    opciones:
+      [
+        "Descargar el repositorio de otra persona",
+        "Una petición para que los cambios de una rama se revisen y se unan a otra",
+        "Un tipo de archivo del repositorio",
+        "Un comando que borra ramas",
+      ]
+    correcta: 1
+    explicacion: "El pull request propone unir una rama en otra (normalmente en `main`) y abre un espacio para revisar el código y comentar antes de unirlo."
+  - id: git-push-rama-nueva
+    enunciado: "Creaste la rama `feature/x` solo en tu máquina. ¿Qué comando la envía a GitHub por primera vez?"
+    opciones:
+      [
+        "git pull feature/x",
+        "git push -u origin feature/x",
+        "git commit -u origin",
+        "git clone feature/x",
+      ]
+    correcta: 1
+    explicacion: "`git push -u origin feature/x` sube la rama a `origin` y deja configurado el seguimiento para que luego baste `git push` y `git pull`."
+  - id: git-status-habito
+    enunciado: "¿Qué comando conviene ejecutar antes de cada commit para ver qué cambió y qué está preparado?"
+    opciones: ["git status", "git init", "git branch -d", "git remote add"]
+    correcta: 0
+    explicacion: "`git status` muestra archivos modificados, preparados y sin seguimiento. Evita subir cosas por descuido."

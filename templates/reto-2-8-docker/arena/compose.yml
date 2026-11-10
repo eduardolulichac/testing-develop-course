@@ -1,0 +1,59 @@
+# QA Arena para tu contenedor de pruebas: db + api + web desde imágenes públicas fijadas por digest.
+# Los dos digests de abajo los escribe el curso al publicar la plantilla (no los cambies a mano).
+# Tu `compose.yml` de la raíz incluye este archivo: dentro de la red de Compose la web se llama `web`
+# (http://web) y, desde tu máquina, queda en http://127.0.0.1:18080.
+# Solo `web` tiene healthcheck de más respecto al compose del evaluador: así `depends_on` puede esperar a que esté lista.
+name: arena-reto
+
+services:
+  db:
+    # Multi-arch index digest of 17-alpine (docker buildx imagetools inspect postgres:17-alpine).
+    # Update it on purpose, with the self-test, never by floating tag (REVISION_E3 H38).
+    image: postgres:17-alpine@sha256:3540c0362c809df084ffac0ae69fe794515f9de92692f02178bcdce0ef0302ac
+    environment:
+      POSTGRES_USER: arena
+      POSTGRES_PASSWORD: arena_eval_only
+      POSTGRES_DB: arena
+      ARENA_APP_PASSWORD: arena_app_eval_only
+      ARENA_QA_PASSWORD: arena_qa_eval_only
+    volumes:
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arena -d arena"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    image: ${ARENA_API_IMAGE:-ghcr.io/eduardolulichac/qa-arena-api@sha256:__API_DIGEST__}
+    platform: linux/amd64
+    environment:
+      DATABASE_URL: postgres://arena_app:arena_app_eval_only@db:5432/arena
+      API_PORT: "3000"
+      ARENA_DEPLOYMENT: ephemeral
+      ARENA_SESSION_MODE: shared
+      ARENA_DEFAULT_SCENARIO: baseline
+      ARENA_RUNNER_MODE: "1"
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  web:
+    image: ${ARENA_WEB_IMAGE:-ghcr.io/eduardolulichac/qa-arena-web@sha256:__WEB_DIGEST__}
+    platform: linux/amd64
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    ports:
+      - "127.0.0.1:18080:80"

@@ -1,0 +1,188 @@
+# Reusable workflow published in eduardolulichac/qa-course-evaluator (public: a public caller
+# can only use public reusable workflows). Source of truth: evaluator/ in the private monorepo.
+name: Evaluate challenge
+
+on:
+  workflow_call:
+    inputs:
+      exercise:
+        description: Challenge slug (matches retos/<slug>.json)
+        type: string
+        required: true
+      key_id:
+        description: Public key id shown by the platform (ck_…)
+        type: string
+        required: true
+      platform_url:
+        description: Base URL of the course platform
+        type: string
+        default: "https://__PLATFORM_URL__"
+    secrets:
+      COURSE_CHALLENGE_KEY:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  ejecutar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - name: Student repo
+        uses: actions/checkout@__CHECKOUT_SHA__ # v7.0.1
+        with:
+          path: student
+          persist-credentials: false
+
+      - name: Evaluator
+        uses: actions/checkout@__CHECKOUT_SHA__ # v7.0.1
+        with:
+          repository: eduardolulichac/qa-course-evaluator
+          ref: ${{ job.workflow_sha }}
+          path: evaluator
+          persist-credentials: false
+
+      - uses: actions/setup-node@__SETUP_NODE_SHA__ # __SETUP_NODE_VERSION__
+        with:
+          node-version: 24
+
+      # Steps up to "Evaluate" that read the evaluator or the network run BEFORE any student code
+      # (`npm ci --ignore-scripts` runs nothing; `npx playwright install` does load the student's
+      # node_modules). Any failure here fails the job: no results.json is written, so `reportar`
+      # sends every criterion as `error` (never an approval with unchecked facts).
+      - name: Plan (which capabilities this challenge needs)
+        id: plan
+        working-directory: evaluator
+        env:
+          EXERCISE: ${{ inputs.exercise }}
+          EVALUATOR_ROOT: ${{ github.workspace }}/evaluator
+        run: |
+          set -euo pipefail
+          for cap in actionlint github docker; do
+            value="$(node dist/cli.mjs needs "$cap")"
+            case "$value" in
+              true | false) echo "$cap=$value" >> "$GITHUB_OUTPUT" ;;
+              *) echo "::error::needs $cap returned '$value'"; exit 1 ;;
+            esac
+          done
+
+      # Read-only token, only for this step (the job has `contents: read`); the endpoints also
+      # answer without authentication in a public repo, the token just raises the rate limit.
+      - name: Repo facts (GitHub)
+        if: steps.plan.outputs.github == 'true'
+        working-directory: evaluator
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          EXERCISE: ${{ inputs.exercise }}
+          EVALUATOR_ROOT: ${{ github.workspace }}/evaluator
+        run: |
+          set -euo pipefail
+          node dist/cli.mjs github-facts > "$GITHUB_WORKSPACE/github-facts.json"
+
+      - name: Install actionlint
+        if: steps.plan.outputs.actionlint == 'true'
+        env:
+          ACTIONLINT_SHA256: __ACTIONLINT_SHA256__
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 --output "$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --strict -
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -version
+
+      # Scripts are off: the student's dependencies must not run code at install time.
+      - name: Install student dependencies
+        working-directory: student
+        run: npm ci --ignore-scripts --no-audit
+
+      - name: Install browser
+        working-directory: student
+        run: npx playwright install --with-deps chromium
+
+      # The Arena's per-run secret: it unlocks the full `/__arena/*` API (switch scenario, read
+      # state). It goes ONLY to this step's `docker compose up` and, through the step output, to the
+      # Evaluate step (the evaluator process); never to the step that installs dependencies and
+      # never into the student's suite (childEnv drops it).
+      - name: Start Arena
+        id: arena
+        working-directory: evaluator
+        run: |
+          set -euo pipefail
+          token="$(openssl rand -hex 32)"
+          [ "${#token}" -eq 64 ] || { echo "::error::no se pudo generar el token de la Arena"; exit 1; }
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+          ARENA_RUNNER_TOKEN="$token" docker compose -f compose/arena.yml up -d --wait
+
+      - name: Evaluate
+        env:
+          EXERCISE: ${{ inputs.exercise }}
+          STUDENT_DIR: ${{ github.workspace }}/student
+          EVALUATOR_ROOT: ${{ github.workspace }}/evaluator
+          ARENA_URL: http://localhost:18080
+          ARENA_RUNNER_TOKEN: ${{ steps.arena.outputs.token }}
+          RESULTS_FILE: ${{ github.workspace }}/results.json
+          GITHUB_FACTS: ${{ github.workspace }}/github-facts.json
+          ACTIONLINT: ${{ runner.temp }}/actionlint
+        run: |
+          export ARENA_IMAGE_DIGEST="$(docker inspect --format '{{ index .RepoDigests 0 }}' "$(docker compose -f evaluator/compose/arena.yml images api -q)" | sed 's/.*@//')"
+          node evaluator/dist/cli.mjs run
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@__UPLOAD_SHA__ # __UPLOAD_VERSION__
+        with:
+          name: results
+          path: results.json
+          if-no-files-found: ignore
+
+  reportar:
+    needs: ejecutar
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # The student's tree is only READ here (to look for the leaked key); nothing of it runs.
+      - name: Student repo (read only)
+        uses: actions/checkout@__CHECKOUT_SHA__ # v7.0.1
+        with:
+          path: student
+          persist-credentials: false
+
+      - name: Evaluator
+        uses: actions/checkout@__CHECKOUT_SHA__ # v7.0.1
+        with:
+          repository: eduardolulichac/qa-course-evaluator
+          ref: ${{ job.workflow_sha }}
+          path: evaluator
+          persist-credentials: false
+
+      - uses: actions/download-artifact@__DOWNLOAD_SHA__ # __DOWNLOAD_VERSION__
+        continue-on-error: true
+        with:
+          name: results
+
+      - uses: actions/setup-node@__SETUP_NODE_SHA__ # __SETUP_NODE_VERSION__
+        with:
+          node-version: 24
+
+      - name: Report
+        env:
+          EXERCISE: ${{ inputs.exercise }}
+          COURSE_KEY_ID: ${{ inputs.key_id }}
+          COURSE_CHALLENGE_KEY: ${{ secrets.COURSE_CHALLENGE_KEY }}
+          PLATFORM_URL: ${{ inputs.platform_url }}
+          EVALUATOR_ROOT: ${{ github.workspace }}/evaluator
+          EVALUATOR_SHA: ${{ job.workflow_sha }}
+          REPO_DIR: ${{ github.workspace }}/student
+          RESULTS_FILE: ${{ github.workspace }}/results.json
+          GITHUB_REPOSITORY_ID: ${{ github.repository_id }}
+        run: node evaluator/dist/cli.mjs report

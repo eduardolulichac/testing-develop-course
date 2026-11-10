@@ -1,0 +1,157 @@
+ejercicios:
+  - slug: ej-2-8-imagen-sola
+    tipo: guiado
+    titulo: "Ejecuta la imagen sin la Arena y entiende el fallo"
+    pistas:
+      - 'Construye la imagen con `docker build -t suite-qa .` desde la carpeta del Dockerfile y ejecútala con `docker run --rm --ipc=host --init -e USUARIO_EMAIL=ana@arena.test -e USUARIO_CLAVE="$USUARIO_CLAVE" suite-qa`.'
+      - "Busca en la salida la línea `connect ECONNREFUSED` y la dirección a la que intenta conectarse. ¿Qué dirección es y a qué máquina apunta desde dentro del contenedor?"
+      - "Piensa en que cada contenedor tiene su propia red: `localhost` dentro de él es el propio contenedor. Para llegar a la Arena hace falta que ambos estén en la misma red y que `ARENA_URL` use el nombre del servicio."
+    solucion: |
+      Todos los tests fallan con `AggregateError: apiRequestContext.get: connect ECONNREFUSED ::1:18080` y `connect ECONNREFUSED 127.0.0.1:18080`, y el registro de la llamada muestra `GET http://localhost:18080/api/products`. Sin `ARENA_URL`, la configuración usa `http://localhost:18080`, y dentro del contenedor `localhost` es el contenedor mismo, donde nadie escucha en ese puerto. La solución no es cambiar el puerto sino juntar tus pruebas y la Arena en una red de Compose, donde la web se llama `web` y `ARENA_URL` vale `http://web`.
+  - slug: ej-2-8-dockerignore
+    tipo: guiado
+    titulo: "Descubre qué se cuela en la imagen sin .dockerignore"
+    pistas:
+      - "Copia `.env.example` como `.env`, mueve el `.dockerignore` a otro nombre (por ejemplo, `.dockerignore.off`) y construye con `docker build -t prueba-sin .`."
+      - "Mira dentro de la imagen sin ejecutar la suite: `docker run --rm prueba-sin ls -a /app`. Busca el archivo `.env` y muestra su contenido con `cat`."
+      - "Restaura el nombre `.dockerignore`, asegúrate de que contiene `.env` y `node_modules`, construye `prueba-con` y repite el `ls -a`. Borra las dos imágenes de prueba con `docker rmi`."
+    solucion: |
+      Sin `.dockerignore`, `ls -a /app` lista `.env` y `cat /app/.env` muestra tus variables de práctica: quedaron escritas en una capa de la imagen, que cualquiera con la imagen puede leer. Con `.dockerignore` que contiene `.env` y `node_modules`, el `.env` ya no aparece. Comandos:
+
+      ```bash
+      docker build -q -t prueba-sin .
+      docker run --rm prueba-sin sh -c 'ls -a /app; cat /app/.env'
+      docker rmi prueba-sin
+      ```
+
+      La contraseña de práctica de la Arena es pública, pero con una real el efecto sería una filtración. Por eso `.env` va siempre en el `.dockerignore` y en el `.gitignore`.
+  - slug: ej-2-8-comando-unico
+    tipo: guiado
+    titulo: "Ejecuta el comando único y lee el informe"
+    pistas:
+      - "Exporta o define `USUARIO_EMAIL` y `USUARIO_CLAVE` (o ten un `.env`) y ejecuta `docker compose up --build --abort-on-container-exit --exit-code-from tests`. Al terminar, escribe `echo $?` en la misma terminal."
+      - "Busca en la salida la línea `tests-1 exited with code 0`. Después mira que exista `resultados/informe.json`."
+      - "En el JSON, el objeto `stats` resume la ejecución: `expected` son los tests que salieron como se esperaba y `unexpected`, los que no. Apaga todo con `docker compose down -v`."
+    solucion: |
+      La salida termina con `6 passed`, `tests-1 exited with code 0` y `echo $?` imprime `0`. `resultados/informe.json` contiene `"stats": { "expected": 6, "skipped": 0, "unexpected": 0, "flaky": 0 }` (con las duraciones y fechas de tu ejecución). Para leerlo desde la terminal: `node -e 'console.log(require("./resultados/informe.json").stats)'`. Termina con `docker compose down -v` para no dejar datos de la base para la siguiente ejecución.
+  - slug: ej-2-8-codigo-de-salida
+    tipo: guiado
+    titulo: "Haz que un test fallido ponga el comando en rojo"
+    pistas:
+      - "Crea `tests/falla.spec.ts` con un test que abra `/` y espere un encabezado que no existe, con un `timeout` corto en la aserción para no esperar mucho."
+      - "Ejecuta el comando único y consulta `echo $?` en cuanto termine. Mira también `stats.unexpected` en el informe."
+      - "Borra el test y repite: el código debe volver a `0`. Recuerda reconstruir la imagen: el comando lleva `--build`, así que ya lo hace."
+    solucion: |
+      ```ts
+      import { expect, test } from "@playwright/test";
+
+      test("falla a propósito", async ({ page }) => {
+        await page.goto("/");
+        await expect(page.getByRole("heading", { name: "No existe" })).toBeVisible({ timeout: 2000 });
+      });
+      ```
+
+      La salida muestra `✘ ... falla a propósito`, `1 failed`, `6 passed` y `tests-1 exited with code 1`; `echo $?` imprime `1` y el informe tiene `"unexpected": 1`. Gracias a `--exit-code-from tests`, el código del comando es el del servicio `tests`. Al borrar el test y repetir, vuelve a `0`.
+  - slug: ej-2-8-escenario-en-docker
+    tipo: guiado
+    titulo: "Activa un escenario y comprueba que tu suite lo detecta"
+    escenario: fase2-e2e-combinado
+    pistas:
+      - "Copia tu `requisitos.spec.ts` y las ayudas del módulo 2.7 a `tests/`. Comprueba que la ayuda `abrir` espera a `arena-ready`: ese marcador existe también en la Arena del compose, que no tiene barra de escenarios."
+      - "Levanta solo la Arena con `docker compose up -d --wait db api web`, activa `fase2-e2e-combinado` con la versión `v1.0.0` mediante `curl -X PUT http://127.0.0.1:18080/__arena/scenario ...` y reinicia con `curl -X POST http://127.0.0.1:18080/__arena/reset`."
+      - 'Ejecuta `docker compose run --rm --build tests`. La respuesta del `PUT` dirá `"scenario":"runner"` aunque el escenario esté activo: lo importante es qué test falla. Al terminar, `docker compose down -v`.'
+    solucion: |
+      ```bash
+      docker compose up -d --wait db api web
+      curl -X PUT http://127.0.0.1:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase2-e2e-combinado","release":"v1.0.0"}'
+      curl -X POST http://127.0.0.1:18080/__arena/reset
+      docker compose run --rm --build tests
+      docker compose down -v
+      ```
+
+      Con la suite del 2.7 y los 6 tests de la plantilla (14 en total), pasan 13 y falla `el envío se calcula después del descuento` con `Expected: "$5.00"` y `Received: "$0.00"`: el envío es gratis cuando REQ-3 dice que el umbral se mide después del descuento. En esta Arena, el login por pantalla tarda más (la ejecución de verificación duró unos 30 segundos en lugar de 4). Sin cambiar `abrir`, los tests se quedan esperando una barra que no existe y fallan por tiempo.
+  - slug: reto-2-8-docker
+    tipo: reto
+    titulo: "Dockeriza tu suite: la Arena y las pruebas con un solo comando"
+    escenario: fase2-e2e-combinado
+    criterio_aprobacion:
+      version: 1
+      arena: { escenario: fase2-e2e-combinado, release: "v1.0.0", semilla: 2401 }
+      umbral: 70
+      obligatorios: [docker-un-comando, suite-verde-baseline, sin-arena-interna]
+      criterios:
+        - id: docker-un-comando
+          titulo: "Un solo comando levanta la Arena, ejecuta la suite y deja el informe"
+          tipo: docker_compose
+          archivo: compose.yml
+          servicio: tests
+          informe: resultados/informe.json
+          min_pasan: 8
+          peso: 20
+          competencia: autonomia
+          feedback_fallo: "`docker compose up --build --abort-on-container-exit --exit-code-from tests` debe terminar con 0 y generar resultados/informe.json con al menos 8 tests en verde. Pruébalo tú antes con ese mismo comando."
+        - id: docker-imagen-coincide
+          titulo: "Tu Dockerfile usa la imagen de Playwright de la misma versión que tu proyecto"
+          tipo: estatico
+          regla: docker-imagen-playwright-coincide
+          peso: 10
+          competencia: tecnica
+          feedback_fallo: "El FROM debe ser mcr.microsoft.com/playwright:v<versión exacta de @playwright/test>-noble. Si las versiones difieren, Playwright no encuentra los navegadores."
+        - id: docker-ignore
+          titulo: "Tu .dockerignore excluye node_modules"
+          tipo: estatico
+          regla: docker-ignore
+          peso: 5
+          competencia: tecnica
+          feedback_fallo: "Crea un .dockerignore con una línea `node_modules`: así no copias tus dependencias locales a la imagen."
+        - id: compose-seguro
+          titulo: "Tu compose no abre la puerta al anfitrión"
+          tipo: estatico
+          regla: compose-seguro
+          peso: 5
+          competencia: tecnica
+          feedback_fallo: "Quita `privileged`, `network_mode: host`, `pid: host`, los montajes del socket de Docker y los volúmenes fuera del repositorio."
+        - id: suite-verde-baseline
+          titulo: "Todos los tests pasan contra la Arena sin defectos"
+          tipo: suite_pasa
+          escenario: baseline
+          peso: 15
+          competencia: tecnica
+          feedback_fallo: "Un test que falla contra la versión correcta no es fiable. Ejecuta la suite contra la Arena sana y corrige el test."
+        - id: detecta-e2e-combinado
+          titulo: "Tu suite detecta los defectos de precio y envío del Sprint 14"
+          tipo: suite_detecta
+          escenario: fase2-e2e-combinado
+          release: "v1.0.0"
+          peso: 15
+          competencia: analisis
+          feedback_fallo: "Con los defectos del Sprint 14 tu suite sigue en verde. Contrasta el envío gratis con un cupón y la combinación de cupón y stock con lo que dicen los requisitos."
+        - id: trazabilidad-requisitos
+          titulo: "Tus tests cubren al menos 5 requisitos REQ-n"
+          tipo: reporte_requisitos
+          requisitos: [REQ-1, REQ-2, REQ-3, REQ-4, REQ-5, REQ-6, REQ-7, REQ-8, REQ-9, REQ-10]
+          min: 5
+          peso: 15
+          competencia: comunicacion
+          feedback_fallo: "Anota los tests con `{ annotation: { type: 'requisito', description: 'REQ-3' } }` y cubre al menos 5 requisitos distintos, con todos sus tests en verde."
+        - id: sin-credenciales-en-codigo
+          titulo: "Sin contraseñas de práctica en el repositorio"
+          tipo: estatico
+          regla: sin-credenciales-en-codigo
+          peso: 5
+          competencia: tecnica
+          feedback_fallo: "Hay una contraseña de práctica escrita en el código, en un workflow o en un archivo de datos. Pásala por variables de entorno."
+        - id: sin-esperas-fijas
+          titulo: "Sin esperas fijas en los tests"
+          tipo: estatico
+          regla: sin-esperas-fijas
+          peso: 10
+          competencia: tecnica
+          feedback_fallo: "Quita waitForTimeout y las pausas fijas: dentro de un contenedor el tiempo varía, usa las esperas automáticas de las aserciones."
+        - id: sin-arena-interna
+          titulo: "La suite no usa los endpoints internos de la Arena"
+          tipo: estatico
+          regla: sin-arena-interna
+          peso: 0
+          competencia: autonomia
+          feedback_fallo: "Los tests no deben llamar a /__arena ni leer variables ARENA_* (salvo ARENA_URL)."

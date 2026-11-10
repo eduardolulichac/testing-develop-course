@@ -1,0 +1,43 @@
+ejercicios:
+  - slug: ej-2-1-medir-duplicacion
+    tipo: guiado
+    titulo: "Mide la duplicación y elimínala"
+    pistas:
+      - 'Cuenta el login con `grep -c ''getByLabel("Contrasena")'' tests/compra-antes.spec.ts` (debe dar 3) y el paso de agregar con `grep -c ''getByLabel("Cantidad")'' tests/compra-antes.spec.ts` (da 4). Esos números son tu punto de partida.'
+      - "Las cinco primeras líneas de cada test son siempre el inicio de sesión: ya existe `iniciarSesion(page)` en `tests/support/tienda.ts`. El bloque de «ir al producto, escribir la cantidad, pulsar Agregar y esperar el aviso» es `agregarProducto(page, cantidad, productoId)`."
+      - "Reemplaza un bloque por vez y ejecuta `npx playwright test tests/compra-antes.spec.ts` después de cada cambio. Todo debe seguir pasando con `baseline`. Si algo falla, el último cambio es el culpable."
+    solucion: 'Cada test empieza con `await iniciarSesion(page); await vaciarCarrito(page);` y cada bloque de agregar se convierte en `await agregarProducto(page, 1, 15);` (cantidad e id según el test). Después `grep -c ''getByLabel("Contrasena")'' tests/compra-antes.spec.ts` y `grep -c ''getByLabel("Cantidad")'' tests/compra-antes.spec.ts` dan 0: ese conocimiento vive ahora solo en `tienda.ts`. Con `baseline` pasan los tres tests, igual que antes.'
+  - slug: ej-2-1-nombres-y-datos
+    tipo: guiado
+    titulo: "Pon nombre a los tests y a los datos"
+    pistas:
+      - "Un buen nombre responde «¿qué debe ocurrir?». Revisa cada test: ¿su nombre dice la regla y con qué datos se prueba, o solo el tema?"
+      - "Los valores `1` y `15` que se pasan a `agregarProducto` son ids de producto, y `$50.90` es el precio del 15. Crea `tests/support/datos.ts` con un objeto por producto (`id`, `nombre`, `precio`) y usa `as const`."
+      - 'El valor `"-$7.63"` es el 15 % de $50.90 truncado a centavos. Ponle un nombre a la constante y deja un comentario que explique de dónde sale; el comentario debe explicar el porqué, no repetir el código.'
+    solucion: 'En `tests/support/datos.ts`: `export const AURICULARES = { id: 1, nombre: "Auriculares BT", precio: "$9.90" } as const;`, `export const BOTELLA = { id: 15, nombre: "Botella termica", precio: "$50.90" } as const;` y `export const DESCUENTO_BIGSPEND_SOBRE_BOTELLA = "-$7.63";` con el comentario «BIGSPEND descuenta el 15 % y trunca los centavos». Los tests pasan a llamarse «BIGSPEND descuenta el 15 % de la botella», «SAVE5 descuenta $5.00 de dos auriculares» y «el contador baja a 1 al quitar una de dos líneas», y usan `BOTELLA.id`, `BOTELLA.precio` y la constante del descuento. Con `baseline` siguen pasando.'
+  - slug: ej-2-1-un-motivo-para-fallar
+    tipo: guiado
+    titulo: "Divide un test para que tenga un solo motivo para fallar"
+    escenario: fase1-aserciones
+    pistas:
+      - 'Activa `fase1-aserciones` y ejecuta el archivo antiguo. La «prueba 1» falla en el descuento (`Expected: "-$7.63"`, `Received: "-$7.64"`). Fíjate en que el test se detiene ahí: no llega a mirar el contador.'
+      - "Crea un test para el descuento (agrega la botella, abre `/cart`, aplica `BIGSPEND`, comprueba el descuento) y otro para el contador (agrega la botella, abre `/cart`, quítala, comprueba el contador y el mensaje de carrito vacío). Cada uno prepara su propio estado."
+      - "Ejecuta los dos con `fase1-aserciones`. Debes ver dos fallos distintos, cada uno con su mensaje. Después ejecuta con `baseline`: los dos pasan."
+    solucion: 'Descuento: `await agregarProducto(page, 1, BOTELLA.id); await abrir(page, "/cart"); await aplicarCupon(page, "BIGSPEND"); await expect(page.getByTestId("cart-discount")).toHaveText(DESCUENTO_BIGSPEND_SOBRE_BOTELLA);`. Contador: `await agregarProducto(page, 1, BOTELLA.id); await abrir(page, "/cart"); await page.getByRole("button", { name: "Quitar", exact: true }).click(); await expect(page.getByTestId("cart-count")).toHaveText("0"); await expect(page.getByTestId("cart-empty")).toBeVisible();`. Con `fase1-aserciones` fallan los dos: el primero con `Expected: "-$7.63"` y `Received: "-$7.64"`, el segundo con `Expected: "0"` y `Received: "1"`. En la «prueba 1» antigua el segundo fallo nunca se veía, porque el test se detenía en el primero: un defecto tapaba al otro. Con `baseline` pasan los dos.'
+  - slug: ej-2-1-independencia
+    tipo: guiado
+    titulo: "Comprueba la independencia de los tests"
+    pistas:
+      - "En `tests/carrito.spec.ts`, comenta la línea `await vaciarCarrito(page);` del `beforeEach`. Antes de ejecutar, reinicia los datos desde la terminal con `curl -X POST http://localhost:18080/__arena/reset`."
+      - "Ejecuta `npx playwright test tests/carrito.spec.ts --repeat-each=2`. Fíjate en cuáles fallan y lee el primer mensaje de cada uno: habla de elementos que aparecen de más o de un contador mayor que el esperado."
+      - 'Descomenta la línea y ejecuta de nuevo con `--repeat-each=2`: todo pasa. Después ejecuta uno solo con `npx playwright test --grep "SAVE5"`: también pasa.'
+    solucion: 'Sin `vaciarCarrito`, cada test hereda lo que dejó el anterior y fallan varios, incluso en la primera vuelta: el test del contador con una sola línea encuentra dos botones «Quitar» (`strict mode violation: ... resolved to 2 elements`), y el del contador con dos líneas recibe un contador mayor que el esperado (`Expected: "2"`, `Received: "6"`). Con la línea restaurada pasan los 8 de `--repeat-each=2` y cualquier test pasa solo con `--grep`: cada uno prepara su propio estado.'
+  - slug: ej-2-1-sigue-detectando
+    tipo: guiado
+    titulo: "Comprueba que el refactor sigue detectando los defectos"
+    escenario: fase1-aserciones
+    pistas:
+      - "Activa `fase1-aserciones` y ejecuta `tests/compra-antes.spec.ts`. Anota qué tests fallan y con qué mensaje."
+      - "Ejecuta ahora `tests/carrito.spec.ts` con el mismo escenario. En el archivo antiguo fallaban «prueba 1» (descuento) y «prueba 3» (contador), y «prueba 2» pasaba. Compara: ¿aparecen los mismos mensajes (`-$7.64` y el contador)? ¿Fallan más tests, y por qué?"
+      - 'Borra a propósito la línea `await expect(page.getByTestId("cart-discount")).toHaveText(DESCUENTO_BIGSPEND_SOBRE_BOTELLA);` de la suite nueva y ejecútala otra vez: debe pasar un test que antes fallaba. Esa es la señal de que se perdió una aserción. Devuelve la línea.'
+    solucion: 'Con `fase1-aserciones` el archivo antiguo falla en «prueba 1» (`Expected: "-$7.63"`, `Received: "-$7.64"`) y en «prueba 3» (`Expected: "1"`, `Received: "2"`). La suite nueva falla en los mismos dos sitios y además en «baja a 0 al quitar la única línea» (`Expected: "0"`, `Received: "1"`), que el test largo tapaba. Si borras la aserción del descuento, el test del cupón BIGSPEND pasa con el escenario activo: el refactor ha perdido capacidad de detección. Por eso se compara siempre contra el escenario, no solo contra `baseline`.'

@@ -1,0 +1,638 @@
+---
+modulo: "2.6"
+titulo: "Integración y entrega continua (CI/CD)"
+fase: 2
+nivel: "Semi Senior"
+duracion_min: 180
+prerequisitos: ["2.5"]
+reto: "reto-2-6-pipeline"
+escenario: "fase2-despliegue"
+version: "2026-11"
+herramientas:
+  [
+    "GitHub Actions",
+    "actionlint 1.7.12",
+    "Docker Compose 5.5",
+    "Playwright 1.64.1",
+    "Node 24 (verificado 24.14)",
+  ]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Al terminar sabrás escribir un workflow de GitHub Actions que ejecute tu suite en cada pull
+  request, publique el informe aunque la suite falle, use secretos sin exponerlos, «despliegue» a un
+  entorno de staging y vigile ese despliegue con pruebas de humo, y entenderás qué hace falta para
+  que un check rojo detenga de verdad un cambio.
+</Objetivo>
+
+Una suite que solo corre en tu computadora protege poco. Corre cuando te acuerdas, con tu configuración y con los datos que dejaste. La **integración continua** (CI) hace que se ejecute sola, en un servidor limpio, cada vez que alguien propone un cambio. La **entrega continua** (CD) lleva ese cambio a un ambiente, y las pruebas lo vigilan ahí.
+
+Un caso real: el viernes a las 18:30 se despliega una versión. El lunes, todo funcionaba; el viernes, un flujo clave se rompió, y nadie lo supo hasta que un cliente se quejó. La pregunta de un QA es: ¿qué prueba debería haber saltado en el momento del despliegue? La respuesta son las **pruebas de humo** (_smoke tests_): pocas, rápidas, sobre lo imprescindible, que corren justo después de cada despliegue.
+
+En este módulo construyes ese pipeline. Trabajas con el escenario `fase2-despliegue`, que simula los dos releases: el del lunes, sano, y el del viernes, que rompe algo.
+
+Lo que necesitas antes de empezar:
+
+- Una cuenta de GitHub y Git instalado y configurado (vienen de la Fase 0).
+- Los módulos 2.4 y 2.5, y Docker encendido.
+- La plantilla del reto 2.6 (el enlace está en la página del reto de la plataforma): la usarás como base para ensayar.
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Preparar el campo de ensayo">
+Vas a ensayar en un repositorio **propio y público**. Créalo desde la plantilla del reto 2.6: en la página de la plantilla pulsa **Use this template**, nómbralo `practica-ci` y créalo en tu cuenta con visibilidad **Public**. Trae lo que necesitas:
+
+```text
+practica-ci/
+├── arena/
+│   └── compose.yml          ← la Arena (imágenes públicas), lista para usar
+├── tests/
+│   ├── support/env.ts       ← lee variables de entorno
+│   ├── tienda.spec.ts
+│   ├── api.spec.ts
+│   └── humo.spec.ts         ← aquí irán tus pruebas de humo
+├── .github/workflows/
+│   ├── evaluar.yml          ← es del reto: no lo toques
+│   └── ci.yml               ← vacío (solo comentarios): tuyo
+├── package.json
+└── playwright.config.ts
+```
+
+Clónalo, instala y levanta la Arena con Docker. Esta Arena es una Arena de **ejecución**: la misma que usan los pipelines y el evaluador. Se levanta con las imágenes publicadas, escucha en `http://127.0.0.1:18080` y no pinta la barra de escenarios.
+
+```bash
+git clone https://github.com/TU-USUARIO/practica-ci.git
+cd practica-ci
+npm ci
+npx playwright install chromium
+docker compose -f arena/compose.yml up -d --wait
+```
+
+Si usas un Mac con chip Apple (arm64), verás un aviso de plataforma: las imágenes de la Arena son solo `linux/amd64` y Docker las ejecuta emuladas. Funciona, pero la primera vez tarda más.
+
+Esta Arena usa el puerto `18080`, el mismo que tu Arena de prácticas. Si la tienes levantada, apágala antes (`docker compose down` en su carpeta) o verás `port is already allocated`.
+
+Las pruebas leen las credenciales de variables de entorno (módulo 2.4). Crea tu `.env` (está en `.gitignore`) con la cuenta de práctica y ejecuta la suite:
+
+```text
+USUARIO_EMAIL=ana@arena.test
+USUARIO_CLAVE=
+```
+
+La contraseña de práctica aparece en la pantalla de inicio de sesión de la Arena. Con ella puesta, `npx playwright test` debe terminar con los tests en verde (y uno pendiente, el `test.fixme` de `humo.spec.ts`). Cuando termines una sesión de trabajo, apaga la Arena con `docker compose -f arena/compose.yml down -v`.
+
+</Paso>
+
+<Paso numero={2} titulo="Qué es un workflow y de qué se compone">
+Un **workflow** es un archivo YAML dentro de `.github/workflows/`. Dice cuándo se ejecuta y qué hace. Su estructura mínima:
+
+```yaml
+name: CI # el nombre que verás en la pestaña Actions
+on: # CUÁNDO se ejecuta
+  pull_request:
+    branches: [main]
+permissions: # QUÉ puede hacer con tu repositorio
+  contents: read
+jobs: # QUÉ hace
+  tests: # un job: un grupo de pasos en una máquina
+    runs-on: ubuntu-latest # la máquina (un servidor virtual limpio)
+    steps: # los pasos, uno tras otro
+      - uses: actions/checkout@v7 # usa una acción ya hecha: descarga tu código
+      - run: echo "hola desde el CI" # ejecuta un comando de terminal
+```
+
+- Un **job** corre en su propia máquina virtual. Dos jobs no comparten archivos ni procesos, salvo que se los pases (artefactos).
+- Un **paso** (`step`) es una acción ya hecha (`uses`) o un comando (`run`). Si falla un paso, los siguientes se saltan, salvo los que tengan un `if` que lo permita.
+- Las acciones tienen versión (`@v7`). Las de GitHub (`actions/checkout`, `actions/setup-node`, `actions/upload-artifact`) usan hoy la versión mayor 7.
+
+Cuando algo no funciona, el registro de cada paso aparece en la pestaña **Actions** del repositorio: ahí lees el comando, su salida y el error.
+
+</Paso>
+
+<Paso numero={3} titulo="Cuándo se ejecuta: en cada pull request">
+El disparador `on: pull_request` ejecuta el workflow cuando alguien abre o actualiza un **pull request** (PR) hacia la rama indicada. Así el cambio se prueba **antes** de fusionarse a `main`:
+
+```yaml
+on:
+  pull_request:
+    branches: [main]
+```
+
+Hay otro disparador parecido, `pull_request_target`, y **no debes usarlo** para ejecutar tus pruebas. Corre el workflow con los permisos y los secretos de tu repositorio aunque el PR venga de un fork, es decir, de un código que no escribiste tú. Si ese workflow además ejecuta el código del PR, cualquiera puede robar tus secretos con un pull request. Con `pull_request`, un PR de un fork se ejecuta sin acceso a tus secretos.
+
+Otras formas útiles (que no vas a necesitar hoy) son `push` (cada envío a una rama) y `workflow_dispatch` (un botón para lanzarlo a mano).
+
+</Paso>
+
+<Paso numero={4} titulo="Permisos mínimos">
+Cada ejecución recibe un token de GitHub con permisos sobre tu repositorio. **Dale solo los que necesita.** Una suite de pruebas necesita leer el código, nada más. Declara los permisos en la raíz del workflow:
+
+```yaml
+permissions:
+  contents: read
+```
+
+Evita `permissions: write-all` y `contents: write`: si alguien logra ejecutar código en tu workflow, ese token podría modificar tu repositorio. Es el principio de mínimo privilegio, el mismo que usaste con el rol de solo lectura en la base de datos.
+
+</Paso>
+
+<Paso numero={5} titulo="Un job que ejecuta la suite">
+Para ejecutar Playwright en una máquina limpia, el job tiene que hacer lo mismo que tú en local: instalar, levantar la Arena y probar.
+
+```yaml
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Levantar la Arena
+        run: docker compose -f arena/compose.yml up -d --wait
+      - name: Suite completa
+        env:
+          USUARIO_EMAIL: ana@arena.test
+          USUARIO_CLAVE: ${{ secrets.USUARIO_CLAVE }}
+        run: npx playwright test
+```
+
+Cómo leerlo:
+
+- `actions/setup-node` instala Node 24 y, con `cache: npm`, guarda las dependencias para ejecuciones siguientes.
+- `npm ci` instala **exactamente** lo que dice `package-lock.json` (más estricto y repetible que `npm install`).
+- `--with-deps` instala también las librerías del sistema que necesita el navegador.
+- `docker compose ... up -d --wait` levanta la Arena y espera a que esté sana: la misma orden que usaste a mano.
+- `timeout-minutes: 20` corta un job colgado en vez de gastar tu cuota.
+- `${{ secrets.USUARIO_CLAVE }}` es una expresión de GitHub (paso 7). La clave nunca se escribe en el archivo.
+
+En tu `playwright.config.ts`, la plantilla ya hace que el informe HTML se genere cuando existe la variable `CI`, que GitHub define automáticamente: `reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list"`.
+
+</Paso>
+
+<Paso numero={6} titulo="Artefactos: el informe aunque la suite falle">
+Cuando una suite falla en el servidor, necesitas el informe, la traza y las capturas para entender por qué. Pero los archivos de un job desaparecen al terminar. Un **artefacto** es un archivo que el job guarda para que lo descargues desde la ejecución. Súbelo con `actions/upload-artifact`, **después** de la suite:
+
+```yaml
+- name: Publicar el informe
+  if: ${{ !cancelled() }}
+  uses: actions/upload-artifact@v7
+  with:
+    name: informe-playwright
+    path: playwright-report
+```
+
+El detalle importante es el `if`. Por defecto, un paso se ejecuta solo si **todos los anteriores** terminaron bien. Si la suite falla y no pones nada, el paso del informe se salta, y justo cuando más lo necesitas no existe. `if: ${{ !cancelled() }}` significa «ejecútalo siempre, también si la suite falló, salvo que alguien cancele la ejecución». (`always()` también sirve; la diferencia es que no se detiene si alguien cancela.) Con esto, tu informe se publica con la suite en verde y en rojo.
+
+El artefacto aparece al final de la página de la ejecución, en la sección **Artifacts**. Dos reglas: cada artefacto de una ejecución necesita un nombre **distinto** (si subes dos con el mismo nombre, falla el segundo), y la ruta debe existir.
+
+Una advertencia: el informe y las trazas guardan lo que el test escribe en los formularios, contraseña incluida. Con la clave de práctica no pasa nada, pero con secretos reales no subas trazas o restringe quién puede descargar los artefactos (en un repositorio público, cualquiera puede).
+
+</Paso>
+
+<Paso numero={7} titulo="Secretos: credenciales que no se escriben">
+Un **secreto** de Actions es un valor guardado en GitHub, cifrado, que el workflow usa sin que aparezca en el código. Para crearlo: en tu repositorio, **Settings → Secrets and variables → Actions → New repository secret**, nombre `USUARIO_CLAVE`, y como valor la contraseña de práctica.
+
+Se usa con `${{ secrets.USUARIO_CLAVE }}`, casi siempre en el `env:` del paso que lo necesita (como en el paso 5). Lo que debes saber:
+
+- GitHub **enmascara** el valor en los registros: si lo imprimes, verás `***`. No lo uses nunca en un `echo`.
+- Los PR que vienen de un fork **no** reciben tus secretos.
+- Que la contraseña de la Arena sea pública no cambia la regla: así se practica el hábito. La regla `sin-credenciales-en-codigo` de los retos prohíbe escribirla en el repositorio, también en un workflow.
+- Un secreto solo protege si nadie lo escribe en otro lugar: ni en `.env` subido, ni en el código, ni en un comentario.
+
+</Paso>
+
+<Paso numero={8} titulo="Pruebas de humo: pocas, rápidas y sobre lo esencial">
+La suite completa puede tardar minutos y cubrir cientos de casos. Tras un despliegue no necesitas todo: necesitas saber **ya** si el sistema respira. Una prueba de humo cumple tres cosas:
+
+1. **Es pocas:** tres o cuatro pruebas, no cuarenta.
+2. **Es rápida:** segundos en total.
+3. **Cubre el camino que no puede fallar.** En una tienda: que el catálogo carga, que se puede entrar y que se puede **comprar**. Una prueba de humo que solo mira la portada se queda en verde aunque el sistema esté roto por dentro.
+
+Para ejecutarlas por separado, márcalas con una etiqueta en el título (`@smoke`) y filtra con `--grep`:
+
+```ts
+test("el catálogo carga @smoke", async ({ page }) => {
+  /* ... */
+});
+```
+
+```bash
+npx playwright test --grep @smoke
+```
+
+Algo que debes cuidar en un pipeline: la Arena del pipeline es una Arena de **ejecución**. Tu suite **no** puede usar sus partes internas: ni `/__arena`, ni variables `ARENA_*` (solo `ARENA_URL`), ni los elementos de su barra de escenarios (ni siquiera existe). El despliegue se simula en el workflow, no en las pruebas.
+
+Esto cambia `abrir` de tu `tienda.ts` de la Fase 1, que esperaba la barra del escenario. En esta Arena, la tienda avisa de que ya cargó con un marcador oculto. Crea `tests/support/tienda.ts` en `practica-ci` con ayudas más cortas:
+
+```ts
+import { expect, type Page } from "@playwright/test";
+import { requireEnv } from "./env";
+
+/**
+ * Abre una ruta y espera a que la tienda haya cargado su estado.
+ * La Arena del pipeline no pinta la barra de escenarios: avisa con un marcador oculto.
+ */
+export async function abrir(page: Page, ruta: string) {
+  await page.goto(ruta);
+  await expect(page.getByTestId("arena-ready")).toBeAttached();
+}
+
+/** Entra con la cuenta de práctica que dan las variables de entorno. */
+export async function iniciarSesion(page: Page) {
+  await abrir(page, "/login");
+  await page.getByLabel("Correo").fill(requireEnv("USUARIO_EMAIL"));
+  await page.getByLabel("Contrasena").fill(requireEnv("USUARIO_CLAVE"));
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.getByTestId("user-name")).toBeVisible();
+}
+
+/** Deja el carrito vacío quitando cada línea desde la página /cart. */
+export async function vaciarCarrito(page: Page) {
+  await abrir(page, "/cart");
+  const quitar = page.getByRole("button", { name: "Quitar", exact: true });
+  await expect(quitar.first().or(page.getByTestId("cart-empty"))).toBeVisible();
+  while ((await quitar.count()) > 0) {
+    const antes = await quitar.count();
+    await quitar.first().click();
+    await expect(quitar).toHaveCount(antes - 1);
+  }
+}
+```
+
+(Para usarlas contra tu Arena local normal de las prácticas, que sí pinta la barra, seguirías usando el `tienda.ts` del módulo 1.3. Aquí vas siempre contra la Arena del pipeline.)
+
+</Paso>
+
+<Paso numero={9} titulo="Desplegar a staging y vigilar el despliegue">
+Un **entorno** de GitHub (_environment_) representa un destino de despliegue, como `staging` (una copia de producción para probar). Se crea en **Settings → Environments → New environment**. Un job que declara `environment: staging` queda registrado como un despliegue a ese destino, y en el entorno puedes añadir reglas y secretos propios.
+
+Un **pipeline** es una cadena: primero se prueba, y solo si pasa, se despliega, y justo después se vigila. Lo ordenas con `needs`:
+
+```yaml
+desplegar-staging:
+  needs: tests # espera a que el job "tests" termine bien
+  runs-on: ubuntu-latest
+  environment: staging
+  steps:
+    # ... checkout, Node, npm ci, Playwright y Arena, como en el job tests ...
+    - name: Desplegar el release v2.1.0
+      run: >-
+        curl -fsS -X PUT http://127.0.0.1:18080/__arena/scenario
+        -H 'content-type: application/json'
+        -d '{"id":"fase2-despliegue","release":"v2.1.0"}'
+    - name: Pruebas de humo
+      env:
+        USUARIO_EMAIL: ana@arena.test
+        USUARIO_CLAVE: ${{ secrets.USUARIO_CLAVE }}
+      run: npx playwright test --grep @smoke
+```
+
+Tres ideas:
+
+- **El despliegue está simulado.** En una empresa, ese paso empujaría una imagen o copiaría archivos al servidor de staging. Aquí lo hace una petición que cambia el release de la Arena. (`curl -f` hace que el paso falle si la respuesta es un error.) En un workflow, llamar a `/__arena` es correcto; lo que está prohibido es hacerlo desde los tests.
+- **`needs` es la secuencia**: si `tests` falla, `desplegar-staging` no llega a ejecutarse.
+- **Un job de despliegue en rojo no es un pipeline roto.** Si las pruebas de humo fallan tras el despliegue, el pipeline hizo su trabajo: detectó el release dañado antes de que llegue a más gente.
+
+El escenario `fase2-despliegue` es exactamente esto, y puedes ensayar el viernes a mano en la Arena de `arena/compose.yml`. Empieza con el release sano y luego «despliega»:
+
+```bash
+curl -X PUT http://127.0.0.1:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase2-despliegue","release":"v2.0.0"}'
+# ... corre tus pruebas de humo: pasan ...
+curl -X PUT http://127.0.0.1:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase2-despliegue","release":"v2.1.0"}'
+# ... vuelve a correrlas: ¿alguna falla?
+```
+
+Cambiar solo el release **no borra los datos**: es lo que pasa en un despliegue real. Al terminar, vuelve a la versión correcta con `{"id":"baseline"}`, o apaga la Arena con `down -v` y vuelve a levantarla.
+
+</Paso>
+
+<Paso numero={10} titulo="Puertas de calidad">
+Una **puerta de calidad** (_quality gate_) es una condición que un cambio debe cumplir para avanzar. En tu pipeline hay dos:
+
+1. **Antes de fusionar:** el job `tests` debe estar en verde. Evita que `main` reciba cambios que rompen la suite.
+2. **Antes de dar por bueno un despliegue:** las pruebas de humo deben pasar tras desplegar.
+
+Pero hay un detalle fácil de olvidar: **un check en rojo no impide fusionar por sí solo**. GitHub avisa, y alguien con permiso puede pulsar el botón igualmente. Para que sea una puerta de verdad, el repositorio tiene que exigir ese check: en **Settings → Branches** (o **Rules → Rulesets**) se protege `main` y se marca como obligatorio el check de tu job de tests, identificado por el nombre del job.
+
+Sin esa regla, un workflow perfecto es un aviso. Con ella, es una puerta.
+
+</Paso>
+
+<Paso numero={11} titulo="Revisar tu workflow con actionlint">
+Un error de escritura en un workflow (una clave mal puesta, una expresión rota) a veces solo aparece al ejecutarlo. **actionlint** es un verificador gratuito que revisa los archivos de `.github/workflows/` sin ejecutarlos. Instálalo siguiendo las instrucciones de su proyecto (`rhysd/actionlint`; la versión de referencia de este curso es la 1.7.12) y, desde la raíz de tu repositorio:
+
+```bash
+actionlint
+```
+
+Sin salida significa que no encontró nada. Si encuentra algo, escribe el archivo, la línea y el problema; léelo, corrígelo y vuelve a ejecutarlo. El reto lo exige: un workflow con hallazgos de actionlint resta puntos.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Un pipeline completo: probar, publicar el informe y vigilar el despliegue">
+Esta es la versión completa de `.github/workflows/ci.yml` en `practica-ci`, con todo lo anterior junto:
+
+```yaml
+name: CI
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Levantar la Arena
+        run: docker compose -f arena/compose.yml up -d --wait
+      - name: Suite completa
+        env:
+          USUARIO_EMAIL: ana@arena.test
+          USUARIO_CLAVE: ${{ secrets.USUARIO_CLAVE }}
+        run: npx playwright test
+      - name: Publicar el informe
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: informe-playwright
+          path: playwright-report
+      - name: Apagar la Arena
+        if: ${{ always() }}
+        run: docker compose -f arena/compose.yml down -v
+
+  desplegar-staging:
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Levantar la Arena
+        run: docker compose -f arena/compose.yml up -d --wait
+      - name: Desplegar el release v2.1.0
+        run: >-
+          curl -fsS -X PUT http://127.0.0.1:18080/__arena/scenario
+          -H 'content-type: application/json'
+          -d '{"id":"fase2-despliegue","release":"v2.1.0"}'
+      - name: Pruebas de humo
+        env:
+          USUARIO_EMAIL: ana@arena.test
+          USUARIO_CLAVE: ${{ secrets.USUARIO_CLAVE }}
+        run: npx playwright test --grep @smoke
+      - name: Publicar el informe de humo
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: informe-humo
+          path: playwright-report
+      - name: Apagar la Arena
+        if: ${{ always() }}
+        run: docker compose -f arena/compose.yml down -v
+```
+
+Y estas son las tres pruebas de humo de `tests/humo.spec.ts`, con las ayudas de `tests/support/tienda.ts` del paso 8:
+
+```ts
+import { expect, test } from "@playwright/test";
+import { abrir, iniciarSesion, vaciarCarrito } from "./support/tienda";
+
+test("el catálogo carga @smoke", async ({ page }) => {
+  await abrir(page, "/");
+  await expect(page.getByRole("heading", { name: "Catalogo" })).toBeVisible();
+  await expect(page.getByTestId("product-list")).toBeVisible();
+});
+
+test("iniciar sesión funciona @smoke", async ({ page }) => {
+  await iniciarSesion(page);
+  await expect(page.getByRole("link", { name: "Mis pedidos" })).toBeVisible();
+});
+
+test("compra completa de un producto @smoke", async ({ page }) => {
+  await iniciarSesion(page);
+  await vaciarCarrito(page);
+
+  await abrir(page, "/products/1");
+  await page.getByRole("button", { name: "Agregar al carrito" }).click();
+  await expect(page.getByRole("status")).toHaveText("Agregado al carrito");
+
+  await abrir(page, "/checkout");
+  await page.getByLabel("Direccion de envio").fill("Calle Falsa 123");
+  await page.getByRole("button", { name: "Pagar ahora" }).click();
+
+  await expect(page.getByRole("status")).toHaveText("Pago aprobado. Gracias por tu compra.");
+  await expect(page.getByTestId("order-status")).toHaveText("Pagado");
+});
+```
+
+Qué observar:
+
+1. **Antes de subir nada, ensaya los dos casos en local** con la Arena de `arena/compose.yml`. Con el release `v2.0.0`, las tres pruebas pasan. Después de «desplegar» `v2.1.0` con el `curl` del paso 9, pasan dos y falla la tercera, la de compra, tras esperar el plazo de la aserción:
+
+   ```text
+   ✓  el catálogo carga @smoke
+   ✓  iniciar sesión funciona @smoke
+   ✘  compra completa de un producto @smoke (5.4s)
+       Expected: "Pago aprobado. Gracias por tu compra."
+       Error: element(s) not found
+   ```
+
+   Si el humo solo mirara el catálogo y el inicio de sesión, el viernes seguiría en verde.
+
+2. **El job `desplegar-staging` termina en rojo, y es lo esperado.** El job `tests` queda en verde, y el despliegue, en rojo: el humo detectó que el release de `v2.1.0` no sirve.
+3. **Cada job trae su propia Arena.** Los jobs corren en máquinas distintas, así que el de despliegue levanta la suya y la cambia de release.
+4. **`USUARIO_EMAIL` va en claro y `USUARIO_CLAVE`, no.** El correo no es un secreto; la contraseña sale de `secrets`.
+
+Los errores típicos:
+
+- **Subir los dos informes con el mismo nombre.** El segundo `upload-artifact` falla. Usa `informe-playwright` e `informe-humo`.
+- **Olvidar `if: ${{ !cancelled() }}`.** Con la suite en rojo, no hay informe justo cuando lo necesitas.
+- **No crear el secreto o el entorno.** El job sale con `Falta USUARIO_CLAVE: copia .env.example como .env` (el secreto no existe y llega vacío), y el despliegue no encuentra el entorno `staging` hasta que lo creas.
+- **Una prueba de humo que no compra.** Pasa con el release roto y no vigila nada.
+- **Un `pull_request_target` copiado de internet.** Funciona, y deja tus secretos al alcance de un fork.
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+Los ejercicios se hacen en `practica-ci`, con la Arena de `arena/compose.yml`. El botón de abajo abre la Arena **alojada**, solo para explorar el escenario en el navegador; tus pruebas y tu pipeline corren contra la Arena de `arena/compose.yml`.
+
+<Ejercicio id="ej-2-6-primer-workflow">
+  Escribe un `ci.yml` mínimo con `on: pull_request` hacia `main`, `permissions: contents: read` y un
+  job que haga `checkout` y ejecute `node --version`. Crea una rama, sube el cambio, abre un pull
+  request y localiza su ejecución en la pestaña Actions.
+</Ejercicio>
+
+<Ejercicio id="ej-2-6-suite-en-ci">
+  Amplía el job para instalar dependencias, instalar Chromium, levantar la Arena con
+  `arena/compose.yml` y ejecutar la suite con `USUARIO_CLAVE` tomada de un secreto que tú creas.
+  Abre el PR y lee el registro del paso de la suite.
+</Ejercicio>
+
+<Ejercicio id="ej-2-6-informe">
+  Añade el paso que sube `playwright-report` como artefacto y haz fallar un test a propósito.
+  Comprueba que el job termina en rojo y que el artefacto se puede descargar. Después deshaz el
+  fallo.
+</Ejercicio>
+
+<Ejercicio id="ej-2-6-humo-local">
+  Escribe tres pruebas `@smoke` (catálogo, inicio de sesión y compra completa) y ejecútalas contra
+  la Arena local con el release `v2.0.0` y con `v2.1.0`. Anota cuál falla y qué muestra el mensaje.
+</Ejercicio>
+
+<Ejercicio id="ej-2-6-despliegue-staging">
+  Añade el job `desplegar-staging`, con `environment: staging` y `needs` del job de pruebas, que
+  «despliegue» el release `v2.1.0` y ejecute solo `--grep @smoke`. Crea el entorno `staging` en
+  GitHub y observa el resultado en el PR.
+</Ejercicio>
+
+<Ejercicio id="ej-2-6-actionlint">
+  Introduce a propósito un error en tu workflow (por ejemplo, `runs-onn` en lugar de `runs-on`),
+  ejecuta `actionlint`, lee el hallazgo y corrígelo. Anota qué decía.
+</Ejercicio>
+
+<Ejercicio id="ej-2-6-revisar">
+  Revisa este workflow de un compañero y enumera sus problemas con la corrección de cada uno: se
+  dispara con `pull_request_target`, declara `permissions: write-all`, escribe la contraseña de
+  práctica en un `env:` y sube el informe sin ninguna condición `if`.
+</Ejercicio>
+
+<AbrirArena escenario="fase2-despliegue" />
+
+## 5. Reto sin guía
+
+<Reto titulo="Construye el pipeline de CI/CD con pruebas de humo">
+  Este reto sí tiene evaluador automático: la plataforma evalúa tu repositorio cada vez que haces
+  `push` a `main`. El evaluador **no ejecuta tu workflow**. Lee tus archivos de
+  `.github/workflows/`, ejecuta tu suite contra la Arena y consulta en GitHub la configuración de
+  tu rama `main` y las ejecuciones reales de tu CI. Tu pipeline tiene que funcionar de verdad en tu
+  repositorio.
+
+Crea un repositorio **público** a partir de la plantilla `reto-2-6-pipeline` y entrega:
+
+1. **Pruebas de humo.** Al menos tres tests con `@smoke` en el título. Deben pasar con la Arena sana y fallar tras el despliegue del viernes.
+2. **Tu pipeline** en `.github/workflows/ci.yml`: se ejecuta en cada pull request a `main`, con permisos mínimos y sin `pull_request_target`; levanta la Arena con `arena/compose.yml`, ejecuta la suite completa con `USUARIO_CLAVE` desde `secrets` y publica `playwright-report` como artefacto aunque la suite falle; y un job `desplegar-staging` con `environment: staging` que depende del job de pruebas, «despliega» `v2.1.0` y ejecuta `--grep @smoke`. Debe pasar `actionlint`.
+3. **Configuración en GitHub:** el secreto `USUARIO_CLAVE`, el entorno `staging`, un pull request real y la protección de `main`, tal como los describe el README de la plantilla.
+
+Cómo se evalúa (se aprueba con 70 puntos, y deben cumplirse los cuatro obligatorios):
+
+- Todos los tests pasan contra la Arena sin defectos (**obligatorio**).
+- Tienes al menos 3 pruebas de humo con `@smoke`.
+- Tus pruebas de humo detectan el despliegue roto.
+- Tu CI se ejecuta en cada pull request a `main` (**obligatorio**).
+- Ningún workflow usa `pull_request_target` (**obligatorio**).
+- Permisos mínimos en tus workflows.
+- Tus workflows pasan `actionlint`.
+- El informe se publica aunque la suite falle.
+- Las credenciales de las pruebas vienen de `secrets`, y no hay contraseñas de práctica en el repositorio.
+- Las pruebas de humo corren tras el despliegue a staging.
+- La rama `main` exige que tu CI pase.
+- Tu CI ya se ejecutó de verdad en un pull request.
+- La suite no usa los endpoints internos de la Arena (**obligatorio**).
+
+Antes de enviar, comprueba en la pestaña Actions de tu repositorio que el job de tests termina en verde. Lo que dice el README de la plantilla sobre el pull request y la rama protegida es parte del entregable: léelo completo.
+
+El evaluador te dirá qué criterio falla y por qué. Corrige y vuelve a enviar.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+La IA escribe workflows en segundos. Los copia de miles de ejemplos de internet, algunos peligrosos o anticuados.
+
+**Qué pedirle:**
+
+- «Escribe un workflow de GitHub Actions que ejecute Playwright en cada pull request» (dile tu estructura de carpetas, la versión de Node y cómo levantas la Arena).
+- «Explícame este mensaje de error del registro de Actions» (pega el fragmento del paso que falló, sin secretos).
+- «¿Qué hace cada línea de este workflow?» cuando heredas uno.
+
+**Qué revisar antes de aceptarlo:**
+
+- Que el disparador es `pull_request`, nunca `pull_request_target`.
+- Que hay `permissions` mínimos en la raíz y ningún `write-all`.
+- Que las versiones de las acciones existen y son actuales (compruébalas en la página de cada acción: la IA inventa o usa versiones viejas).
+- Que las credenciales vienen de `secrets` y no están escritas.
+- Que el paso del informe tiene su `if` y que los nombres de artefactos no se repiten.
+- Que pasa `actionlint`.
+
+**Qué rechazar:**
+
+- Un workflow que ejecuta cualquier cosa con `sudo` o que descarga y ejecuta scripts de internet sin que sepas qué hacen.
+- Pasos con `continue-on-error: true` o `|| true` para «arreglar» un job en rojo: esconden el fallo en vez de resolverlo.
+- Acciones de terceros que no conoces, sin revisar quién las mantiene.
+- Pruebas de humo «para que pasen»: que no compren, o que comprueben solo la portada.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Usar pull_request_target para que funcionen los secretos">
+  Parece resolver el problema de los secretos en PR de forks, y a cambio ejecuta código ajeno con
+  tus permisos. Usa `pull_request`: si el PR es tuyo, tiene tus secretos.
+</ErrorComun>
+
+<ErrorComun titulo="No publicar el informe cuando la suite falla">
+  Sin `if: ${{ !cancelled() }}`, el paso del informe se salta si la suite falla. Subes el informe
+  justo cuando no lo necesitas.
+</ErrorComun>
+
+<ErrorComun titulo="Pruebas de humo que no cubren el flujo crítico">
+  Un humo que solo abre la portada pasa con el sistema roto. En una tienda, el camino que importa
+  termina en una compra.
+</ErrorComun>
+
+<ErrorComun titulo="Creer que un check rojo detiene la fusión">
+  Un check que falla avisa, no bloquea. Para que sea una puerta de verdad, el repositorio tiene que
+  exigirlo en la configuración de la rama.
+</ErrorComun>
+
+<ErrorComun titulo="Dar permisos de más al workflow">
+  `permissions: write-all` o `contents: write` en una suite de lectura. Si algún día alguien ejecuta
+  código en ese workflow, podrá escribir en tu repositorio.
+</ErrorComun>
+
+<ErrorComun titulo="Escribir la contraseña en el workflow «solo para probar»">
+  Se queda en el historial de Git para siempre. Desde la primera vez, va en `secrets`.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- La CI ejecuta tu suite sola, en una máquina limpia, en cada pull request; la CD lleva el cambio a un ambiente y lo vigila.
+- Un workflow es un YAML en `.github/workflows/` con `on`, `permissions` y `jobs` formados por pasos (`uses` o `run`).
+- Usa `pull_request`, nunca `pull_request_target`, y declara permisos mínimos (`contents: read`).
+- El informe se sube con `actions/upload-artifact` y `if: ${{ !cancelled() }}`, para tenerlo también cuando la suite falla.
+- Las credenciales van en secretos (`${{ secrets.NOMBRE }}`), nunca escritas; los PR de forks no los reciben.
+- Las pruebas de humo (`@smoke`) son pocas, rápidas y cubren el flujo crítico, incluida la compra; se ejecutan tras el despliegue con `--grep @smoke`.
+- `needs` ordena los jobs y `environment` registra el despliegue; un job de despliegue en rojo por el humo es el pipeline funcionando.
+- Una puerta de calidad solo lo es si el repositorio exige el check; y `actionlint` revisa tus workflows sin ejecutarlos.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

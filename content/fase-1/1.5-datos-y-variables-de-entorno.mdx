@@ -1,0 +1,581 @@
+---
+modulo: "1.5"
+titulo: "Datos y variables de entorno"
+fase: 1
+nivel: "Junior"
+duracion_min: 120
+prerequisitos: ["1.4"]
+escenario: "fase1-ambientes"
+version: "2026-11"
+herramientas:
+  ["Playwright 1.64.1", "dotenv 18.0.9", "Node 24 (verificado 24.14)", "Docker Compose v2"]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Al terminar sabrás sacar de tus tests las direcciones, usuarios y datos que cambian entre
+  ambientes, guardarlos en archivos `.env` que no se suben a Git, y correr la misma suite en dos
+  ambientes distintos sabiendo por qué falla cada test.
+</Objetivo>
+
+Tu suite pasa en tu máquina. La lanzas contra el ambiente de QA de tu equipo y fallan cuatro tests de cuatro. ¿La aplicación está rota? Casi nunca. Lo normal es que los tests **asumieron datos** que solo existen en tu máquina: un precio, un cupón, una cantidad de pedidos.
+
+Un **ambiente** es una copia de la aplicación con su propia dirección y sus propios datos: tu máquina (_local_), el de QA que comparte el equipo, el de staging. En un ambiente compartido los datos se ensucian: pedidos viejos que nadie borró, usuarios de otras pruebas, productos sin stock.
+
+En este módulo aprenderás tres cosas:
+
+1. Separar la **configuración** (dirección, usuario, clave) del código, con variables de entorno.
+2. Separar los **datos de prueba** que cambian entre ambientes, con un archivo de datos y un _fixture_.
+3. Clasificar un fallo en un ambiente: ¿es del test, del ambiente o un defecto real?
+
+Ya conoces las variables de entorno del módulo 0.1 (`export`, `process.env`). Aquí las usas de verdad. El escenario `fase1-ambientes` de QA Arena simula un ambiente de QA compartido y sucio.
+
+## 2. Explicación paso a paso
+
+<Paso numero={0} titulo="Levanta dos ambientes">
+Necesitas dos Arenas a la vez, una por ambiente:
+
+- **local**: la que ya conoces, en `http://localhost:18080`, con la tienda sin defectos (`baseline`).
+- **qa**: otra instancia, en `http://localhost:18090`, que arranca ya con el escenario `fase1-ambientes`.
+
+Desde `apps/qa-arena` (el repositorio del curso, módulo 0.1):
+
+```bash
+docker compose up -d
+COMPOSE_PROJECT_NAME=arena-qa WEB_PORT=18090 API_PORT=18091 DB_PORT=15433 ARENA_DEFAULT_SCENARIO=fase1-ambientes docker compose up --build -d
+```
+
+La segunda línea crea un proyecto de Docker aparte (`arena-qa`) con su propia base de datos y otros puertos. Los tres puertos (`WEB_PORT`, `API_PORT` y `DB_PORT`) deben ser distintos de los de la primera Arena: sin `DB_PORT`, Docker responde `port is already allocated` porque la primera ya usa el 15432. Si ya tenías la primera Arena encendida, solo ejecuta la segunda. La primera vez tarda unos minutos; después es rápida.
+
+Comprueba que cada una dice en qué ambiente está:
+
+```bash
+curl http://localhost:18080/__arena/state
+curl http://localhost:18090/__arena/state
+```
+
+En la primera verás `"environment":{"label":"local"}`. En la segunda, `"label":"qa"`, un `banner` («Ambiente QA compartido») y un `clock` en 2026-03-01: el reloj de ese ambiente está parado en otra fecha. Fíjate también en `seedVersion`: la segunda contiene `dirty` (sucia) y la primera `clean` (limpia).
+
+Cuando termines el módulo, apaga la segunda con `COMPOSE_PROJECT_NAME=arena-qa docker compose down`.
+
+</Paso>
+
+<Paso numero={1} titulo="El problema: datos escritos dentro del test">
+Mira este test del módulo anterior:
+
+```ts
+test("el producto 1 cuesta $9.90", async ({ page }) => {
+  await page.goto("/products/1");
+  await expect(page.getByTestId("product-price")).toHaveText("$9.90");
+});
+```
+
+Tiene escondidas tres suposiciones: que la aplicación está en `http://localhost:18080`, que el producto 1 cuesta $9.90 y que Ana existe con su contraseña. Cualquiera puede cambiar entre ambientes. Cuando eso pase, el test fallará aunque la aplicación funcione bien.
+
+La regla de este módulo: **lo que cambia entre ambientes no se escribe dentro de los tests**. Se divide en dos grupos:
+
+| Grupo               | Ejemplos                                    | Dónde vive                             |
+| ------------------- | ------------------------------------------- | -------------------------------------- |
+| **Configuración**   | Dirección de la aplicación, usuario y clave | Variables de entorno (archivos `.env`) |
+| **Datos de prueba** | Un cupón válido, un producto agotado        | Un archivo de datos por ambiente       |
+
+</Paso>
+
+<Paso numero={2} titulo="Variables de entorno con archivos .env">
+En Node, una variable de entorno se lee con `process.env.NOMBRE`. Su valor es siempre **texto**, o `undefined` si no existe.
+
+Escribir variables a mano en cada ejecución cansa. Un archivo `.env` las guarda. La librería **dotenv** las carga en `process.env`. Instálala en tu proyecto:
+
+```bash
+npm install --save-exact --save-dev dotenv@18.0.9
+```
+
+Vas a tener un archivo por ambiente:
+
+`.env.local`:
+
+```text
+ARENA_URL=http://localhost:18080
+AMBIENTE=local
+USUARIO_EMAIL=ana@arena.test
+USUARIO_CLAVE=Cliente123!
+```
+
+`.env.qa`:
+
+```text
+ARENA_URL=http://localhost:18090
+AMBIENTE=qa
+USUARIO_EMAIL=ana@arena.test
+USUARIO_CLAVE=Cliente123!
+```
+
+Un tercero, `.env.example`, **sí se sube a Git**: es la plantilla, con los nombres de las variables y sin valores secretos:
+
+```text
+ARENA_URL=http://localhost:18080
+AMBIENTE=local
+USUARIO_EMAIL=
+USUARIO_CLAVE=
+```
+
+La contraseña de Ana es un dato de práctica público. Aun así lo tratamos como si fuera real, para formar el hábito: **los archivos `.env` con valores no se suben al repositorio**. Agrega esto a tu `.gitignore`:
+
+```text
+node_modules/
+test-results/
+playwright-report/
+.env*
+!.env.example
+```
+
+La primera línea de `.env*` ignora todos los `.env` y la última (`!.env.example`) hace una excepción para la plantilla. Con `git check-ignore -v .env.local .env.example` puedes comprobarlo (necesita que la carpeta sea un repositorio; si no hiciste el `git init` del módulo 1.1, hazlo ahora): para `.env.local` verás la regla `.env*` (ignorado) y para `.env.example`, la regla de excepción `!.env.example` (no ignorado).
+
+</Paso>
+
+<Paso numero={3} titulo="Elegir el ambiente al ejecutar">
+Cambia `playwright.config.ts` para que cargue el archivo del ambiente elegido:
+
+```ts
+import path from "node:path";
+import { defineConfig } from "@playwright/test";
+import dotenv from "dotenv";
+
+// ENTORNO=qa carga .env.qa; sin ENTORNO se usa .env.local.
+// dotenv NO pisa una variable que ya exista: `ARENA_URL=... npx playwright test` gana al archivo.
+const entorno = process.env.ENTORNO ?? "local";
+dotenv.config({ path: path.resolve(__dirname, `.env.${entorno}`), quiet: true });
+
+export default defineConfig({
+  testDir: "./tests",
+  workers: 1, // los tests comparten el carrito de Ana: uno a la vez
+  use: {
+    baseURL: process.env.ARENA_URL ?? "http://localhost:18080",
+    trace: "retain-on-failure",
+  },
+});
+```
+
+Ahora el ambiente se elige con una variable al lanzar los tests:
+
+```bash
+npx playwright test                 # ambiente local
+ENTORNO=qa npx playwright test      # ambiente qa
+```
+
+Tres detalles que conviene saber:
+
+- `process.env.ENTORNO ?? "local"` significa «si `ENTORNO` no existe, usa `local`».
+- `quiet: true` evita que dotenv escriba un mensaje (`injected env (4) from .env.qa`) en cada ejecución.
+- dotenv **no pisa** una variable que ya existe. Si ejecutas `ARENA_URL=http://otra:1 ENTORNO=qa npx playwright test`, gana la dirección de la línea de comandos. Es útil en CI (Fase 2), donde las variables vienen del sistema y no hay archivo.
+
+</Paso>
+
+<Paso numero={4} titulo="Valores por defecto y errores claros">
+Si una variable no existe, `process.env.USUARIO_EMAIL` vale `undefined` y el error aparece lejos de la causa, con un mensaje confuso. Hay dos formas de tratarlo, según el caso.
+
+**Caso 1: credenciales de práctica.** Ana es una cuenta pública del curso. Si falta la variable, no hace falta fallar: se usa el valor de práctica. Crea `tests/support/entorno.ts`:
+
+```ts
+// Lee una variable de entorno. Si no existe (o está vacía), usa el valor de práctica indicado.
+export function conDefecto(nombre: string, porDefecto: string): string {
+  return process.env[nombre] || porDefecto;
+}
+```
+
+`||` significa «o»: si la variable tiene valor se usa, y si no, el valor de práctica. Así tu suite funciona también donde **no existen tus archivos `.env`**. Eso pasa en CI (la integración continua de la Fase 2) y en los retos con evaluador: tus `.env.local` y `.env.qa` están ignorados y no se suben, así que el evaluador no los ve. Solo le llega la dirección de la tienda (`ARENA_URL`), que `dotenv` no pisa. Si el evaluador define `USUARIO_EMAIL` y `USUARIO_CLAVE` con los datos de práctica, valen igual. Sin ellas, usas los valores por defecto.
+
+Una credencial **real** (de un ambiente de verdad) jamás llevaría un valor por defecto escrito en el código. Con esas sí conviene fallar. La regla: valor de práctica público, con defecto; secreto real, sin defecto y con error claro.
+
+**Caso 2: algo realmente obligatorio.** Si pides un ambiente que no existe (por ejemplo `ENTORNO=nadie`), seguir adelante no tiene sentido. Mejor un error inmediato y claro. Añade esa comprobación a `playwright.config.ts`:
+
+```ts
+import fs from "node:fs";
+import path from "node:path";
+import { defineConfig } from "@playwright/test";
+import dotenv from "dotenv";
+
+// ENTORNO=qa carga .env.qa; sin ENTORNO se usa .env.local.
+// dotenv NO pisa una variable que ya exista: `ARENA_URL=... npx playwright test` gana al archivo.
+const entorno = process.env.ENTORNO ?? "local";
+const archivo = path.resolve(__dirname, `.env.${entorno}`);
+
+// Si pediste un ambiente que no existe, falla ya, con un mensaje claro.
+if (process.env.ENTORNO && !fs.existsSync(archivo)) {
+  throw new Error(
+    `No existe el ambiente "${entorno}": falta el archivo .env.${entorno}. Copia .env.example y complétalo.`,
+  );
+}
+dotenv.config({ path: archivo, quiet: true });
+
+export default defineConfig({
+  testDir: "./tests",
+  workers: 1, // los tests comparten el carrito de Ana: uno a la vez
+  use: {
+    baseURL: process.env.ARENA_URL ?? "http://localhost:18080",
+    trace: "retain-on-failure",
+  },
+});
+```
+
+Fíjate en la condición: solo falla si **pediste** un ambiente con `ENTORNO` y no existe su archivo. Sin `ENTORNO` (como en CI) no pasa nada. Si ejecutas `ENTORNO=nadie npx playwright test`, ves:
+
+```text
+Error: No existe el ambiente "nadie": falta el archivo .env.nadie. Copia .env.example y complétalo.
+```
+
+Es un mensaje que cualquiera de tu equipo entiende.
+
+Tu `tests/support/tienda.ts` **no cambia**: sigue siendo el mismo del módulo 1.3 (con `vaciarCarrito` del 1.4). Los valores por defecto se pasan desde un fixture, como verás en el paso siguiente.
+
+</Paso>
+
+<Paso numero={5} titulo="Datos de prueba por ambiente">
+Las variables de entorno son para **configuración**. Los datos de prueba (qué cupón sirve en cada ambiente) van en un archivo normal de TypeScript, `datos/ambientes.ts`:
+
+```ts
+// Datos de prueba que cambian de un ambiente a otro. La clave es el valor de AMBIENTE.
+export interface DatosAmbiente {
+  cupon: string; // un cupón porcentual que existe y sirve en ese ambiente
+  porcentaje: number;
+  agotado?: number; // id de un producto sin stock, si el ambiente tiene alguno
+}
+
+export const datosPorAmbiente: Record<string, DatosAmbiente> = {
+  local: { cupon: "WELCOME10", porcentaje: 10 },
+  qa: { cupon: "QA15", porcentaje: 15, agotado: 15 },
+};
+```
+
+El `?` en `agotado?` significa que el dato es opcional: el ambiente local no tiene ningún producto agotado. `Record<string, DatosAmbiente>` es un diccionario: la clave es el nombre del ambiente y el valor, sus datos.
+
+¿Por qué no poner el cupón en el `.env`? Porque el `.env` guarda configuración que no se sube a Git, y un cupón de prueba no es secreto: conviene que viva en el repositorio, revisado por todo el equipo.
+
+</Paso>
+
+<Paso numero={6} titulo="Fixtures: entregar datos a cada test">
+Un **fixture** es algo que Playwright prepara antes de cada test y le entrega. Ya usas varios sin saberlo: `page` y `request`. Puedes crear los tuyos con `test.extend`. Crea `tests/support/base.ts`:
+
+```ts
+import { test as base, expect } from "@playwright/test";
+import { datosPorAmbiente, type DatosAmbiente } from "../../datos/ambientes";
+import { conDefecto } from "./entorno";
+import { iniciarSesion, vaciarCarrito } from "./tienda";
+
+export const test = base.extend<{ datos: DatosAmbiente }>({
+  // Fixture de datos: entrega los datos del ambiente en el que corre la suite.
+  datos: async ({}, use) => {
+    const ambiente = conDefecto("AMBIENTE", "local");
+    const datos = datosPorAmbiente[ambiente];
+    if (!datos)
+      throw new Error(`No hay datos para el ambiente "${ambiente}" en datos/ambientes.ts`);
+    await use(datos);
+  },
+  // Fixture de sesión: cada test recibe una página con Ana ya dentro y el carrito vacío.
+  page: async ({ page }, use) => {
+    await iniciarSesion(
+      page,
+      conDefecto("USUARIO_EMAIL", "ana@arena.test"),
+      conDefecto("USUARIO_CLAVE", "Cliente123!"),
+    );
+    await vaciarCarrito(page);
+    await use(page);
+  },
+});
+
+export { expect };
+```
+
+Cómo leerlo:
+
+- `await use(datos)` es el momento en que el fixture se «entrega» al test. Lo que va antes es la preparación; lo que iría después sería la limpieza.
+- `async ({}, use)`: las llaves vacías son obligatorias en Playwright cuando el fixture no necesita otros. No las quites.
+- El fixture `page` se **redefine**: ahora cada test recibe una página con la sesión iniciada y el carrito vacío. Ya no necesitas un `beforeEach` en cada archivo.
+
+En tus tests, importa `test` y `expect` desde este archivo en vez de `@playwright/test`:
+
+```ts
+import { test, expect } from "./support/base";
+```
+
+</Paso>
+
+<Paso numero={7} titulo="Tests que no dependen de datos que cambian">
+Con las piezas anteriores, la suite queda así. `tests/tienda.spec.ts`:
+
+```ts
+import { test, expect } from "./support/base";
+import { abrir, agregarProducto } from "./support/tienda";
+import { conDefecto } from "./support/entorno";
+
+test("la Arena dice en qué ambiente estamos", async ({ page }) => {
+  await abrir(page, "/");
+  await expect(page.getByTestId("env-label")).toHaveText(conDefecto("AMBIENTE", "local"));
+});
+
+test("el precio de la ficha es el del carrito", async ({ page }) => {
+  await abrir(page, "/products/1");
+  const precio = await page.getByTestId("product-price").innerText();
+  await agregarProducto(page);
+  await abrir(page, "/cart");
+  await expect(page.getByTestId("cart-subtotal")).toHaveText(precio);
+});
+
+test("el cupón del ambiente aplica su porcentaje", async ({ page, datos }) => {
+  await abrir(page, "/products/1");
+  const texto = await page.getByTestId("product-price").innerText();
+  const centavos = Math.round(Number(texto.replace("$", "")) * 100);
+  const descuento = Math.floor((centavos * datos.porcentaje) / 100);
+
+  await agregarProducto(page);
+  await abrir(page, "/cart");
+  await page.getByLabel("Cupon").fill(datos.cupon);
+  await page.getByRole("button", { name: "Aplicar" }).click();
+
+  await expect(page.getByTestId("cart-discount")).toHaveText(`-$${(descuento / 100).toFixed(2)}`);
+});
+
+test("un producto agotado no se puede agregar", async ({ page, datos }) => {
+  test.skip(datos.agotado === undefined, "este ambiente no tiene productos agotados");
+  await abrir(page, `/products/${datos.agotado}`);
+  await expect(page.getByTestId("product-stock")).toHaveText("Agotado");
+  await expect(page.getByRole("button", { name: "Agregar al carrito" })).toBeDisabled();
+});
+
+test("los pedidos de siempre siguen ahí", async ({ page }) => {
+  await abrir(page, "/");
+  await page.getByTestId("nav-orders").click();
+  await expect(page.getByTestId("order-row-1")).toBeVisible();
+  await expect(page.getByTestId("order-row-2")).toBeVisible();
+});
+```
+
+Cuatro técnicas en cinco tests:
+
+1. **Leer en vez de escribir**: el precio se lee de la ficha del producto y se compara con el carrito. No importa cuánto cueste en cada ambiente.
+2. **Datos por ambiente**: el cupón y el porcentaje salen del fixture `datos`.
+3. **Saltar con motivo**: `test.skip(condición, "motivo")` omite el test donde no aplica. El informe muestra el motivo.
+4. **No contar lo que otros ensucian**: en lugar de «Ana tiene exactamente 2 pedidos», comprueba que están **sus** pedidos conocidos (el 1 y el 2).
+
+Ejecútala en los dos ambientes:
+
+```bash
+npx playwright test
+ENTORNO=qa npx playwright test
+```
+
+Local: cuatro pasan y uno se omite (el del producto agotado). QA: cinco pasan.
+
+</Paso>
+
+<Paso numero={8} titulo="Cuando un test falla en un ambiente: ¿de quién es la culpa?">
+Antes de abrir un reporte de defecto, clasifica el fallo con tres preguntas:
+
+1. **¿El test asumió un dato?** (un precio, una cantidad, un id). Se arregla leyendo el dato, o llevándolo a `datos/ambientes.ts`. Es lo más común.
+2. **¿El ambiente está sucio o mal configurado?** (datos viejos, un cupón agotado, otra fecha). No es un defecto de la aplicación: se avisa al equipo del ambiente, o el test crea sus propios datos.
+3. **¿La aplicación hace algo incorrecto con datos válidos?** Solo entonces es un defecto.
+
+Una pista para decidir: ejecuta el mismo test en un ambiente limpio. Si pasa allí y falla en el sucio, lo más probable es que la causa sea la 1 o la 2.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="La misma suite, dos ambientes, cuatro fallos explicados">
+Partimos de una suite de cuatro tests escrita «para mi máquina», con los datos escritos dentro. El `beforeEach` vacía el carrito e inicia sesión como Ana, con las ayudas de `tests/support/tienda.ts` (módulos 1.3 y 1.4).
+
+```ts
+import { test, expect } from "@playwright/test";
+import { abrir, agregarProducto, iniciarSesion, vaciarCarrito } from "./support/tienda";
+
+test.beforeEach(async ({ page }) => {
+  await iniciarSesion(page);
+  await vaciarCarrito(page);
+});
+
+test("el producto 1 cuesta $9.90", async ({ page }) => {
+  await abrir(page, "/products/1");
+  await expect(page.getByTestId("product-price")).toHaveText("$9.90");
+});
+
+test("WELCOME10 descuenta el 10 %", async ({ page }) => {
+  await agregarProducto(page);
+  await abrir(page, "/cart");
+  await page.getByLabel("Cupon").fill("WELCOME10");
+  await page.getByRole("button", { name: "Aplicar" }).click();
+  await expect(page.getByTestId("cart-discount")).toHaveText("-$0.99");
+});
+
+test("Ana tiene 2 pedidos", async ({ page }) => {
+  await abrir(page, "/");
+  await page.getByTestId("nav-orders").click();
+  await expect(page.locator("[data-testid^=order-row-]")).toHaveCount(2);
+});
+
+test("el producto 15 se puede agregar", async ({ page }) => {
+  await agregarProducto(page, 1, 15);
+});
+```
+
+**Local.** `npx playwright test`: cuatro de cuatro pasan.
+
+**QA.** `ARENA_URL=http://localhost:18090 npx playwright test`: los cuatro fallan.
+
+| Test                     | Lo que dijo Playwright                          | Causa                                                            | Clase                     |
+| ------------------------ | ----------------------------------------------- | ---------------------------------------------------------------- | ------------------------- |
+| Producto 1 cuesta $9.90  | `Expected: "$9.90"`, `Received: "$14.90"`       | En QA alguien cambió el precio del producto 1 (+$5.00)           | 1: el test asumió un dato |
+| WELCOME10 descuenta 10 % | `Expected: "-$0.99"`, `Received: "-$0.00"`      | La API responde `coupon_exhausted` («no le quedan usos»)         | 2: ambiente sucio         |
+| Ana tiene 2 pedidos      | `Expected: 2`, `Received: 42`                   | 40 pedidos viejos de 2025 que nadie limpió                       | 2: ambiente sucio         |
+| Producto 15 se agrega    | `element is not enabled` hasta agotar el tiempo | El producto 15 está sin stock en QA, y el botón sale desactivado | 2: ambiente sucio         |
+
+**Por qué ninguno es un defecto.** Con otros datos, la aplicación se comporta bien. Ahí está la lección: un test «rojo» no es un defecto hasta que lo clasificas.
+
+**La corrección.** Aplicamos los pasos 2 a 7: archivos `.env`, valores por defecto, `datos/ambientes.ts`, fixtures y los cinco tests del paso 7. Resultado, verificado en las dos Arenas:
+
+```text
+local → 4 passed, 1 skipped
+qa    → 5 passed
+```
+
+**Una sorpresa que conviene conocer.** Ana, en QA, ya llega con **un producto en el carrito** (con su precio cambiado), por la semilla sucia. Si tu test no vacía el carrito, mide la compra más ese producto. Por eso el fixture `page` llama a `vaciarCarrito` después de iniciar sesión.
+
+**Errores típicos de este recorrido:**
+
+1. Concluir «la aplicación está rota» sin revisar el valor recibido.
+2. Arreglar el test cambiando `$9.90` por `$14.90`: ahora falla en local. El dato no se cambia, se **lee** o se parametriza.
+3. Subir `.env.qa` al repositorio «porque es solo de práctica». Hazlo bien desde el principio.
+
+</Ejemplo>
+
+También es útil abrir el ambiente de QA en el navegador, en `http://localhost:18090`: verás la etiqueta `qa` y el cartel «Ambiente QA compartido» arriba.
+
+El botón de abajo abre la Arena **alojada** del curso, no tus Arenas locales. Para practicar con tu `ENTORNO=qa`, usa la que levantaste en el paso 0.
+
+<AbrirArena escenario="fase1-ambientes" />
+
+## 4. Ejercicios guiados
+
+Estos ejercicios usan tus dos Arenas: `local` en el 18080 y `qa` en el 18090 (paso 0).
+
+<Ejercicio id="ej-1-5-archivos-env">
+  Crea `.env.local`, `.env.qa` y `.env.example` con las cuatro variables del módulo, ajusta tu
+  `.gitignore` y haz que `playwright.config.ts` cargue el archivo según `ENTORNO`. Comprueba, con un
+  test con una aserción real (`expect(baseURL).toBe(...)`), que `ENTORNO=qa` apunta al 18090 y que
+  sin `ENTORNO` apunta al 18080.
+</Ejercicio>
+
+<Ejercicio id="ej-1-5-variable-requerida">
+  Crea la función `conDefecto` y úsala en el fixture `page` para el correo y la clave. Quita a
+  propósito `USUARIO_EMAIL` de `.env.local` y comprueba que el test pasa con el valor de práctica.
+  Después añade la comprobación de ambiente desconocido a `playwright.config.ts`, ejecuta con
+  `ENTORNO=nadie` y lee el error. Restaura el archivo.
+</Ejercicio>
+
+<Ejercicio id="ej-1-5-clasifica-fallos">
+  Ejecuta la suite «frágil» del ejemplo resuelto (la de cuatro tests con datos escritos dentro) en
+  los dos ambientes. Para cada test que falle en `qa`, escribe la causa y clasifícalo: ¿test que
+  asumió un dato, ambiente sucio o defecto de la aplicación?
+</Ejercicio>
+
+<Ejercicio id="ej-1-5-datos-y-fixtures">
+  Convierte la suite frágil en la versión que pasa en los dos ambientes: archivo
+  `datos/ambientes.ts`, fixtures `datos` y `page`, y los cinco tests del paso 7. Ejecútala en
+  `local` y en `qa` y comprueba que en `local` queda un test omitido.
+</Ejercicio>
+
+## 5. Reto sin guía
+
+<Reto titulo="Tu suite en dos ambientes">
+  Es una práctica abierta: nadie la corrige por ti, así que tú decides si está bien con esta lista.
+
+Toma la suite del carrito que escribiste en el módulo 1.4 y haz que corra, **sin cambiar ningún test a mano entre una ejecución y otra**, en `local` y en `qa`. Si algo falla en `qa`, documenta en un archivo `ambientes.md` por qué falla y cómo lo resolviste.
+
+Criterios de autocomprobación:
+
+- Ningún test tiene escrita la dirección de la tienda, el correo ni la clave de Ana: todo sale de variables de entorno.
+- Existen `.env.local`, `.env.qa` y `.env.example`, y Git ignora los dos primeros pero no el tercero (compruébalo con `git check-ignore -v`).
+- La suite usa al menos un dato por ambiente (`datos/ambientes.ts`) y un fixture propio.
+- Si pides un ambiente que no existe, el error dice cuál archivo falta y cómo arreglarlo; y si faltan el correo o la clave de práctica, la suite usa los valores por defecto en vez de fallar.
+- Pasa en los dos ambientes con `npx playwright test` y `ENTORNO=qa npx playwright test`.
+- En `ambientes.md` clasificaste cada fallo que viste en `qa` (test, ambiente o defecto) y explicaste la corrección.
+
+Si cumples todos los puntos, tu suite ya es portátil: cualquiera del equipo la corre en su máquina o en QA.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+La IA es buena para mover datos fuera de los tests, y mala para decidir **qué dato es secreto**.
+
+**Qué pedirle:**
+
+- «Tengo este test con la URL y la contraseña escritas dentro. Muéstrame cómo moverlas a variables de entorno con dotenv».
+- «Explícame este error de Playwright y dime si parece un problema del test o del ambiente».
+- «Sugiere nombres de variables y una plantilla `.env.example` sin valores».
+
+**Qué revisar:**
+
+- Que `.env*` esté en `.gitignore` y que la excepción `!.env.example` esté después.
+- Que el código generado no tenga valores reales en el código ni en los ejemplos.
+- Que las variables de práctica tengan un valor por defecto público y las obligatorias fallen con un mensaje claro, no con `process.env.X!`.
+
+**Qué rechazar:**
+
+- Pegar tus claves reales en la conversación para que «te ayude a probar». Usa datos de práctica.
+- Que cambie un valor esperado del test para que pase en `qa` (`$9.90` por `$14.90`): es esconder el problema.
+- Código que escribe los datos del ambiente dentro del test «por simplicidad».
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Subir los archivos .env al repositorio">
+  Un `.env` con valores no se versiona, ni siquiera de práctica. Se ignora con `.gitignore` y se
+  comparte `.env.example` sin valores. Si ya lo subiste por error, avisa a tu equipo: cambiar la
+  clave es lo único que lo arregla de verdad.
+</ErrorComun>
+
+<ErrorComun titulo="Escribir el dato del ambiente dentro del test">
+  `toHaveText("$9.90")` funciona en tu máquina y falla en otro ambiente. Lee el dato de la página,
+  tráelo del archivo de datos o crea los datos en el propio test.
+</ErrorComun>
+
+<ErrorComun titulo="Esperar que dotenv pise las variables que ya existen">
+  Si `ARENA_URL` ya está definida en tu terminal, el valor del `.env.qa` se ignora. Si el ambiente
+  no cambia aunque cambies el archivo, ejecuta `echo $ARENA_URL` y revisa. Con `unset ARENA_URL` la
+  quitas.
+</ErrorComun>
+
+<ErrorComun titulo="Contar elementos de una lista compartida">
+  `toHaveCount(2)` en la lista de pedidos pasa en local y falla en QA, donde otras pruebas dejaron
+  40 pedidos más. Comprueba los elementos que te importan, no el total.
+</ErrorComun>
+
+<ErrorComun titulo="Olvidar que el ambiente trae su propio carrito">
+  En el ambiente sucio, Ana ya tiene un producto en el carrito. Empieza cada test con el carrito
+  vacío (fixture `page`) o los totales no coincidirán.
+</ErrorComun>
+
+<ErrorComun titulo="Dejar la Arena de QA encendida">
+  La segunda Arena ocupa memoria y puertos. Apágala con `COMPOSE_PROJECT_NAME=arena-qa docker
+  compose down` cuando termines.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Un ambiente es una copia de la aplicación con su dirección y sus datos; los compartidos se ensucian.
+- Lo que cambia entre ambientes no se escribe dentro de los tests: la configuración va en variables de entorno y los datos de prueba, en un archivo de datos por ambiente.
+- Los archivos `.env` con valores no se suben a Git; se sube `.env.example` sin valores.
+- dotenv carga `.env.<ambiente>` según `ENTORNO` y no pisa variables que ya existan.
+- Las credenciales de práctica llevan un valor por defecto público (así la suite funciona en CI, donde no existen tus `.env`); un ambiente que no existe falla pronto y con un mensaje claro.
+- Un fixture entrega a cada test lo que necesita (datos del ambiente, sesión iniciada, carrito vacío).
+- Lee los datos en vez de escribirlos, y no cuentes listas que otros ensucian.
+- Antes de reportar un defecto, clasifica el fallo: el test asumió un dato, el ambiente está sucio o la aplicación falla con datos válidos.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

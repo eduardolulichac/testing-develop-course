@@ -1,0 +1,16 @@
+# PASO 2 del reto: escribe aquí tu pipeline (este archivo es tuyo; no toques evaluar.yml).
+#
+# Debe:
+#   1. ejecutarse en cada pull request a main (`on: pull_request`);
+#   2. declarar `permissions` mínimos en la raíz (contents: read);
+#   3. levantar la Arena con `docker compose -f arena/compose.yml up -d --wait`;
+#   4. ejecutar la suite completa, pasando USUARIO_CLAVE desde `secrets` (nunca en claro);
+#   5. subir `playwright-report` como artefacto aunque la suite falle (`if: ${{ !cancelled() }}`);
+#   6. tener un job `desplegar-staging` con `environment: staging` que dependa (`needs`) del
+#      job de tests, «despliegue» el release roto con
+#      `curl -X PUT http://127.0.0.1:18080/__arena/scenario` y cuerpo
+#      {"id":"fase2-despliegue","release":"v2.1.0"}
+#      y después ejecute solo tus pruebas de humo con `--grep @smoke`;
+#   7. pasar `actionlint` sin hallazgos.
+#
+# Además, en GitHub: protege la rama main para que exija el check de tu job de tests.

@@ -1,0 +1,13 @@
+defectos:
+  - titulo: "El catálogo cambia de tamaño con un defecto activo"
+    test: "el catálogo tiene exactamente 24 productos"
+    pasos: ["GET /api/products?pageSize=50", "Contar los productos"]
+    esperado: "El catálogo tiene 24 productos"
+    obtenido: "El número de productos cambia"
+    severidad: media
+  - titulo: "El precio del producto 1 cambia con un defecto activo"
+    test: "el producto 1 cuesta lo mismo que siempre"
+    pasos: ["GET /api/products/1", "Comprobar priceCents"]
+    esperado: "priceCents es un número"
+    obtenido: "priceCents cambia de tipo"
+    severidad: media

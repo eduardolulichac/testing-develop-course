@@ -1,0 +1,356 @@
+---
+modulo: "0.2"
+titulo: "Git y GitHub"
+fase: 0
+nivel: "Base"
+duracion_min: 75
+prerequisitos: ["0.1"]
+version: "2026-11"
+herramientas: ["Git 2.28 o superior", "GitHub"]
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Aprenderás a guardar versiones de tu trabajo con Git, a trabajar en ramas sin romper nada, a
+  resolver un conflicto y a proponer cambios con un pull request en GitHub. A partir de la Fase 1
+  entregarás todo tu trabajo así.
+</Objetivo>
+
+**Git** es un programa que guarda el historial de tu proyecto: qué cambió, cuándo y por qué. Puedes volver atrás y trabajar en varias ideas a la vez sin mezclarlas. **GitHub** es una web que aloja repositorios Git en internet para compartirlos y revisarlos. Git y GitHub no son lo mismo: Git funciona sin internet; GitHub es un servicio que se apoya en él.
+
+Un **repositorio** es una carpeta cuyo historial controla Git (guarda sus datos en una carpeta oculta `.git`).
+
+Necesitas Git **2.28 o superior** instalado (`git --version` debe responder; hace falta por la opción `git init -b`) y una cuenta gratuita en GitHub. Todos los comandos de la lección se probaron en una terminal `bash`/`zsh`: usa tu terminal (WSL2 en Windows).
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Preséntate a Git (una sola vez)">
+Cada commit lleva tu nombre y correo. Configúralos una vez:
+
+```bash
+git config --global user.name "Ana Prueba"
+git config --global user.email ana@example.com
+git config --global --list
+```
+
+Usa el correo de tu cuenta de GitHub. Lo que escribas aquí será público en tus commits. Si no quieres mostrar tu correo real, GitHub te da uno privado del tipo `ID+usuario@users.noreply.github.com` (en _Settings > Emails_, activa _Keep my email addresses private_ y cópialo desde ahí).
+
+</Paso>
+
+<Paso numero={2} titulo="Crear un repositorio y hacer un commit">
+```bash
+mkdir mi-repo-qa && cd mi-repo-qa
+git init -b main
+```
+
+`git init -b main` crea el repositorio con la rama principal llamada `main`. Ahora crea un archivo y mira qué ve Git:
+
+```bash
+printf 'Plan de pruebas\n- login\n' > plan.md
+git status --short
+```
+
+Verás `?? plan.md`: el archivo existe pero Git aún no lo sigue. Guardar un cambio son **dos pasos**:
+
+```bash
+git add plan.md
+git commit -m "docs: add test plan"
+git log --oneline
+```
+
+1. `git add` mueve el cambio al **área de preparación** (lo que irá en el próximo commit).
+2. `git commit` guarda esa instantánea con un mensaje.
+3. `git log --oneline` muestra el historial: una línea por commit, con su identificador corto.
+
+Escribe mensajes que expliquen el cambio. En este curso usamos el estilo `tipo: descripción` (`docs:`, `feat:`, `fix:`, `test:`, `chore:`) en inglés.
+
+Si modificas un archivo y haces `git commit` sin `git add`, Git responde `no changes added to commit` y no guarda nada. Revisa siempre con `git status` antes de confirmar.
+
+</Paso>
+
+<Paso numero={3} titulo="Ignorar lo que no debe subirse: .gitignore">
+Hay archivos que nunca deben entrar al repositorio: claves (`.env`) y carpetas pesadas que se regeneran (`node_modules/`). Se listan en `.gitignore`, uno por línea:
+
+```bash
+echo SECRET=1 > .env
+printf '.env\nnode_modules/\n' > .gitignore
+git status --short
+```
+
+Solo aparece `?? .gitignore`: `.env` ya es invisible para Git. El propio `.gitignore` sí se versiona:
+
+```bash
+git add .gitignore
+git commit -m "chore: add gitignore"
+```
+
+Hazlo **antes** del primer `git add` de un secreto. Si ya lo habías subido, ignorarlo después no lo borra del historial.
+
+</Paso>
+
+<Paso numero={4} titulo="Ramas: trabajar sin tocar main">
+Una **rama** es una línea de trabajo paralela. Crea una, haz un cambio y vuelve a `main`:
+
+```bash
+git switch -c feature/checkout
+printf -- '- checkout\n' >> plan.md
+git commit -am "docs: add checkout cases"
+git switch main
+git branch
+```
+
+- `git switch -c nombre` crea la rama y se cambia a ella.
+- `git commit -am` hace `add` y `commit` de los archivos que Git ya seguía.
+- `git branch` lista las ramas; la actual lleva un `*`.
+
+Al volver a `main`, el archivo `plan.md` no tiene la línea nueva: ese cambio vive solo en la rama.
+
+</Paso>
+
+<Paso numero={5} titulo="Merge: unir la rama">
+Cuando el cambio está listo, desde `main` se une:
+
+```bash
+git merge feature/checkout
+git log --oneline --graph
+git branch -d feature/checkout
+```
+
+Verás `Fast-forward`: como `main` no había avanzado, Git simplemente movió el puntero. Con `-d` borras la rama ya unida.
+
+</Paso>
+
+<Paso numero={6} titulo="Conflictos: cuando dos cambios chocan">
+Un conflicto aparece si dos ramas cambian **las mismas líneas** de formas distintas. Es normal y se resuelve a mano. Provócalo a propósito:
+
+```bash
+git switch -c rama-a
+sed -i.bak 's/- login/- login con correo/' plan.md && rm plan.md.bak
+git commit -am "docs: login by email"
+git switch main
+sed -i.bak 's/- login/- login con teléfono/' plan.md && rm plan.md.bak
+git commit -am "docs: login by phone"
+git merge rama-a
+```
+
+Git responde `CONFLICT (content): Merge conflict in plan.md` y el archivo queda así:
+
+```text
+Plan de pruebas
+<<<<<<< HEAD
+- login con teléfono
+=======
+- login con correo
+>>>>>>> rama-a
+- checkout
+```
+
+- Entre `<<<<<<< HEAD` y `=======` está la versión de tu rama actual (`main`).
+- Entre `=======` y `>>>>>>> rama-a` está la versión que llega.
+
+Tú decides el texto final. Edita el archivo, deja solo el resultado y **borra las tres marcas**:
+
+```text
+Plan de pruebas
+- login con correo o teléfono
+- checkout
+```
+
+Luego cierra el merge:
+
+```bash
+git add plan.md
+git commit -m "docs: combine login cases"
+git log --oneline --graph
+```
+
+El grafo muestra dos líneas que se juntan en el commit de merge. Si te pierdes a medias, `git merge --abort` deshace el intento y vuelves al punto de partida.
+
+En macOS, `sed -i.bak` funciona como se muestra; en Linux también. Si prefieres no usar `sed`, edita el archivo con VS Code, que además resalta los conflictos con botones para elegir una versión.
+
+</Paso>
+
+<Paso numero={7} titulo="Conectar con GitHub: remoto, push y pull">
+Un **remoto** es una copia del repositorio en otro lugar; por convención se llama `origin`. En GitHub, crea un repositorio **vacío** (botón _New_; deja sin marcar _Add a README file_, `.gitignore` y licencia) y copia su dirección HTTPS. Luego, desde tu repositorio local:
+
+```bash
+git remote add origin https://github.com/TU-USUARIO/mi-repo-qa.git
+git push -u origin main
+```
+
+La dirección es un ejemplo: pon la tuya. Un repositorio **vacío** acepta tu historial local tal cual. Si lo hubieras creado con un README, GitHub ya tendría un primer commit distinto y `git push` se rechazaría: en ese caso, en lugar de `git init`, usa `git clone https://github.com/TU-USUARIO/mi-repo-qa.git`, que baja el repositorio con su historial y ya deja configurado `origin`.
+
+**Autenticación.** GitHub **no acepta tu contraseña** de la cuenta al hacer `push` por HTTPS. Elige una de estas vías (basta una):
+
+- **GitHub CLI** (`gh`, se instala desde cli.github.com): ejecuta `gh auth login`, elige _GitHub.com_ y _HTTPS_, y sigue los pasos en el navegador. Es la más sencilla, también en WSL2.
+- **Git Credential Manager**: viene con Git for Windows y abre una ventana de inicio de sesión la primera vez que haces `push`.
+- **Token de acceso personal**: lo creas en GitHub, en _Settings > Developer settings > Personal access tokens_, con permiso sobre el repositorio, y lo pegas cuando Git te pida la contraseña. Trátalo como una clave: nunca en el repositorio ni en la IA.
+- **SSH** (otra opción, con dirección `git@github.com:...`): sigue la guía oficial de GitHub «Generating a new SSH key and adding it to the ssh-agent» y después «Adding a new SSH key to your GitHub account», en la documentación de GitHub.
+
+- `git push` sube tus commits al remoto. `-u` recuerda el destino para la próxima vez.
+- `git pull` baja los commits nuevos del remoto y los une a tu rama.
+
+Para sacar una rama nueva a GitHub: `git push -u origin feature/x`.
+
+</Paso>
+
+<Paso numero={8} titulo="Pull request: proponer cambios en la web de GitHub">
+Un **pull request** (PR) pide que los cambios de una rama se unan a otra, normalmente a `main`, y abre un espacio para revisarlos. Este flujo se hace en la web de GitHub:
+
+1. Crea una rama, haz commits y súbela con `git push -u origin feature/x`.
+2. Entra a tu repositorio en GitHub. Verás un aviso amarillo con el botón **Compare & pull request**.
+3. Escribe un título claro y una descripción: qué cambias y cómo se comprueba.
+4. Presiona **Create pull request**. Revisa la pestaña **Files changed**: es lo que verá quien revise.
+5. Si todo está bien, presiona **Merge pull request** y confirma. Después, **Delete branch**.
+6. En tu terminal: `git switch main`, `git pull` y `git branch -d feature/x`.
+
+Esta lección no ejecuta los pasos 2 a 5 por ti: los harás tú en tu cuenta con la práctica de la sección 5.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Un cambio completo, de la idea al main">
+Ana quiere añadir casos de prueba de pago a `plan.md`.
+
+```bash
+git switch main
+git pull
+git switch -c feature/pagos
+printf -- '- pago con tarjeta\n' >> plan.md
+git status --short
+git commit -am "docs: add card payment cases"
+git push -u origin feature/pagos
+```
+
+1. Parte de `main` actualizado (`git pull`) para no empezar con cambios viejos.
+2. Crea la rama `feature/pagos` y edita en ella.
+3. `git status --short` muestra ` M plan.md`: modificado, listo para confirmar.
+4. Hace el commit y sube la rama.
+5. En GitHub abre el pull request, lo revisa y lo une.
+6. Vuelve a `main`, hace `git pull` y borra la rama local.
+
+Resultado: `main` tiene el cambio, y el historial cuenta qué se hizo y por qué.
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+<Ejercicio id="ej-0-2-primer-commit">
+  En una carpeta nueva, crea un repositorio con la rama `main`, añade un archivo `plan.md` con unas
+  líneas de texto y haz tu primer commit con un mensaje claro. Comprueba el resultado con `git log
+  --oneline`.
+</Ejercicio>
+
+<Ejercicio id="ej-0-2-gitignore">
+  En tu repositorio, crea un archivo `.env` falso y un `.gitignore` que lo ignore junto con
+  `node_modules/`. Comprueba con `git status --short` que `.env` no aparece y guarda el `.gitignore`
+  en un commit.
+</Ejercicio>
+
+<Ejercicio id="ej-0-2-rama-y-merge">
+  Crea la rama `feature/checkout`, añade una línea a `plan.md` con un commit, vuelve a `main`, une
+  la rama y bórrala. Comprueba que `main` contiene el cambio.
+</Ejercicio>
+
+<Ejercicio id="ej-0-2-resolver-conflicto">
+  Provoca un conflicto cambiando la misma línea de `plan.md` de dos maneras (una en `main`, otra en
+  una rama). Ejecuta el merge, resuelve el conflicto dejando un texto que combine ambas versiones y
+  cierra el merge con un commit.
+</Ejercicio>
+
+## 5. Reto sin guía
+
+<Reto titulo="Tu flujo completo con rama y pull request">
+  Es una práctica abierta: tú compruebas el resultado con esta lista, nadie lo evalúa por ti.
+
+Crea un repositorio **personal** en GitHub (público o privado) **vacío**, sin README. Desde tu terminal, crea el repositorio local, añade un `README.md` y un `.gitignore`, haz el primer commit y súbelo con `git push -u origin main` (si prefieres, crea el repositorio con README en GitHub y usa `git clone`). Después añade un archivo `plan-de-pruebas.md` con al menos tres casos de prueba para una pantalla de inicio de sesión. Haz el cambio por una rama y únelo con un pull request.
+
+Criterios de autocomprobación:
+
+- El repositorio existe en tu cuenta y tiene un `.gitignore` que ignora `.env` y `node_modules/`.
+- Hay al menos tres commits con mensajes claros (no «cambios» ni «asdf»).
+- El cambio principal se hizo en una rama, no directamente en `main`.
+- Existe un pull request unido, con título y descripción que explican el cambio.
+- Provocaste y resolviste al menos un conflicto, y puedes explicar qué decidiste.
+- No hay secretos ni archivos innecesarios en el repositorio: revisa la pestaña **Files** de GitHub.
+
+Autorrevisión antes de dar el pull request por bueno (o pídele a un compañero que lo revise con esta misma lista):
+
+- Abre **Files changed** y léelo como si fuera de otra persona: ¿se entiende qué cambia sin preguntarte?
+- La descripción dice qué cambia y cómo comprobarlo.
+- No quedan marcas de conflicto (`<<<<<<<`), líneas de depuración ni archivos que no corresponden.
+- Cada commit tiene un mensaje que explica el cambio.
+
+Si cumples todos los puntos y la autorrevisión no encuentra problemas, ya sabes entregar trabajo como se hará en el resto del curso.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+**Qué pedirle:**
+
+- «Explícame este mensaje de error de Git y qué comando probar primero».
+- «Dame una lista de entradas para el `.gitignore` de un proyecto Node».
+- «Revisa el título y la descripción de mi pull request: ¿se entiende qué cambio y cómo se prueba?».
+- Que te explique un conflicto: pégale el archivo con las marcas y pregúntale qué significa cada parte.
+
+**Qué revisar:**
+
+- Que entiendes cada comando antes de ejecutarlo, y en qué rama estás (`git branch`).
+- Que la solución del conflicto conserva lo que **tú** quieres y no quedan marcas `<<<<<<<` en el archivo.
+- Que el mensaje del commit describe lo que de verdad cambió.
+
+**Qué rechazar:**
+
+- `git push --force`, `git reset --hard` o `git clean -fd` sin entender qué borran: pueden destruir trabajo.
+- Que la IA resuelva un conflicto «a ciegas» y tú pegues el resultado sin leerlo.
+- Pegar claves, tokens o el contenido de tu `.env` en la conversación.
+- Comandos con opciones que no aparecen en `git <comando> --help`.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Hacer commit sin git add">
+  `git commit` solo guarda lo que está preparado. Si ves `no changes added to commit`, ejecuta `git
+  add archivo` (o `git commit -am` para archivos que Git ya seguía) y revisa con `git status`.
+</ErrorComun>
+
+<ErrorComun titulo="Subir secretos y luego ignorarlos">
+  Si un `.env` ya se subió, añadirlo a `.gitignore` no lo quita del historial. Ignora los secretos
+  antes del primer `git add`, y si se filtró una clave real, cámbiala de inmediato.
+</ErrorComun>
+
+<ErrorComun titulo="Trabajar directamente en main">
+  Los cambios se hacen en una rama y se unen con un pull request. Así `main` siempre funciona y
+  alguien puede revisar antes de unir.
+</ErrorComun>
+
+<ErrorComun titulo="Dejar las marcas del conflicto en el archivo">
+  Si haces `git add` con `<<<<<<<`, `=======` o `>>>>>>>` dentro, el archivo queda roto y lo subes
+  así. Busca esas marcas antes de confirmar el merge.
+</ErrorComun>
+
+<ErrorComun titulo="Confundir Git con GitHub">
+  Git es la herramienta local; GitHub es el servicio en internet. Hacer `commit` no sube nada: hace
+  falta `git push`.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Git guarda el historial en commits; GitHub es una web que aloja repositorios para compartirlos.
+- Guardar un cambio son dos pasos: `git add` (preparar) y `git commit` (guardar).
+- `git status` y `git log --oneline` se ejecutan constantemente para saber dónde estás.
+- `.gitignore` evita subir secretos y carpetas pesadas; se configura antes del primer `add`.
+- Una rama aísla un cambio: `git switch -c`, commits y `git merge` desde `main`.
+- Un conflicto ocurre cuando dos ramas tocan las mismas líneas: eliges el resultado, borras las marcas, `add` y `commit`.
+- `git push -u origin rama` sube la rama; el pull request, en la web de GitHub, la revisa y la une.
+- Pide ayuda a la IA para entender, pero nunca ejecutes comandos destructivos que no comprendas.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

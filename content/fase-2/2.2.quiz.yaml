@@ -1,0 +1,89 @@
+preguntas:
+  - id: pom-que-resuelve
+    enunciado: "¿Qué problema resuelve principalmente un Page Object?"
+    opciones:
+      [
+        "Hace que los tests se ejecuten más rápido porque reutiliza el navegador",
+        "Evita tener que instalar Playwright de nuevo en cada proyecto nuevo",
+        "Sustituye a las aserciones, que pasan a vivir dentro de cada clase",
+        "Reúne los localizadores y acciones de cada pantalla en un solo lugar",
+      ]
+    correcta: 3
+    explicacion: "Con un Page Object, si cambia un identificador o un texto de la pantalla se edita una clase, no todos los tests que la usan. No hace los tests más rápidos ni reemplaza a las aserciones."
+  - id: pom-spec-permitido
+    enunciado: "Según la regla del módulo, ¿qué puede aparecer sobre `page` dentro de un archivo `*.spec.ts`?"
+    opciones:
+      [
+        "`page.getByRole(...)`",
+        "`page.goto(...)` y `expect(page)`",
+        "`page.locator(...)`",
+        "`page.click(...)`",
+      ]
+    correcta: 1
+    explicacion: "Los specs no tocan la página: nada de localizadores ni acciones directas. Se permiten `page.goto`, que es navegación, y `expect(page)`, por ejemplo para comprobar la URL."
+  - id: pom-aserciones-en-clase
+    enunciado: "Un compañero propone que el método `entrar()` de `LoginPage` compruebe que el nombre de usuario aparece. ¿Cuál es el problema?"
+    opciones:
+      [
+        "Los Page Objects no pueden importar `expect` desde Playwright",
+        "Playwright no permite comprobar elementos desde dentro de una clase",
+        "El método no serviría para el login con clave incorrecta",
+        "Hace que el test sea más lento porque espera dos veces",
+      ]
+    correcta: 2
+    explicacion: "Las acciones no comprueban el resultado: el mismo método `entrar` se usa para el login correcto y para el incorrecto. La aserción de negocio se queda en el test, donde se lee qué se verifica."
+  - id: pom-composicion
+    enunciado: "La cabecera aparece en todas las pantallas. ¿Cómo la reutilizas con composición?"
+    opciones:
+      [
+        "Cada Page Object guarda una `CabeceraTienda` como propiedad",
+        "Todos los Page Objects heredan de una `BasePage` con los localizadores de la cabecera",
+        "Copias los localizadores de la cabecera dentro de cada clase de pantalla",
+        "Pones los localizadores de la cabecera dentro de cada spec que los necesite",
+      ]
+    correcta: 0
+    explicacion: "En la composición, una pantalla tiene una cabecera. Es más flexible que heredar de una clase base, porque cada pantalla toma solo lo que usa. Copiar localizadores vuelve a duplicar el conocimiento."
+  - id: pom-componente-root
+    enunciado: "`LineaDeCarrito` recibe un `Locator` (`root`) en lugar de `page`. ¿Qué ventaja tiene?"
+    opciones:
+      [
+        "Es más rápida porque no necesita usar la página para nada",
+        "No necesita `await` en sus métodos porque todos son síncronos",
+        "Evita tener que escribir localizadores para cada elemento de la fila",
+        "Todo lo que busca queda limitado a esa fila y no se confunde con otras líneas",
+      ]
+    correcta: 3
+    explicacion: "Al encadenar `root.getByRole(...)` la búsqueda se limita a la fila. Así el botón «Quitar» de una línea no se confunde con el de otra ni con «Quitar cupon»."
+  - id: pom-fixture-import
+    enunciado: "Un spec usa `async ({ carrito }) => ...` pero importa `test` de `@playwright/test`. ¿Qué pasa?"
+    opciones:
+      [
+        "Funciona igual, porque Playwright detecta `carrito` en todo el proyecto",
+        'Falla con `Test has unknown parameter "carrito"`',
+        "El test se omite sin avisar y el informe lo marca como pendiente",
+        "Se crea un `carrito` vacío que el test puede usar sin problemas",
+      ]
+    correcta: 1
+    explicacion: "Solo el `test` creado con `base.extend` conoce tus fixtures. Todos los specs deben importar `test` de tu archivo de fixtures y no de `@playwright/test`."
+  - id: pom-fixture-auto
+    enunciado: "¿Qué hace un fixture declarado con `{ auto: true }`?"
+    opciones:
+      [
+        "Se ejecuta antes de cada test aunque el test no lo pida en sus parámetros",
+        "Se crea una sola vez para toda la suite y se comparte con todos los tests",
+        "Se ejecuta únicamente cuando el test anterior ha fallado en la corrida",
+        "Se genera de forma automática a partir de cada Page Object del proyecto",
+      ]
+    correcta: 0
+    explicacion: "Un fixture automático se ejecuta para cada test sin que este lo pida. En el módulo prepara la sesión de Ana según la opción `sesion`; los demás fixtures son perezosos y solo se crean si el test los pide."
+  - id: pom-migrar-detecta
+    enunciado: "Migraste tu suite a Page Objects y pasa entera con `baseline`. ¿Qué debes comprobar antes de darla por buena?"
+    opciones:
+      [
+        "Que tenga más archivos que antes de empezar a migrar",
+        "Que cada test use al menos un Page Object de la carpeta pages",
+        "Que con `fase1-aserciones` fallen los mismos tests que antes",
+        "Que ningún localizador de ninguna clase sea público",
+      ]
+    correcta: 2
+    explicacion: "Un refactor no cambia lo que la suite detecta. Si con el escenario con defectos deja de fallar algún test, se perdió una aserción por el camino, aunque todo pase con baseline."

@@ -1,0 +1,12 @@
+# Registro de uso de IA (formato registro-ia-v1). Una entrada por archivo.
+# - archivo: ruta de un archivo que exista en tu repositorio
+# - pedido: qué le pediste a la IA (al menos 20 caracteres)
+# - decision: acepto | modifico | rechazo
+# - motivo: por qué (al menos 30 caracteres si modificas o rechazas)
+#
+# usos:
+#   - archivo: tests/ia/cupon.spec.ts
+#     pedido: "Genera un test de cupón para el carrito"
+#     decision: modifico
+#     motivo: "Qué estaba mal, qué cambiaste y cómo lo comprobaste"
+usos: []

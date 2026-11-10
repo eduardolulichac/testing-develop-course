@@ -1,0 +1,25 @@
+ejercicios:
+  - slug: ej-0-5-prompt-con-metodo
+    tipo: guiado
+    titulo: "Escribe un prompt con las cuatro partes"
+    pistas:
+      - "Empieza diciendo quién eres y qué sabes del tema; es la parte de contexto."
+      - "Después añade qué quieres, cuánto espacio tiene la respuesta (por ejemplo, 5 líneas) y si quieres tabla o ejemplo."
+      - "Termina pidiendo cómo comprobar la respuesta y qué documentación oficial la confirma."
+    solucion: "Un prompt válido: «Soy principiante en QA y sé lo básico de HTML (contexto). Explícame qué es una cabecera HTTP (tarea) en 5 líneas con un ejemplo (formato). Dime cómo verlas con curl y qué documentación oficial consultar (verificar).» Anota qué parte mejoró más la respuesta; suele ser el contexto o el formato."
+  - slug: ej-0-5-verificar-opcion
+    tipo: guiado
+    titulo: "Comprueba opciones de curl contra su ayuda"
+    pistas:
+      - "Copia las tres opciones que te dé la IA en una lista antes de comprobarlas."
+      - "Ejecuta `curl --help all` y busca cada opción con `grep`, por ejemplo `curl --help all | grep -- --fail-with-body`. Para opciones cortas como `-i`, usa `grep -E -- '(^| )-i,'` para que no coincida con otras líneas."
+      - "Si una opción no aparece en la ayuda, no existe en tu versión de curl: anótalo como posible error de la IA."
+    solucion: "Para cada opción larga ejecuta `curl --help all | grep -- <opción>`; para una corta usa `grep -E -- '(^| )-i,'` (cambia la letra). Si aparece una línea con su descripción, existe; si no sale nada, no existe en tu versión. Ejemplos que sí existen: `-i`, `--fail-with-body` y `--json`. Apunta las inexistentes en tu registro de errores."
+  - slug: ej-0-5-ejecutar-codigo
+    tipo: guiado
+    titulo: "Ejecuta el código que te da la IA"
+    pistas:
+      - "Pide expresamente una sola línea que puedas pegar en la terminal con `node -e`."
+      - "En JavaScript, `sort()` sin argumentos ordena como texto, así que 10 queda antes que 9."
+      - "Para números hace falta una función de comparación: `(a, b) => a - b`."
+    solucion: 'La línea correcta es `node -e "console.log([10,9,1].sort((a,b)=>a-b))"`, que imprime `[ 1, 9, 10 ]`. Si la IA te dio `sort()` a secas, el resultado es `[ 1, 10, 9 ]`: un error que solo detectas al ejecutarlo.'

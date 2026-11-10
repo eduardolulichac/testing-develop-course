@@ -1,0 +1,49 @@
+{
+  "name": "demo",
+  "networks": {
+    "default": {
+      "name": "demo_default",
+      "ipam": {}
+    }
+  },
+  "services": {
+    "tests": {
+      "build": {
+        "context": "/repo",
+        "dockerfile": "Dockerfile"
+      },
+      "command": null,
+      "depends_on": {
+        "web": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "entrypoint": null,
+      "environment": {
+        "CI": null
+      },
+      "init": true,
+      "ipc": "host",
+      "networks": {
+        "default": null
+      },
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/repo/resultados",
+          "target": "/app/resultados",
+          "bind": {}
+        }
+      ]
+    },
+    "web": {
+      "command": null,
+      "entrypoint": null,
+      "image": "nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "networks": {
+        "default": null
+      }
+    }
+  }
+}

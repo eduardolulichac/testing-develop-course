@@ -1,0 +1,511 @@
+---
+modulo: "2.5"
+titulo: "Datos y base de datos"
+fase: 2
+nivel: "Semi Senior"
+duracion_min: 120
+prerequisitos: ["2.4"]
+escenario: "fase2-base-de-datos"
+version: "2026-11"
+herramientas:
+  [
+    "PostgreSQL 17 (rol de solo lectura)",
+    "SQL",
+    "pg 8.23.1",
+    "Playwright 1.64.1",
+    "Node 24 (verificado 24.14)",
+  ]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Al terminar sabrás consultar con SQL, en modo de solo lectura, lo que la base de datos guardó tras
+  una compra, filtrar los datos viejos que ensucian un ambiente compartido, comprobar desde un test
+  que la pantalla, la API y la base cuentan la misma historia, y usar la API de administración
+  cuando no tienes acceso a la base.
+</Objetivo>
+
+Hay defectos que la interfaz no puede mostrar. Un caso real de comercio electrónico: **un pago que cobra pero no genera pedido**. La pantalla dice «Pago aprobado», la tarjeta de la persona se cargó y, sin embargo, su pedido no aparece en «Mis pedidos». Si solo miras la pantalla, ves un mensaje correcto. El problema está en lo que se **guardó**.
+
+Por eso un QA de nivel Semi Senior sabe mirar la base de datos: no para arreglarla, sino para tener **evidencia** de lo que de verdad pasó. En este módulo lo haces con el escenario `fase2-base-de-datos`, que además simula un problema muy común: un ambiente de QA compartido, lleno de datos viejos que ensucian los resultados.
+
+Lo que necesitas antes de empezar:
+
+- El proyecto `practica-playwright` con los archivos del módulo 2.4 (`tests/support/api.ts`, `fixtures.ts`, `env.ts` y `auth.setup.ts`).
+- QA Arena local en `http://localhost:18080`, con Docker encendido (la base corre en un contenedor).
+- Nociones de SQL: aquí repasas lo mínimo y lo practicas con la tienda.
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Conectarte a la base con permiso solo de lectura">
+La Arena local tiene un usuario de base de datos para QA: **`arena_qa`**. Solo puede **leer**, y solo un esquema de vistas llamado `tienda`, con las tablas del negocio. No puede cambiar datos, ni ver las contraseñas, ni mirar lo que sea interno de la Arena. Es lo mismo que pedirías en una empresa: acceso de lectura a un ambiente de pruebas.
+
+Las credenciales de práctica son públicas y la base solo escucha en tu computadora (`127.0.0.1`). Desde la carpeta donde está el `docker-compose.yml` de tu Arena, abre una sesión de `psql`, el cliente de PostgreSQL:
+
+```bash
+docker compose exec db psql -U arena_qa -d arena
+```
+
+Dentro verás el aviso `arena=>`. Prueba esto:
+
+```text
+\dv tienda.*
+```
+
+Lista las once vistas del esquema `tienda`: `users`, `products`, `inventory`, `carts`, `cart_items`, `coupons`, `coupon_redemptions`, `orders`, `order_items`, `payments` y `notifications`. Para ver las columnas de una:
+
+```text
+\d tienda.orders
+```
+
+Y para comprobar que de verdad no puedes cambiar nada:
+
+```text
+arena=> INSERT INTO orders (user_id, status) VALUES (1, 'paid');
+ERROR:  permission denied for view orders
+```
+
+Sales de `psql` con `\q`. Si prefieres no usar Docker y tienes `psql` instalado, la dirección de conexión es `postgres://arena_qa:arena_qa_local_only@localhost:15432/arena`. El puerto `15432` es el que publica el `docker-compose.yml` de la Arena por defecto.
+
+</Paso>
+
+<Paso numero={2} titulo="El mapa de tablas">
+No necesitas conocerlas todas. Estas son las que importan para una compra:
+
+| Tabla         | Qué guarda                | Columnas clave                                         |
+| ------------- | ------------------------- | ------------------------------------------------------ |
+| `users`       | Las cuentas               | `id`, `email`, `name`, `role`                          |
+| `products`    | El catálogo               | `id`, `name`, `price_cents`                            |
+| `inventory`   | El stock de cada producto | `product_id`, `stock`                                  |
+| `orders`      | Un pedido por compra      | `id`, `user_id`, `status`, `total_cents`, `created_at` |
+| `order_items` | Las líneas de cada pedido | `order_id`, `product_id`, `quantity`                   |
+| `payments`    | Cada intento de cobro     | `order_id`, `amount_cents`, `status`, `card_last4`     |
+| `coupons`     | Los cupones               | `code`, `max_uses`, `used_count`, `active`             |
+
+Las relaciones: un usuario tiene varios pedidos (`orders.user_id`), un pedido tiene líneas (`order_items.order_id`) y cobros (`payments.order_id`), y cada producto tiene una fila de stock (`inventory.product_id`).
+
+Tres convenciones que te ahorran errores:
+
+- Todos los importes están en **centavos** (`total_cents = 18580` es 185,80 USD), igual que en la API.
+- `orders.status` es `pending`, `paid`, `shipped`, `cancelled` o `payment_failed`. Un pedido bien cobrado debería quedar en `paid`.
+- `payments.status` es `approved` o `declined`.
+
+</Paso>
+
+<Paso numero={3} titulo="El SQL que necesitas, en cinco piezas">
+Para verificar datos alcanza con consultas de lectura (`SELECT`):
+
+```sql
+-- 1. Qué columnas y de qué tabla
+SELECT id, status, total_cents FROM tienda.orders;
+
+-- 2. Filtrar con WHERE (y combinar condiciones con AND)
+SELECT id, status FROM tienda.orders WHERE user_id = 1 AND status = 'paid';
+
+-- 3. Ordenar y limitar
+SELECT id, total_cents FROM tienda.orders ORDER BY id DESC LIMIT 3;
+
+-- 4. Unir tablas con JOIN (un pedido con su cobro)
+SELECT o.id, o.total_cents, p.amount_cents
+FROM tienda.orders o JOIN tienda.payments p ON p.order_id = o.id;
+
+-- 5. Contar y agrupar
+SELECT status, count(*) FROM tienda.orders GROUP BY status;
+```
+
+Cómo leerlo:
+
+- `o` y `p` son **alias**: nombres cortos para no repetir `tienda.orders` y `tienda.payments`.
+- `JOIN ... ON` une cada pedido con el cobro que tiene su mismo `order_id`.
+- Si quieres también los pedidos que **no** tienen cobro, usa `LEFT JOIN` y busca `p.id IS NULL`.
+- Todo texto va entre comillas simples (`'paid'`), no dobles.
+
+El esquema `tienda` es el esquema por defecto de `arena_qa`, así que también puedes escribir `FROM orders`. En este módulo lo escribimos completo para que se lea de dónde viene cada dato.
+
+</Paso>
+
+<Paso numero={4} titulo="Datos que se acumulan: el ambiente de QA compartido">
+Un ambiente de QA lo usa mucha gente durante meses. Acumula pedidos viejos, cuentas de prueba que nadie borró, cupones agotados. Si tu consulta no se acota, **los datos viejos parecen defectos** que no lo son.
+
+El escenario `fase2-base-de-datos` simula ese ambiente (verás la etiqueta «QA» y el aviso «Ambiente QA compartido» en la barra del escenario). Prueba esta consulta, que parece razonable:
+
+```sql
+SELECT count(*)
+FROM tienda.orders o LEFT JOIN tienda.payments p ON p.order_id = o.id
+WHERE p.id IS NULL AND o.status = 'pending';
+```
+
+Responde **40**: cuarenta pedidos pendientes sin ningún cobro. ¿Es un defecto? No: son pedidos viejos de 2025 que la semilla del ambiente dejó ahí. Mira cómo se reparten:
+
+```sql
+SELECT o.status, extract(year FROM o.created_at) AS anio,
+       count(*) AS pedidos, count(p.id) AS con_pago
+FROM tienda.orders o LEFT JOIN tienda.payments p ON p.order_id = o.id
+GROUP BY 1, 2 ORDER BY 2, 1;
+```
+
+```text
+ status  | anio | pedidos | con_pago
+---------+------+---------+----------
+ pending | 2025 |      40 |        0
+ paid    | 2026 |       1 |        1
+ shipped | 2026 |       1 |        1
+```
+
+Para no confundir el ruido con la señal, sigue estas reglas:
+
+1. **Acota por la persona.** Crea tu propio cliente de prueba (como en el módulo 2.4) y filtra por su `user_id`.
+2. **Acota por fecha.** `AND o.created_at >= current_date - 1` deja fuera todo lo anterior a ayer.
+3. **Acota por identificador.** Lo más seguro: guarda el `id` del pedido que acabas de crear (lo devuelve la API) y busca solo ese.
+4. **Compara antes y después.** Para el stock, lee el valor antes de la compra y el valor después, y compara la diferencia.
+
+</Paso>
+
+<Paso numero={5} titulo="SQL desde un test">
+Una consulta en la terminal sirve para explorar. Para que quede como prueba repetible, la lanzas desde Playwright con **`pg`**, la librería de PostgreSQL para Node. Instálala en tu proyecto, junto con sus tipos:
+
+```bash
+npm install --save-exact --save-dev pg@8.23.1 @types/pg@8.23.1
+```
+
+La dirección de la base es configuración, no código. Añádela a tu `.env.local` (y su nombre, sin valor, a `.env.example`):
+
+```text
+TIENDA_DB_URL=postgres://arena_qa:arena_qa_local_only@localhost:15432/arena
+```
+
+Crea `tests/support/db.ts`:
+
+```ts
+import { Client, type QueryResultRow } from "pg";
+import { requireEnv } from "./env";
+
+/**
+ * Ejecuta UNA consulta de lectura contra la base de la Arena y devuelve las filas.
+ * Usa siempre parámetros ($1, $2...) en vez de pegar valores dentro del texto SQL.
+ */
+export async function consulta<T extends QueryResultRow = QueryResultRow>(
+  sql: string,
+  params: unknown[] = [],
+): Promise<T[]> {
+  const cliente = new Client({ connectionString: requireEnv("TIENDA_DB_URL") });
+  await cliente.connect();
+  try {
+    const resultado = await cliente.query<T>(sql, params);
+    return resultado.rows;
+  } finally {
+    await cliente.end(); // siempre se cierra, aunque la consulta falle
+  }
+}
+```
+
+Tres reglas que ya van dentro de esa función:
+
+- **Parámetros, no texto pegado.** `WHERE id = $1` con `[orderId]` es seguro. `WHERE id = ${orderId}` es la puerta de la inyección de SQL, un defecto de seguridad grave en cualquier código, también en el de tus tests.
+- **Cerrar siempre la conexión** (`finally`). Un test que deja conexiones abiertas agota las conexiones del rol, que tiene un máximo de cinco.
+- **Solo lectura.** El rol no deja escribir, pero el hábito importa: un test jamás cambia datos por SQL.
+
+Un detalle de `pg` que sorprende: `count(*)` llega como **texto** (`"3"`, no `3`), porque PostgreSQL lo devuelve como un entero grande. Las columnas `integer` (`stock`, `total_cents`) sí llegan como número. Si necesitas un contador numérico, escribe `count(*)::int`.
+
+</Paso>
+
+<Paso numero={6} titulo="Tres fuentes de verdad: pantalla, API y base">
+Tras una compra, la misma información existe en tres sitios. Cuando discrepan, ahí está el defecto:
+
+| Qué compruebas                 | Pantalla                    | API                   | Base                                         |
+| ------------------------------ | --------------------------- | --------------------- | -------------------------------------------- |
+| El pedido existe y está pagado | «Mis pedidos» / detalle     | `GET /api/orders`     | `orders.status = 'paid'`                     |
+| El stock bajó                  | «N disponibles» en la ficha | `GET /api/products/2` | `inventory.stock`                            |
+| Se cobró lo correcto           | El total del pedido         | `order.totalCents`    | `payments.amount_cents = orders.total_cents` |
+
+Un buen informe de defecto dice **cuál de las tres discrepa de las otras** y lo respalda con la consulta o la respuesta exacta que lo muestra.
+
+</Paso>
+
+<Paso numero={7} titulo="Si no tienes acceso a la base: la API de administración">
+En muchos equipos no hay acceso directo a la base. Y la Arena alojada en internet tampoco expone la suya. La alternativa es la API de administración, que lee lo mismo con una cuenta de administración (la de práctica, en `ADMIN_EMAIL` y `ADMIN_CLAVE` de tu `.env.local`):
+
+```text
+GET /api/admin/payments?orderId=43    → los cobros de ese pedido
+GET /api/admin/orders?status=pending  → los pedidos en ese estado
+```
+
+Cada cobro trae `id`, `orderId`, `amountCents`, `status`, `cardLast4`, `reason` y `createdAt`. Entras como administrador por API igual que como Ana: `loginPorApi(request, requireEnv("ADMIN_EMAIL"), requireEnv("ADMIN_CLAVE"))` devuelve el token, y `apiConToken` te da el cliente. La diferencia con el SQL es que solo ves lo que la API quiso exponer, y que filtrar por pedido (`orderId`) es obligatorio en la práctica: sin filtro también trae los cobros de los datos viejos.
+
+</Paso>
+
+<Paso numero={8} titulo="El escenario fase2-base-de-datos">
+Actívalo en tu Arena local. Reinicia antes los datos:
+
+```bash
+curl -X POST http://localhost:18080/__arena/reset
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase2-base-de-datos"}'
+```
+
+Para dejarlo como estaba:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"baseline"}'
+```
+
+Lo que cambia: el ambiente se presenta como «QA» con datos viejos, y hay algo raro en lo que la tienda guarda cuando alguien paga. El cupón `WELCOME10` ya está agotado en este ambiente; usa `SAVE5` (5 USD de descuento desde 10 USD). El producto con el que trabajas es el «Teclado mecanico» (id 2, 95,40 USD, 11 unidades en stock).
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Un pago aprobado, comprobado en la pantalla, la API y la base">
+Guarda este archivo como `tests/e2e/pago-y-bd.spec.ts`. Compra dos teclados con el cupón `SAVE5` por API (con un cliente nuevo) y comprueba las tres consecuencias de un pago aprobado:
+
+```ts
+import { type APIRequestContext } from "@playwright/test";
+import { expect, test } from "../support/fixtures";
+import { prepararCarrito, type Carrito } from "../support/api";
+import { consulta } from "../support/db";
+
+const TECLADO = 2; // "Teclado mecanico", 95,40 USD
+
+interface Compra {
+  orderId: number;
+  carrito: Carrito;
+  stockAntes: number;
+}
+
+/** Lee el stock de un producto directamente de la base. */
+async function stockDe(productoId: number): Promise<number> {
+  const [fila] = await consulta<{ stock: number }>(
+    "SELECT stock FROM tienda.inventory WHERE product_id = $1",
+    [productoId],
+  );
+  return fila!.stock;
+}
+
+/** Compra 2 teclados con SAVE5 por API y devuelve lo que la API respondió. */
+async function comprarTeclados(cliente: { api: APIRequestContext }): Promise<Compra> {
+  const stockAntes = await stockDe(TECLADO);
+  const carrito = await prepararCarrito(cliente.api, TECLADO, 2, "SAVE5");
+  const pago = await cliente.api.post("/api/checkout", {
+    data: {
+      payment: {
+        cardNumber: "4242424242424242",
+        expMonth: 12,
+        expYear: new Date().getFullYear() + 2,
+        cvc: "123",
+      },
+      shippingAddress: "Calle Falsa 123",
+    },
+  });
+  expect(pago.status()).toBe(201);
+  const cuerpo = await pago.json();
+  expect(cuerpo.paymentStatus).toBe("approved");
+  return { orderId: cuerpo.order.id, carrito, stockAntes };
+}
+
+test("el pago aprobado deja el pedido en Mis pedidos y pagado en la base", async ({ cliente }) => {
+  const { orderId } = await comprarTeclados(cliente);
+
+  const lista = await (await cliente.api.get("/api/orders")).json();
+  expect(lista.map((o: { id: number }) => o.id)).toContain(orderId);
+
+  const [pedido] = await consulta<{ status: string }>(
+    "SELECT status FROM tienda.orders WHERE id = $1 AND user_id = $2",
+    [orderId, cliente.id],
+  );
+  expect(pedido?.status).toBe("paid");
+});
+
+test("el pago aprobado descuenta el stock", async ({ cliente }) => {
+  const { stockAntes } = await comprarTeclados(cliente);
+  expect(await stockDe(TECLADO)).toBe(stockAntes - 2);
+});
+
+test("el cobro registrado coincide con el total del pedido", async ({ cliente }) => {
+  const { orderId, carrito } = await comprarTeclados(cliente);
+
+  const [fila] = await consulta<{ total_cents: number; amount_cents: number }>(
+    `SELECT o.total_cents, p.amount_cents
+       FROM tienda.orders o JOIN tienda.payments p ON p.order_id = o.id
+      WHERE o.id = $1 AND o.user_id = $2 AND p.status = 'approved'`,
+    [orderId, cliente.id],
+  );
+  expect(fila?.total_cents).toBe(carrito.totalCents);
+  expect(fila?.amount_cents).toBe(fila?.total_cents);
+});
+```
+
+Con `baseline` pasan los tres. Con `fase2-base-de-datos` fallan los tres, cada uno por un motivo distinto:
+
+```text
+    Error: expect(received).toContain(expected) // indexOf
+    Expected value: 43
+    Received array: []
+
+    Error: expect(received).toBe(expected) // Object.is equality
+    Expected: 9
+    Received: 11
+
+    Error: expect(received).toBe(expected) // Object.is equality
+    Expected: 18580
+    Received: 19080
+```
+
+Qué observar:
+
+1. **Tres efectos, tres fallos.** El pedido no aparece en la lista de pedidos de la persona, el stock no bajó (esperado 9, hay 11) y el cobro es 500 centavos mayor que el total del pedido (cobró 190,80 USD cuando el pedido costaba 185,80 USD: sin el descuento del cupón).
+2. **El pago dijo «aprobado» (201).** El primer `expect` de la compra pasa. Por eso solo la base y la lista de pedidos revelan el problema: la pantalla de confirmación diría «Pago aprobado. Gracias por tu compra.» y el detalle mostraría el estado «Pendiente».
+3. **Cada consulta está acotada**: por `id` del pedido y por `user_id` del cliente nuevo. Los 40 pedidos viejos ni se ven.
+4. **La preparación es por API** (módulo 2.4): el test no pierde tiempo en pantallas para llegar al estado que quiere verificar.
+
+Los errores típicos de esta práctica:
+
+- **Consultar sin acotar:** `SELECT * FROM tienda.orders WHERE status = 'pending'` devuelve 41 filas, y 40 son ruido.
+- **Comparar un `count(*)` con un número:** `expect(fila.n).toBe(3)` falla porque `fila.n` es el texto `"3"`.
+- **Pegar valores en el texto SQL** en lugar de usar `$1`.
+- **Olvidar que el stock es compartido:** si otro test compra el mismo producto a la vez, la diferencia ya no es 2. Por eso esta suite se ejecuta de uno en uno (`workers: 1`).
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+Todos usan el escenario `fase2-base-de-datos` (con el reinicio antes de empezar) y el SQL del paso 3. Vuelve a `baseline` al terminar. El botón abre la Arena **alojada**, que no tiene base de datos accesible: úsala para ver la pantalla; las consultas van contra tu Arena local.
+
+<Ejercicio id="ej-2-5-conectar">
+  Abre `psql` con el usuario `arena_qa`, lista las vistas del esquema `tienda`, mira las columnas de
+  `orders` y `payments` e intenta un `INSERT` o un `UPDATE` para comprobar el error de permisos.
+  Anota cuántas filas tiene `orders` antes de comprar nada.
+</Ejercicio>
+
+<Ejercicio id="ej-2-5-consulta-pedido">
+  Entra como Ana en la Arena, compra por pantalla 2 unidades del «Teclado mecanico» con el cupón
+  `SAVE5` y paga con la tarjeta aprobada. Después escribe en SQL una consulta que muestre ese pedido
+  y su cobro, acotada para que no aparezcan los pedidos viejos.
+</Ejercicio>
+
+<Ejercicio id="ej-2-5-datos-viejos">
+  Cuenta los pedidos `pending` sin cobro con y sin acotar por fecha y por usuario. Explica por qué
+  el primer número es engañoso y qué consulta usarías para informar de un defecto real.
+</Ejercicio>
+
+<Ejercicio id="ej-2-5-cobro-distinto">
+  Escribe una sola consulta que encuentre los cobros aprobados cuyo importe no coincide con el total
+  del pedido y muestre la diferencia en centavos. Interpreta el resultado: ¿cobró de más o de menos?
+  ¿Por cuánto?
+</Ejercicio>
+
+<Ejercicio id="ej-2-5-desde-test">
+  Crea `tests/support/db.ts` y escribe un test que lea el stock del producto 2 antes y después de
+  una compra de 2 unidades hecha por API, y compruebe la diferencia. Ejecútalo con `baseline` y con
+  el escenario y compara los mensajes.
+</Ejercicio>
+
+<Ejercicio id="ej-2-5-sin-base">
+  Imagina que no tienes acceso a la base. Escribe un test que, tras una compra por API, entre como
+  administrador por API, lea el cobro del pedido con `GET /api/admin/payments?orderId=` y compruebe
+  que su importe coincide con el total del pedido.
+</Ejercicio>
+
+<AbrirArena escenario="fase2-base-de-datos" />
+
+## 5. Reto sin guía
+
+<Reto titulo="Tu suite de verificación en la base, comprobada por ti">
+  Es una práctica abierta: no hay evaluador automático en este módulo. Tú decides si tu suite está
+  bien con la lista de comprobación del final.
+
+Escribe en `tests/e2e/base-de-datos.spec.ts` una suite que compruebe, **con un cliente nuevo por test**, las consecuencias de una compra aprobada en la base de QA Arena:
+
+1. El pedido queda `paid` y aparece en `GET /api/orders`.
+2. El stock del producto comprado baja exactamente lo comprado.
+3. El importe cobrado coincide con el total del pedido (haz una compra con cupón y otra sin él).
+4. Un test de «datos que se acumulan»: una consulta que detecte pedidos viejos pendientes sin cobro y compruebe que **no** tienen relación con el cliente que acabas de crear.
+5. Una versión de la comprobación del cobro que use la API de administración en vez del SQL.
+
+Guarda en `NOTAS.md` el informe de defecto, en seis líneas: qué hiciste, qué esperabas, qué viste en la pantalla, en la API y en la base, y la consulta exacta que lo prueba.
+
+Criterios de autocomprobación:
+
+- Con `baseline`, tu suite termina sin fallos, ejecutada tres veces seguidas.
+- Con `fase2-base-de-datos`, fallan los tests de pedido, de stock y de importe con compra con cupón, y cada fallo muestra un valor esperado y uno recibido distintos.
+- Toda consulta lleva parámetros (`$1`, `$2`...) y se acota por `id` del pedido o por `user_id`.
+- La conexión se cierra siempre, y ningún test escribe datos por SQL.
+- La dirección de la base viene de `TIENDA_DB_URL` y las credenciales del administrador, de `ADMIN_EMAIL` y `ADMIN_CLAVE`: nada de eso está escrito en el código.
+- Tu informe del `NOTAS.md` dice cuál de las tres fuentes (pantalla, API o base) discrepa de las otras.
+- Dejaste la Arena de nuevo en `baseline`.
+
+Si cumples todos los puntos, tu suite encuentra el defecto con evidencia y sin falsos positivos.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+La IA escribe SQL con soltura. Es muy útil para un `JOIN` que no te sale, y peligrosa si no sabes qué debe devolver.
+
+**Qué pedirle:**
+
+- «Escribe una consulta de PostgreSQL que una `orders` y `payments` y muestre los cobros distintos del total» (pásale los nombres reales de tablas y columnas).
+- «Explícame línea a línea esta consulta» cuando heredas una que no entiendes.
+- «Convierte esta consulta con valores pegados en una con parámetros `$1`, `$2` para usarla con `pg`».
+
+**Qué revisar antes de aceptarlo:**
+
+- Que usa `tienda.` y las columnas existentes: las IA inventan tablas como `order_payments` o `user_orders`.
+- Que la consulta está acotada (por `id` o `user_id` y fecha), no solo correcta.
+- Que los importes se comparan en centavos y los `count(*)` se tratan como texto o se convierten a número.
+- Que no pega variables dentro del SQL.
+
+**Qué rechazar:**
+
+- Cualquier `INSERT`, `UPDATE`, `DELETE` o `DROP` «para dejar los datos listos»: el rol no lo permite y un test no cambia datos por SQL.
+- Pedirle a la IA que «ajuste» el valor esperado hasta que el test pase.
+- Credenciales de la base escritas en el código que te devuelva: van a `TIENDA_DB_URL`.
+- Conclusiones sobre un defecto sin la consulta que lo respalda.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Consultar sin acotar y ver defectos donde hay datos viejos">
+  En un ambiente compartido, cualquier consulta sin filtro por usuario, fecha o `id` trae pedidos
+  viejos y los confunde con fallos nuevos. Acota siempre, o crea tu propio dato y búscalo por su
+  `id`.
+</ErrorComun>
+
+<ErrorComun titulo="Concatenar valores dentro del texto SQL">
+  `WHERE id = ${orderId}` funciona hoy y abre la puerta a la inyección de SQL mañana. Con `$1` y una
+  lista de valores, la librería los trata como datos, no como código.
+</ErrorComun>
+
+<ErrorComun titulo="Comparar count(*) con un número">
+  `pg` devuelve `count(*)` como texto. `expect(fila.n).toBe(3)` falla con `Received: "3"`. Escribe
+  `count(*)::int` en la consulta o compara con `"3"`.
+</ErrorComun>
+
+<ErrorComun titulo="Dejar conexiones abiertas">
+  Cada test que abre una conexión y no la cierra consume una de las cinco disponibles del rol.
+  Termina con un error de conexiones agotadas que no tiene nada que ver con la tienda. Cierra
+  siempre en un `finally`.
+</ErrorComun>
+
+<ErrorComun titulo="Dar por bueno lo que dice la pantalla">
+  «Pago aprobado» es un mensaje, no un dato guardado. Comprueba además el pedido, el stock y el
+  cobro en la API o en la base: ahí aparece el defecto que la interfaz no puede mostrar.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Hay defectos que la pantalla no muestra: lo que se guardó solo se ve en la API o en la base.
+- El rol `arena_qa` solo lee el esquema `tienda`; no puede cambiar datos, y un test tampoco debe hacerlo.
+- Los importes están en centavos y el estado de un pedido bien cobrado debería ser `paid`.
+- Las consultas necesitan `SELECT`, `WHERE`, `JOIN`, `GROUP BY` y `ORDER BY`; con `LEFT JOIN` se buscan filas sin pareja.
+- En un ambiente compartido los datos viejos ensucian los resultados: acota por usuario, fecha o `id`.
+- Desde un test se consulta con `pg`, con parámetros `$1`, la conexión cerrada en un `finally` y la dirección en una variable de entorno.
+- Compara tres fuentes (pantalla, API, base): el defecto está donde discrepan, y el informe lo respalda con la consulta exacta.
+- Sin acceso a la base, `GET /api/admin/payments?orderId=` da la misma evidencia.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

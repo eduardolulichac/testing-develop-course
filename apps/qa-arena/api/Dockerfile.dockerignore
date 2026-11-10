@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+.worktrees
+.git
+# Spoilers and local config must not reach the image (it ends up public; review H42).
+apps/qa-arena/scenarios/**/README.md
+**/.env
+**/.env.*

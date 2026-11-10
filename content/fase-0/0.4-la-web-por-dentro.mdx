@@ -1,0 +1,306 @@
+---
+modulo: "0.4"
+titulo: "La web por dentro"
+fase: 0
+nivel: "Base"
+duracion_min: 75
+prerequisitos: ["0.3"]
+escenario: "fase0-red"
+version: "2026-11"
+herramientas: ["Chrome DevTools", "curl"]
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+
+Al terminar este módulo sabrás:
+
+- Distinguir qué hacen HTML, CSS y JavaScript en una página.
+- Leer una petición HTTP: método, URL, cabeceras, código de estado y cuerpo.
+- Leer una respuesta JSON y detectar campos, tipos y valores raros.
+- Usar la pestaña Network de las DevTools y `curl` para ver lo que el navegador no te enseña.
+- Documentar las peticiones de QA Arena con una tabla propia.
+
+</Objetivo>
+
+Cuando pruebas una web, lo que ves en pantalla es solo el final de una cadena. Detrás hay un navegador que pide datos a un servidor y los pinta. Muchos fallos nacen en esa cadena: una petición que falla, un dato que no llega o una respuesta que tarda. Si sabes mirarla, puedes decir **dónde** está el fallo y no solo «la página va mal».
+
+Esa habilidad separa un reporte vago de uno útil. «El catálogo no carga» obliga a adivinar. «`POST /api/cart/items` respondió 409 en 300 ms» le dice al equipo por dónde empezar.
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Tres lenguajes, tres trabajos">
+
+Una página web se construye con tres piezas:
+
+- **HTML**: la estructura y el contenido (títulos, botones, listas).
+- **CSS**: el aspecto (colores, tamaños, posición).
+- **JavaScript**: el comportamiento (reacciona a clics, pide datos al servidor).
+
+El navegador convierte el HTML en un árbol de elementos llamado **DOM**. Cuando JavaScript cambia el DOM, la página cambia sin recargarse. Para verlo: clic derecho sobre un elemento, **Inspeccionar**, y se abre la pestaña **Elements** con ese árbol.
+
+</Paso>
+
+<Paso numero={2} titulo="Abre las DevTools">
+
+En Chrome, presiona `F12` (o `Cmd+Option+I` en macOS, `Ctrl+Shift+I` en Windows y Linux). Las pestañas que usarás:
+
+- **Elements**: el DOM y los estilos.
+- **Console**: mensajes y errores de JavaScript.
+- **Network**: cada petición que hace la página.
+
+</Paso>
+
+<Paso numero={3} titulo="Cliente y servidor hablan HTTP">
+
+HTTP funciona por parejas: el navegador (cliente) envía una **petición** y el servidor devuelve una **respuesta**. Una petición lleva:
+
+- Un **método**: qué quieres hacer. `GET` lee, `POST` crea o envía datos, `PATCH` modifica una parte, `DELETE` borra.
+- Una **URL**: a qué recurso, por ejemplo `/api/products/1`.
+- **Cabeceras**: metadatos, como `Content-Type: application/json`.
+- Un **cuerpo** (opcional): los datos enviados, normalmente en `POST` y `PATCH`.
+
+La respuesta trae un **código de estado**, cabeceras y un cuerpo.
+
+</Paso>
+
+<Paso numero={4} titulo="Los códigos de estado, por familias">
+
+No hace falta memorizarlos todos. Aprende la familia por la primera cifra:
+
+| Familia | Significa                    | Ejemplos                                                                    |
+| ------- | ---------------------------- | --------------------------------------------------------------------------- |
+| `2xx`   | Todo fue bien                | `200 OK`, `201 Created`                                                     |
+| `3xx`   | Redirección                  | `301`, `302`                                                                |
+| `4xx`   | El **cliente** hizo algo mal | `400` datos inválidos, `401` sin sesión, `403` sin permiso, `404` no existe |
+| `5xx`   | El **servidor** falló        | `500` error interno                                                         |
+
+Para un tester, esta división es clave: un `4xx` ante datos inválidos es un comportamiento correcto. Un `5xx` casi nunca lo es, porque el servidor no debería romperse por lo que envíe el usuario.
+
+</Paso>
+
+<Paso numero={5} titulo="JSON: el formato de los datos">
+
+Las APIs modernas responden en **JSON**. Son pares `"clave": valor`, entre llaves para un objeto y entre corchetes para una lista. Los tipos son texto (`"hola"`), número (`990`), booleano (`true`), nulo (`null`), lista y objeto.
+
+Al leer un JSON fíjate en tres cosas: que estén **todos los campos** esperados, que cada valor tenga el **tipo** correcto (un precio como texto es sospechoso) y que los valores tengan **sentido**.
+
+</Paso>
+
+<Paso numero={6} titulo="La pestaña Network">
+
+Con las DevTools abiertas en **Network**, recarga la página. Verás una fila por petición. Filtra por **Fetch/XHR** para quedarte con las llamadas a la API. Al hacer clic en una fila:
+
+- **Headers**: método, URL, código de estado y cabeceras de ida y vuelta.
+- **Payload**: lo que se envió.
+- **Response** y **Preview**: lo que llegó.
+- **Timing**: cuánto tardó cada parte.
+
+En la tabla general también ves **Status**, **Type**, **Size** y **Time**. Ordenar por **Time** te enseña de inmediato qué petición es la más lenta.
+
+</Paso>
+
+<Paso numero={7} titulo="curl: la misma petición sin navegador">
+
+`curl` envía peticiones desde tu terminal (WSL2 en Windows). Te sirve para repetir una llamada exacta y ver la respuesta sin la interfaz de por medio. Dos opciones útiles: `-i` muestra el código de estado y las cabeceras, y `-s` oculta la barra de progreso.
+
+La API de QA Arena también se alcanza por el puerto del front, en `http://localhost:18080/api`, y por su puerto propio, `http://localhost:18081/api`. En esta lección usamos el primero.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Documentar tres peticiones de la Arena">
+
+Vamos a documentar peticiones de QA Arena con la Arena en el escenario normal (`baseline`). En tu terminal:
+
+```bash
+curl -s -i http://localhost:18080/api/products/1
+```
+
+Resultado (resumido):
+
+```text
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+x-arena-release: none
+
+{"id":1,"sku":"ARN-001","name":"Auriculares BT","description":"Auriculares BT: producto de prueba de la categoria Electronica.","priceCents":990,"category":"Electronica","stock":8,"active":true}
+```
+
+Qué leemos: método `GET`, estado `200`, cuerpo JSON de tipo objeto con 8 campos. `priceCents` es un entero: `990` son 9,90 en la moneda de la tienda, porque se guardan los centavos. Eso evita errores de decimales.
+
+Ahora un producto que no existe:
+
+```bash
+curl -s -i http://localhost:18080/api/products/9999
+```
+
+```text
+HTTP/1.1 404 Not Found
+{"error":{"code":"not_found","message":"Product not found"}}
+```
+
+Un `404` con un mensaje claro: es el comportamiento correcto. Y un login con credenciales falsas:
+
+```bash
+curl -s -i -X POST http://localhost:18080/api/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"nadie@example.com","password":"incorrecta1"}'
+```
+
+```text
+HTTP/1.1 401 Unauthorized
+{"error":{"code":"unauthorized","message":"Invalid email or password"}}
+```
+
+Aquí hay un método `POST`, una cabecera `content-type` que dice que el cuerpo es JSON, un cuerpo enviado con `-d` y un `401`. Observa el patrón de los errores: siempre `{"error": {"code": ..., "message": ...}}`. Si una respuesta de error se sale de ese patrón, merece una nota.
+
+Con esto armamos la tabla de documentación. Es la que repetirás en el reto:
+
+| Petición                      | Estado | Tipo de cuerpo | Observación                   |
+| ----------------------------- | ------ | -------------- | ----------------------------- |
+| `GET /api/products/1`         | 200    | JSON objeto    | 8 campos, precio en centavos  |
+| `GET /api/products/9999`      | 404    | JSON error     | Mensaje claro                 |
+| `POST /api/auth/login` (mala) | 401    | JSON error     | No revela si el correo existe |
+
+La tercera fila contiene un detalle de seguridad: el mensaje no dice si falló el correo o la contraseña.
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+Los ejercicios 1 a 5 se hacen con la Arena en el escenario normal (`baseline`), el que está activo por defecto en `http://localhost:18080`.
+
+<Ejercicio id="ej-0-4-network-primera-peticion">
+  Abre la Arena, abre las DevTools en la pestaña Network, filtra por Fetch/XHR y recarga la página
+  del catálogo. Anota, para la petición que carga los productos, su método, su código de estado y su
+  tiempo (Time).
+</Ejercicio>
+
+<Ejercicio id="ej-0-4-curl-estado-404">
+  Con `curl -s -i`, pide un producto con un id que no exista y anota el código de estado y el
+  mensaje de error. Explica con una frase si ese `404` es un comportamiento correcto.
+</Ejercicio>
+
+<Ejercicio id="ej-0-4-leer-json-producto">
+  Pide `GET /api/products/1` con `curl`. Escribe cada campo del JSON con su tipo (texto, número,
+  booleano) y explica por qué `priceCents` es un número entero.
+</Ejercicio>
+
+<Ejercicio id="ej-0-4-curl-post-login">
+  Envía un `POST` a `/api/auth/login` con un correo que no exista. Después envíalo sin cuerpo.
+  Compara los dos códigos de estado y explica la diferencia entre ellos.
+</Ejercicio>
+
+<Ejercicio id="ej-0-4-elements-console">
+  En la Arena, abre el catálogo, haz clic derecho sobre el nombre de un producto y elige
+  Inspeccionar. En Elements, haz doble clic sobre el texto del nombre y cámbialo. Mira la pestaña
+  Console por si aparece algún mensaje. Después recarga la página y explica por qué el nombre vuelve
+  al original.
+</Ejercicio>
+
+## 5. Reto sin guía
+
+<Reto titulo="Documenta las peticiones del catálogo">
+
+Este reto se hace en el escenario `fase0-red`, distinto del normal. Actívalo así:
+
+- En local: abre `http://localhost:18080/?escenario=fase0-red`, o ejecuta `curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase0-red"}'`.
+- El botón de abajo abre la Arena alojada, que es otra instancia: un escenario activado allí no se ve con los `curl` que apuntan a `localhost:18080`. Usa el botón solo si vas a trabajar con esa Arena y con su propia URL en `curl`.
+
+<AbrirArena escenario="fase0-red" />
+
+Recorre el catálogo con las DevTools abiertas: entra en la lista, filtra por cada categoría y abre el detalle de varios productos. Documenta **al menos 6 peticiones distintas** en una tabla como la del ejemplo resuelto, con método, URL, estado, tiempo y una observación.
+
+Este escenario tiene varias cosas que no cuadran, de tipos distintos. No te digo cuáles ni dónde: tu trabajo es descubrirlas. Compara lo que ves con lo que cabría esperar y con la documentación de la API en `http://localhost:18080/docs`.
+
+Pistas, de la más suave a la más directa. Léelas solo si te atascas:
+
+1. Hay 3 anomalías: una de estado, una de contenido y una de tiempo.
+2. Recorre todas las categorías y compara el detalle de cada producto con el listado y con `/docs`.
+3. Repite 5 veces las peticiones lentas y anota el rango de tiempos.
+
+Escribe después un reporte corto por cada anomalía, con estos datos:
+
+- La petición exacta que la provoca (método y URL, o el comando `curl`).
+- Lo que esperabas y lo que ocurrió.
+- La evidencia: estado, tiempo o el fragmento del JSON.
+
+Este reto es de autocomprobación: la plataforma no verifica tus reportes. Al terminar, vuelve a `baseline` (último punto de la lista).
+
+Autocomprobación:
+
+- [ ] Tu tabla tiene al menos 6 peticiones con estado y tiempo medidos.
+- [ ] Cada anomalía se puede reproducir con una petición concreta que otra persona puede copiar.
+- [ ] Separas lo que viste (hecho) de lo que supones (hipótesis).
+- [ ] Comprobaste cada anomalía con `curl`, no solo en el navegador.
+- [ ] No incluyes datos que no viste con tus propios ojos.
+- [ ] Al terminar, volviste al escenario normal con `curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"baseline"}'`.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+**Qué pedirle.** Que te explique una cabecera, un código de estado o un fragmento de JSON que no entiendas. Pégale una respuesta de la Arena y pídele que te la explique campo por campo. También sirve para que te proponga una plantilla de reporte y para que te sugiera qué más podrías mirar en Network.
+
+**Qué revisar.** Contrasta cada explicación con la documentación oficial de HTTP (por ejemplo, la de MDN) y con la propia API: ejecuta el `curl` y compara. Si la IA dice «este endpoint devuelve X», pídele el comando y ejecútalo.
+
+**Qué rechazar.**
+
+- Que te diga **cuál es el fallo** de la Arena sin que lo hayas medido. Aunque acierte, no habrás practicado.
+- Códigos de estado o cabeceras que no aparecen en tu pestaña Network.
+- Endpoints, campos o mensajes que no existen en `/docs`.
+
+Pegar una respuesta que contenga una sesión o un token en un chat no es buena práctica. Quita esos datos antes.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Fijarse solo en la pantalla y no en Network">
+
+Una página puede mostrar «sin resultados» tanto si la lista está vacía como si la petición falló. Mira siempre el código de estado.
+
+</ErrorComun>
+
+<ErrorComun titulo="Confundir 4xx con 5xx">
+
+Un `4xx` indica que la petición del cliente era incorrecta, y un `5xx` que el servidor falló. Reportar un `404` por un id inexistente como si fuera un bug es un falso positivo.
+
+</ErrorComun>
+
+<ErrorComun titulo="Medir el tiempo una sola vez">
+
+Un tiempo aislado puede ser casualidad. Repite la petición varias veces y anota el rango antes de decir que algo es lento.
+
+</ErrorComun>
+
+<ErrorComun titulo="Olvidar el método o la cabecera en curl">
+
+Sin `-X POST` y sin `-H 'content-type: application/json'` el servidor puede rechazar tu petición por motivos que nada tienen que ver con el fallo que buscas. Revisa que tu petición esté bien formada antes de culpar a la API.
+
+</ErrorComun>
+
+<ErrorComun titulo="Reportar sin pasos reproducibles">
+
+«La web va lenta» no se puede arreglar. Incluye la URL, el método, el estado y el tiempo medido.
+
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- HTML da estructura, CSS da aspecto y JavaScript da comportamiento; el navegador los junta en el DOM.
+- HTTP es petición y respuesta: método, URL, cabeceras y cuerpo, y de vuelta un estado más cuerpo.
+- `2xx` es éxito, `4xx` es error del cliente y `5xx` es error del servidor.
+- Al leer un JSON, revisa que estén todos los campos, que los tipos sean correctos y que los valores tengan sentido.
+- La pestaña Network muestra estado, tipo, tamaño y tiempo de cada petición.
+- `curl -s -i` repite una petición y te enseña el estado y las cabeceras.
+- Un buen reporte incluye la petición exacta, lo esperado, lo ocurrido y la evidencia.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

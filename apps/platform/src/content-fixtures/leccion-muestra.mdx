@@ -1,0 +1,110 @@
+---
+modulo: "1.2"
+titulo: "Localizadores estables (lección de muestra)"
+fase: 1
+nivel: "Junior"
+duracion_min: 45
+prerequisitos: ["1.1"]
+escenario: "fase1-localizadores"
+reto: "reto-1-2-localizadores"
+version: "2026-11"
+herramientas: ["Playwright 1.x"]
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Aprenderás a elegir localizadores que no se rompen cuando cambia el diseño de la página. Es el
+  problema número uno de las pruebas automáticas frágiles.
+</Objetivo>
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Prefiere el rol accesible">
+Busca el elemento por lo que **es** (botón, enlace, campo), no por cómo se ve.
+
+```ts
+// Estable: depende del rol y del nombre visible
+await page.getByRole("button", { name: "Guardar" }).click();
+```
+
+</Paso>
+
+<Paso numero={2} titulo="Usa data-testid cuando no hay rol claro">
+Pide al equipo un atributo `data-testid` estable. Compara las opciones:
+
+| Estrategia    | Estabilidad |
+| ------------- | ----------- |
+| Rol + nombre  | Alta        |
+| `data-testid` | Alta        |
+| Clase CSS     | Baja        |
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Formulario de inicio de sesión">
+Se localiza cada campo por su etiqueta y el botón por su rol:
+
+```ts
+await page.getByLabel("Correo").fill("ana@example.com");
+await page.getByRole("button", { name: "Entrar" }).click();
+```
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+<Ejercicio
+  titulo="Localiza el botón de enviar"
+  pistas={[
+    "Piensa en qué es el elemento, no en cómo se ve.",
+    "Prueba con getByRole.",
+    "getByRole('button', { name: 'Enviar' })",
+  ]}
+>
+  Abre el escenario y escribe un localizador estable para el botón de enviar.
+</Ejercicio>
+
+<AbrirArena escenario="fase1-localizadores" />
+
+## 5. Reto sin guía
+
+<Reto titulo="Reescribe los localizadores frágiles">
+  Entrega en GitHub un repositorio con las pruebas reescritas. Se evalúan con tests automáticos.
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+Pide a la IA que proponga localizadores, pero **revisa** que no dependan de clases CSS.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Depender del texto de una clase CSS">
+  Las clases cambian con cada rediseño. Usa rol, etiqueta o `data-testid`.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Prefiere rol y nombre accesible.
+- Usa `data-testid` como plan B.
+- Evita clases CSS y rutas XPath largas.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz
+  preguntas={[
+    {
+      pregunta: "¿Qué localizador es el más estable?",
+      opciones: ["Una clase CSS", "Rol y nombre accesible", "Un XPath absoluto"],
+    },
+    {
+      pregunta: "¿Cuándo conviene usar data-testid?",
+      opciones: ["Siempre", "Cuando no hay un rol claro", "Nunca"],
+    },
+  ]}
+/>

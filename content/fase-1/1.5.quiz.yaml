@@ -1,0 +1,89 @@
+preguntas:
+  - id: ambientes-que-es
+    enunciado: "¿Qué es un ambiente (environment) en pruebas?"
+    opciones:
+      [
+        "El navegador con el que ejecutas los tests",
+        "Una copia de la aplicación con su propia dirección y sus propios datos, como local, QA o staging",
+        "El lenguaje de programación de los tests",
+        "El sistema operativo del equipo de QA",
+      ]
+    correcta: 1
+    explicacion: "Un ambiente es una instalación de la aplicación con su dirección, su base de datos y su configuración. Los datos de un ambiente (precios, stock, cupones) pueden ser distintos de los de otro."
+  - id: ambientes-que-guardar-en-env
+    enunciado: "¿Cuál de estos datos es configuración y debería ir en una variable de entorno?"
+    opciones:
+      [
+        "El texto esperado del título de una pantalla",
+        "La dirección base de la aplicación y las credenciales del usuario de pruebas",
+        "El nombre de un test",
+        "El color de un botón",
+      ]
+    correcta: 1
+    explicacion: "Lo que cambia entre ambientes y puede ser sensible (dirección, usuario, clave) va en variables de entorno. Los textos esperados son parte del test, y los datos de prueba compartidos van en un archivo de datos."
+  - id: ambientes-gitignore
+    enunciado: "Tu `.gitignore` tiene las líneas `.env*` y `!.env.example`. ¿Qué logra?"
+    opciones:
+      [
+        "Ignora todos los archivos `.env` pero sube `.env.example`",
+        "Sube todos los archivos `.env`",
+        "Borra los archivos `.env` al hacer commit",
+        "Ignora también `.env.example`",
+      ]
+    correcta: 0
+    explicacion: "`.env*` ignora todos los que empiezan por `.env` y `!.env.example` hace una excepción para la plantilla. Los valores reales se quedan en tu máquina y la plantilla (solo nombres) se comparte."
+  - id: ambientes-dotenv-no-pisa
+    enunciado: "Tienes `ARENA_URL=http://otra:1` definida en tu terminal y ejecutas `ENTORNO=qa npx playwright test`, con dotenv cargando `.env.qa`. ¿Qué dirección usa la suite?"
+    opciones:
+      [
+        "La de `.env.qa`, porque dotenv siempre manda",
+        "La de la terminal, porque dotenv no pisa una variable que ya existe",
+        "Ninguna: da error",
+        "La que Playwright elija al azar",
+      ]
+    correcta: 1
+    explicacion: "dotenv no sobrescribe variables que ya existen en el entorno. Es útil en CI, donde se definen por fuera, pero también explica por qué a veces `ENTORNO=qa` no parece cambiar nada."
+  - id: ambientes-test-falla-en-qa
+    enunciado: "Tu test `toHaveText('$9.90')` pasa en local y falla en QA con `Received: '$14.90'`. ¿Qué haces primero?"
+    opciones:
+      [
+        "Reportar un defecto de precio en la aplicación",
+        "Cambiar el valor esperado a `$14.90`",
+        "Clasificar el fallo: el test asumió un dato de ese ambiente, y leer el dato o parametrizarlo",
+        "Subir el plazo de la aserción",
+      ]
+    correcta: 2
+    explicacion: "Un precio distinto en otro ambiente no es un defecto por sí mismo. Si cambias el valor esperado, ahora falla en local. Lo correcto es leer el precio de la página o llevarlo a los datos del ambiente."
+  - id: ambientes-fixture
+    enunciado: "¿Qué es un fixture de Playwright?"
+    opciones:
+      [
+        "Un tipo de aserción",
+        "Algo que Playwright prepara antes de un test y le entrega, como `page` o unos datos de ambiente",
+        "Un archivo `.env` especial",
+        "Un navegador adicional",
+      ]
+    correcta: 1
+    explicacion: "Los fixtures preparan (y a veces limpian) lo que un test necesita. `page` y `request` son fixtures; con `test.extend` creas los tuyos, por ejemplo uno que entrega los datos del ambiente."
+  - id: ambientes-contar-lista
+    enunciado: "Tu test comprueba que Ana tiene exactamente 2 pedidos con `toHaveCount(2)`. Pasa en local y en QA muestra 42. ¿Cuál es el problema de fondo?"
+    opciones:
+      [
+        "Playwright cuenta mal",
+        "El test cuenta una lista compartida que otras pruebas ensucian; conviene comprobar los pedidos que importan, no el total",
+        "Ana no existe en QA",
+        "Hay que añadir un `waitForTimeout`",
+      ]
+    correcta: 1
+    explicacion: "En un ambiente compartido, otros dejan datos. Un conteo exacto de una lista global es frágil. Comprueba los elementos concretos que tu test necesita, como el pedido 1 y el 2."
+  - id: ambientes-skip-con-motivo
+    enunciado: "Un test solo tiene sentido en ambientes que tienen un producto agotado. ¿Qué es lo más adecuado?"
+    opciones:
+      [
+        "Borrar el test",
+        "Dejar que falle en los ambientes sin ese dato",
+        "`test.skip(condición, 'motivo')`: omitirlo donde no aplica y que el informe diga por qué",
+        "Comentar el test en el código",
+      ]
+    correcta: 2
+    explicacion: "`test.skip` con condición y motivo omite el test donde no aplica, y el informe lo deja a la vista. Un test que falla por falta de datos genera ruido; uno borrado o comentado se olvida."

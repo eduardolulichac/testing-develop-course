@@ -1,0 +1,89 @@
+preguntas:
+  - id: dis-dry-conocimiento
+    enunciado: "¿Qué dice el principio DRY aplicado a una suite de tests?"
+    opciones:
+      [
+        "Que dos líneas de código nunca puedan parecerse entre sí",
+        "Que cada test debe tener una sola aserción",
+        "Que cada conocimiento, como iniciar sesión, viva en un solo lugar",
+        "Que los tests deben escribirse en el menor número de líneas posible",
+      ]
+    correcta: 2
+    explicacion: "DRY trata de no repetir conocimiento: si cambia la forma de iniciar sesión, se edita un solo lugar. No es una regla sobre líneas parecidas ni sobre brevedad, y tampoco limita las aserciones."
+  - id: dis-aserciones-escondidas
+    enunciado: "Una ayuda `comprarConCupon(page, producto, cupon, descuentoEsperado)` agrega el producto, aplica el cupón y comprueba el descuento. ¿Cuál es su principal problema?"
+    opciones:
+      [
+        "Mezcla mecánica y comprobación, así que el test que la llama no dice qué verifica",
+        "Es demasiado corta y simple como para considerarse una ayuda reutilizable",
+        "No declara el tipo de retorno y por eso TypeScript la rechaza",
+        "Duplica una función que ya viene incluida dentro de Playwright",
+      ]
+    correcta: 0
+    explicacion: "La mecánica se extrae a ayudas; la intención (qué se verifica) debe quedar a la vista en el test. Una ayuda con una aserción escondida y un valor esperado como parámetro oculta qué comprueba cada test y hace difícil variarla."
+  - id: dis-regla-de-tres
+    enunciado: "Escribiste el mismo bloque de tres líneas en dos tests. Según la regla de tres, ¿qué haces?"
+    opciones:
+      [
+        "Lo extraes ya mismo, antes de que alguien más lo copie en otro test",
+        "Lo borras de uno de los dos tests porque con uno basta",
+        "Creas una clase base de la que hereden todos los tests del proyecto",
+        "Lo toleras, y lo extraes cuando aparezca la tercera repetición",
+      ]
+    correcta: 3
+    explicacion: "Extraer demasiado pronto crea abstracciones que luego no encajan. La primera vez se escribe, la segunda se tolera y la tercera se extrae, cuando ya se ve qué parte se repite de verdad."
+  - id: dis-responsabilidad-unica
+    enunciado: "Un test comprueba el descuento de un cupón, el total, la eliminación de una línea y el contador, todo seguido. Falla el descuento. ¿Qué pasa con el contador?"
+    opciones:
+      [
+        "Se comprueba igualmente, porque Playwright sigue con las siguientes aserciones del test",
+        "No se llega a comprobar: el test se detiene en la primera aserción que falla",
+        "Se marca como pendiente de forma automática y se ejecuta en la siguiente corrida",
+        "Pasa siempre, porque su resultado depende del que dio el descuento",
+      ]
+    correcta: 1
+    explicacion: "Una aserción que falla detiene el test. Si el test mezcla comportamientos sin relación, los que vienen después quedan sin comprobar. Un test con un solo motivo para fallar evita que un defecto esconda a otro."
+  - id: dis-nombre-test
+    enunciado: "¿Cuál es el mejor nombre para un test que aplica el cupón `SAVE5` a dos auriculares?"
+    opciones:
+      [
+        "prueba cupón 2",
+        "SAVE5",
+        "SAVE5 descuenta $5.00 de dos auriculares",
+        "carrito.spec: cupón correcto con el producto 1 y cantidad 2",
+      ]
+    correcta: 2
+    explicacion: "El nombre debe describir el comportamiento esperado y los datos relevantes. Así, cuando el informe dice que falló, ya se sabe qué se estaba comprobando sin abrir el código."
+  - id: dis-independencia
+    enunciado: "Un test pasa dentro de la suite pero falla cuando lo ejecutas solo con `--grep`. ¿Qué lo explica con más probabilidad?"
+    opciones:
+      [
+        "El test depende del estado que dejó otro test anterior",
+        "Playwright no permite ejecutar un test aislado",
+        "El navegador es más lento cuando corre un solo test",
+        "El nombre del test es demasiado largo",
+      ]
+    correcta: 0
+    explicacion: "Un test que solo pasa si otro corrió antes depende de un estado compartido, como el carrito de Ana. Cada test debe preparar su propio estado para ser independiente."
+  - id: dis-refactor-detecta
+    enunciado: "Refactorizaste tu suite y pasa entera con `baseline`. ¿Qué debes comprobar además antes de darla por buena?"
+    opciones:
+      [
+        "Que tenga menos líneas que la suite anterior al refactor",
+        "Que siga fallando con el escenario con defectos",
+        "Que todos los tests tengan una única aserción cada uno",
+        "Que ya no use constantes ni ayudas compartidas en ningún archivo",
+      ]
+    correcta: 1
+    explicacion: "Una suite refactorizada que pasa con baseline pero ya no falla con el escenario con defectos perdió una aserción. Refactorizar es cambiar la forma sin cambiar el comportamiento, y el comportamiento de una suite es lo que detecta."
+  - id: dis-sobreingenieria
+    enunciado: "¿Cuál de estas situaciones es una señal de sobreingeniería?"
+    opciones:
+      [
+        "Una ayuda que hace una sola tarea y tiene un nombre claro",
+        "Una constante con nombre para un precio que se usa en varios tests",
+        "Un test que sigue el orden preparar, actuar y comprobar",
+        "Una ayuda con cinco parámetros opcionales y varios booleanos",
+      ]
+    correcta: 3
+    explicacion: "Las abstracciones con muchos parámetros y banderas son difíciles de leer y de variar, y suelen aparecer por extraer antes de tiempo. Un poco de repetición clara es mejor que una abstracción confusa."

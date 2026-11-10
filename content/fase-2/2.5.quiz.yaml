@@ -1,0 +1,101 @@
+preguntas:
+  - id: bd-por-que
+    enunciado: Tras una compra, la pantalla dice «Pago aprobado». ¿Por qué conviene mirar también la base de datos?
+    opciones:
+      - Porque la pantalla de la tienda nunca muestra información correcta y siempre hay que ignorarla
+      - Porque el mensaje solo prueba que hubo respuesta; lo guardado puede ser distinto
+      - Porque los tests de interfaz no pueden ejecutarse si no hay una base de datos conectada
+      - Porque así se puede corregir el dato directamente si algo está mal en el pedido
+    correcta: 1
+    explicacion:
+      Un mensaje de confirmación no garantiza que el pedido, el stock o el importe se hayan guardado bien. La base
+      es la evidencia de lo que pasó; no se usa para corregir datos, sino para probar el defecto.
+  - id: bd-solo-lectura
+    enunciado:
+      Intentas `UPDATE orders SET status = 'paid'` con el usuario `arena_qa` y recibes `permission denied for view
+      orders`. ¿Qué significa?
+    opciones:
+      - Que tu contraseña es incorrecta y debes volver a escribirla en la conexión de la base
+      - Que la base de datos está caída o reiniciándose y conviene esperar unos segundos
+      - Que el rol de QA solo puede leer, como corresponde en un ambiente de pruebas
+      - Que debes escribir el nombre de la tabla entre comillas dobles para que lo reconozca
+    correcta: 2
+    explicacion:
+      "El rol `arena_qa` solo puede leer las vistas del esquema `tienda`. Es lo esperado: QA verifica datos, no los
+      cambia. Una contraseña incorrecta o una base caída darían otro error al conectar."
+  - id: bd-acotar
+    enunciado:
+      Tu consulta de pedidos `pending` sin cobro devuelve 40 filas en el ambiente de QA, pero tu compra de hoy es correcta.
+      ¿Qué haces?
+    opciones:
+      - Reportar 40 defectos de pedidos sin cobro, uno por cada fila que devuelve la consulta
+      - Borrar los pedidos viejos con un DELETE para que la consulta devuelva cero filas
+      - "Acotar por usuario, fecha o id, porque son datos viejos del ambiente"
+      - Ignorar la consulta, porque una base de datos de QA nunca es una fuente fiable
+    correcta: 2
+    explicacion:
+      Los 40 pedidos son datos acumulados de 2025. Sin acotar, el ruido parece un defecto. Con `user_id`, fecha o
+      el `id` del pedido que creaste, la consulta responde solo sobre lo que probaste (y además no tienes permiso para borrar).
+  - id: bd-parametros
+    enunciado: ¿Cuál es la forma correcta de buscar un pedido por su id desde un test con `pg`?
+    opciones:
+      - Armar el SQL con una plantilla de texto que incluya el id directamente dentro de la consulta
+      - Sumar el texto de la consulta con el id, igual que se suman dos cadenas de texto
+      - Poner el id entre comillas simples dentro del texto de la consulta, a mano
+      - Escribir `WHERE id = $1` y pasar el id en la lista de parámetros
+    correcta: 3
+    explicacion:
+      Con `$1` y una lista de valores, la librería envía el dato aparte del código SQL. Pegar el valor dentro del
+      texto (con plantilla, suma o comillas) funciona hasta que el valor trae algo inesperado, y es la base de la inyección
+      de SQL.
+  - id: bd-count
+    enunciado:
+      'Un test hace `expect(fila.n).toBe(3)` sobre `SELECT count(*) AS n FROM tienda.orders` y falla con `Received:
+      "3"`. ¿Por qué?'
+    opciones:
+      - pg entrega el bigint de count(*) como texto; usa `count(*)::int` o compara con "3"
+      - El test corrió antes de que la base terminara de arrancar y leyó un valor incompleto
+      - La consulta está mal escrita y por eso devuelve un texto en lugar de un número
+      - El rol de QA no puede leer números, solo texto, y por eso todo llega como cadena
+    correcta: 0
+    explicacion:
+      "`count(*)` es un `bigint` y `pg` entrega los `bigint` como texto para no perder precisión. Las columnas `integer`,
+      como `stock` o `total_cents`, sí llegan como número."
+  - id: bd-tres-fuentes
+    enunciado:
+      "La compra devuelve 201 y `paymentStatus: approved`, pero el pedido no está en `GET /api/orders` y en la base
+      está `pending`. ¿Cómo lo redactas en el informe?"
+    opciones:
+      - "«La tienda falla»: con eso basta, el equipo lo investigará por su cuenta"
+      - «El pago se aprobó, pero el pedido no aparece en Mis pedidos», sin más datos ni consulta
+      - "«La API dice que se cobró, pero el pedido queda pendiente»: con la consulta que lo prueba"
+      - «El pedido se perdió», sin indicar dónde se mira ni qué se esperaba encontrar
+    correcta: 2
+    explicacion:
+      Un buen informe dice qué fuente discrepa de las otras y adjunta la evidencia (la consulta SQL o la respuesta
+      de la API). Con «la tienda falla» o sin evidencia, el equipo no puede reproducirlo.
+  - id: bd-admin-api
+    enunciado: No tienes acceso a la base de la Arena alojada. ¿Qué alternativa te da la misma evidencia del cobro?
+    opciones:
+      - Pedir la contraseña del superusuario de la base de datos al equipo de infraestructura
+      - Leer el cobro con `GET /api/admin/payments?orderId=` con la cuenta de administración
+      - Adivinar el importe cobrado a partir del total que muestra la pantalla del pedido
+      - "Nada: sin acceso directo a la base de datos no se puede comprobar un cobro"
+    correcta: 1
+    explicacion:
+      La API de administración expone los cobros (`amountCents`, `status`, `cardLast4`...). Filtrar por `orderId`
+      es lo que evita mezclar los cobros de datos viejos. Pedir el superusuario rompería el principio de mínimo privilegio.
+  - id: bd-stock
+    enunciado:
+      Quieres comprobar que una compra de 2 unidades descuenta el stock en un ambiente donde otras personas también
+      compran. ¿Cómo evitas falsos positivos?
+    opciones:
+      - Comprobar que el stock final es exactamente 9, porque 11 menos 2 son 9
+      - Comprobar que el stock final es mayor que cero después de la compra de prueba
+      - Leer el stock antes y después, y comparar la diferencia, usando un producto que solo toque tu test
+      - "No comprobar el stock: ese dato cambia solo y nunca es fiable en un ambiente compartido"
+    correcta: 2
+    explicacion:
+      Un valor absoluto (9) depende de cómo estaba el ambiente antes. La diferencia entre el antes y el después prueba
+      el efecto de tu compra. Como el stock es compartido, esa comprobación se hace sin tests que compren el mismo producto
+      en paralelo.

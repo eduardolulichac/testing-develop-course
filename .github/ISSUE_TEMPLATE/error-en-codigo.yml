@@ -1,0 +1,37 @@
+name: Error en plataforma, Arena o evaluador
+description: Algo no funciona como debería (los defectos intencionales de QA Arena no cuentan)
+labels: [bug]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      options: [Plataforma, QA Arena, Evaluador, Plantilla de reto, Otra]
+    validations:
+      required: true
+  - type: textarea
+    id: pasos
+    attributes:
+      label: Pasos para reproducirlo
+    validations:
+      required: true
+  - type: textarea
+    id: esperado
+    attributes:
+      label: Qué esperabas y qué ocurrió
+    validations:
+      required: true
+  - type: textarea
+    id: entorno
+    attributes:
+      label: Tu entorno
+      description: Sistema operativo, versiones de Node y Docker
+  - type: checkboxes
+    id: no-intencional
+    attributes:
+      label: Confirmaciones
+      options:
+        - label: Revisé que no sea un defecto intencional de QA Arena
+          required: true
+        - label: No incluí secretos ni datos personales
+          required: true

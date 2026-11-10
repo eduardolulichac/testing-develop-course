@@ -1,0 +1,89 @@
+preguntas:
+  - id: e2e-reparto
+    enunciado: "En un test E2E que verifica el envío del carrito, ¿qué conviene hacer por API y qué por pantalla?"
+    opciones:
+      [
+        "Todo por pantalla, porque así el test se parece más a lo que hace una persona real y no se pierde ningún paso",
+        "Todo por API, porque es la vía más rápida y la pantalla no aporta nada que la API no confirme",
+        "Preparar el carrito y el cupón por API, y verificar el envío en la pantalla",
+        "Preparar por pantalla, para que falle pronto, y verificar por API, que es más estable",
+      ]
+    correcta: 2
+    explicacion: "La API prepara de forma rápida y estable; la pantalla verifica lo que ve la persona. Si todo fuera API no probarías la interfaz, y preparar por pantalla vuelve lenta la suite y mezcla lo que preparas con lo que verificas."
+  - id: e2e-storagestate
+    enunciado: "¿Por qué `storageState` permite entrar a la Arena sin pasar por la pantalla de inicio de sesión?"
+    opciones:
+      [
+        "Guarda cookies y localStorage, y la Arena guarda su token en localStorage",
+        "Desactiva la autenticación de la tienda mientras corren los tests de la suite",
+        "Guarda la contraseña de Ana y la escribe sola en el formulario antes de cada test",
+        "Usa un inicio de sesión especial del navegador que la Arena acepta sin token",
+      ]
+    correcta: 0
+    explicacion: "`storageState` guarda cookies y `localStorage`. El front de la Arena deja el token en `localStorage` (clave `arena.token`), así que al abrir la página con ese estado ya te reconoce como Ana. No salta la autenticación: reutiliza una sesión ya iniciada."
+  - id: e2e-setup
+    enunciado: "Tienes 30 tests y la Arena tarda 1,5 s en cada login. ¿Qué opción reduce más el tiempo sin perder cobertura?"
+    opciones:
+      [
+        "Subir el timeout de las aserciones para que el login lento no haga fallar los tests",
+        "Iniciar sesión por API una vez en un proyecto `setup` y reutilizar el estado",
+        "Cambiar cada `waitForTimeout` por uno más corto para ahorrar tiempo en cada test",
+        "Quitar el login de toda la suite, también del test que prueba el formulario",
+      ]
+    correcta: 1
+    explicacion: "El proyecto `setup` paga el login una vez y los 30 tests arrancan con la sesión puesta. Subir timeouts o acortar esperas no quita el coste, y eliminar el login de todos los tests dejaría sin probar la pantalla de inicio de sesión (un test debe seguir cubriéndola)."
+  - id: e2e-aislamiento
+    enunciado: "Dos tests usan el carrito de Ana y se ejecutan en paralelo. A veces fallan los totales. ¿Cuál es la causa más probable y su mejor arreglo?"
+    opciones:
+      [
+        "La API es lenta con dos peticiones a la vez: hay que subir el tiempo de espera",
+        "El navegador está desactualizado: hay que reinstalar Chromium con Playwright",
+        "Los tests deben ejecutarse siempre en el mismo orden, y así se evita el fallo",
+        "Comparten carrito: cada test necesita su propio cliente",
+      ]
+    correcta: 3
+    explicacion: "Los dos modifican a la vez el mismo estado, así que el resultado depende del orden. Un cliente nuevo por test (por ejemplo, con `/api/auth/register`) elimina el estado compartido y permite el paralelismo; ordenar los tests solo esconde el problema."
+  - id: e2e-requisitos
+    enunciado: "REQ-3 dice que el envío gratis se calcula después del descuento y REQ-7 dice «Envío gratis en compras desde 50 USD». Para un carrito de 50,90 USD con un cupón del 10 %, ¿qué haces?"
+    opciones:
+      [
+        "Citar los dos textos, avisar de la contradicción y preguntar a producto cuál manda",
+        "Escribir solo el test de REQ-3, que es el más detallado, y descartar REQ-7 sin avisar a nadie",
+        "Reportar un defecto en la tienda, porque con ese carrito no se cumple REQ-7",
+        "Escribir los dos tests y esperar que el sistema pase ambos",
+      ]
+    correcta: 0
+    explicacion: "Con esos dos textos, el mismo carrito puede ser correcto para uno y erróneo para el otro: ningún test lo resuelve. Elegir uno por tu cuenta traslada tu suposición al equipo. Lo profesional es documentar la contradicción y preguntar."
+  - id: e2e-release
+    enunciado: "Pasas a la release v1.1.0 (requisitos revisados) y tu test de envío espera `$5.00`, pero recibe `$0.00`. ¿Qué significa?"
+    opciones:
+      [
+        "Que el sistema empeoró al pasar a la nueva versión y hay que reportarlo",
+        "Que Playwright cambió su comportamiento y conviene actualizar la versión de la herramienta",
+        "El requisito cambió: el test está desactualizado y se revisa contra el nuevo texto",
+        "Que debes borrar el test para que la suite quede en verde de nuevo",
+      ]
+    correcta: 2
+    explicacion: "El sistema devuelve lo mismo; lo que cambió es el requisito. Un resultado rojo no siempre es un defecto: primero se comprueba la versión del requisito que se está probando y se actualiza el test, no se borra."
+  - id: e2e-medir
+    enunciado: "Quieres comprobar cuánto ahorra el login por token. ¿Con qué tests comparas el tiempo de la versión «por pantalla» y la «por API»?"
+    opciones:
+      [
+        "Con cualquiera: el tiempo total no depende de si los tests pasan o fallan",
+        "Solo con tests que fallan, porque son los que más tiempo consumen",
+        "Con un solo test ejecutado una vez, que es suficiente para una comparación",
+        "Con tests que pasan en ambas, porque cada fallo espera el plazo y tapa el efecto",
+      ]
+    correcta: 3
+    explicacion: "Un test que falla espera hasta agotar el plazo de la aserción (10 s en nuestra configuración) y ese tiempo no tiene que ver con el login. Para medir el efecto, compara tests que pasen en ambas versiones y, si puedes, repite la medición."
+  - id: e2e-login-pantalla
+    enunciado: "Ya inicias sesión por API en el resto de la suite. ¿Qué haces con el formulario de inicio de sesión?"
+    opciones:
+      [
+        "Lo pruebas en todos los tests, por si acaso cambia algo en el formulario",
+        "Lo pruebas en un test propio, por pantalla, porque eso es lo que ese test verifica",
+        "Dejas de probarlo, porque el token ya demuestra que el formulario funciona",
+        "Lo pruebas solo cuando hay un despliegue, con una suite aparte que se ejecuta a mano",
+      ]
+    correcta: 1
+    explicacion: "El token no demuestra que el formulario funcione. El inicio de sesión por pantalla se cubre con uno o pocos tests dedicados (REQ-1); el resto de la suite lo evita porque no es lo que prueba."

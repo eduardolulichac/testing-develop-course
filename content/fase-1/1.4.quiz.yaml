@@ -1,0 +1,89 @@
+preguntas:
+  - id: aserciones-que-es
+    enunciado: "Un test de Playwright recorre el carrito completo, pero no tiene ninguna aserción. ¿Qué pasa cuando la tienda tiene un defecto en el total?"
+    opciones:
+      [
+        "Falla, porque Playwright detecta que el total es raro",
+        "Pasa, porque solo hizo clics y escribió datos",
+        "Falla con un aviso de que faltan aserciones",
+        "Depende del navegador",
+      ]
+    correcta: 1
+    explicacion: "Sin aserciones, el test solo ejecuta pasos. Si ninguno falla (un botón que no existe, una página que no carga), pasa aunque el total esté mal. La aserción es lo que compara contra el resultado esperado."
+  - id: aserciones-web-first
+    enunciado: "¿Qué diferencia hay entre `await expect(locator).toHaveText('$48.27')` y `expect(await locator.textContent()).toBe('$48.27')`?"
+    opciones:
+      [
+        "Ninguna, hacen lo mismo",
+        "La primera reintenta hasta que el texto coincide o se acaba el plazo; la segunda lee el texto una sola vez",
+        "La segunda reintenta y la primera no",
+        "La primera solo funciona con números",
+      ]
+    correcta: 1
+    explicacion: "Las aserciones sobre un localizador son web-first y reintentan. La segunda forma lee el texto en un instante concreto: si la página aún no se actualizó, falla aunque la aplicación esté bien."
+  - id: aserciones-sin-await
+    enunciado: "Escribes `expect(page.getByTestId('cart-total')).toHaveText('$1.00')` sin `await`. ¿Qué es lo más cierto?"
+    opciones:
+      [
+        "Funciona igual: Playwright siempre espera",
+        "El test se vuelve más rápido y es igual de fiable",
+        "La aserción no se espera: el fallo llega tarde, cuando el test ya siguió adelante (en 1.64 se informa con «Test ended»)",
+        "Playwright la convierte en una aserción suave",
+      ]
+    correcta: 2
+    explicacion: "Sin `await`, el test sigue sin esperar el resultado de la aserción. El error aparece tarde, cuando el test ya hizo otros pasos o terminó, y la página que se comprueba puede ser ya otra. Siempre se escribe `await expect(...)`."
+  - id: aserciones-que-verificar
+    enunciado: "Estás probando el carrito. ¿Cuál de estas aserciones aporta más valor?"
+    opciones:
+      [
+        "`toBeVisible()` sobre la tabla del carrito",
+        "`toHaveText('-$7.63')` sobre el descuento después de aplicar un cupón del 15 % a $50.90",
+        "`toContainText('$')` sobre el total",
+        "`toBeDefined()` sobre el localizador del total",
+      ]
+    correcta: 1
+    explicacion: "Verifica el importe exacto que exige el requisito. Las demás pasan con cualquier valor: que la tabla se vea, que el texto tenga un `$` o que el localizador exista no dice nada sobre el descuento."
+  - id: aserciones-cero
+    enunciado: "Pruebas `await expect(page.getByTestId('cart-item-15')).toHaveCount(0)` justo después de abrir un carrito que sí tiene ese producto, y el test pasa. ¿Por qué?"
+    opciones:
+      [
+        "Porque el producto 15 no existe",
+        "Porque `toHaveCount(0)` se cumple mientras la página aún no dibujó el elemento",
+        "Porque Playwright ignora los `data-testid`",
+        "Porque el contador del carrito estaba mal",
+      ]
+    correcta: 1
+    explicacion: "`toHaveCount(0)` se cumple en cuanto no hay elementos, incluso antes de que la página termine de cargar. Hay que esperar antes algo que muestre que cargó (por ejemplo, el contador o un total) y después comprobar la ausencia."
+  - id: aserciones-soft
+    enunciado: "¿Para qué sirve `expect.soft`?"
+    opciones:
+      [
+        "Para que la aserción reintente más tiempo",
+        "Para anotar el fallo y seguir ejecutando el test, mostrando todos los fallos al final",
+        "Para ignorar errores sin que el test falle",
+        "Para comparar valores aproximados",
+      ]
+    correcta: 1
+    explicacion: "Una aserción suave no detiene el test. El test se marca como fallido al final y el informe lista todas las que fallaron. Es útil para revisar varios campos de un mismo resumen, y se combina con mensajes propios para saber cuál falló."
+  - id: aserciones-romper-a-proposito
+    enunciado: "Cambias a propósito el valor esperado de un test por `-$99.99` y el test sigue pasando. ¿Qué concluyes?"
+    opciones:
+      [
+        "Que el test es muy robusto",
+        "Que Playwright tiene un error",
+        "Que el test no está comprobando lo que dice y hay que reescribirlo",
+        "Que debes subir el plazo de la aserción",
+      ]
+    correcta: 2
+    explicacion: "Si un valor absurdo no hace fallar el test, ninguna aserción compara de verdad el dato. Es la técnica más rápida para detectar tests que pasan sin probar nada."
+  - id: aserciones-escenario-con-defectos
+    enunciado: "Tu test del cupón `SAVE5` (descuento fijo de $5) pasa en `baseline` y también en `fase1-aserciones`, que tiene un defecto de redondeo en descuentos porcentuales. ¿Qué significa?"
+    opciones:
+      [
+        "Que la aplicación no tiene defectos",
+        "Que el test es incorrecto y hay que borrarlo",
+        "Que ese test no mira donde está el defecto; para detectarlo hace falta un cupón porcentual como `BIGSPEND`",
+        "Que el escenario con defectos no se activó nunca",
+      ]
+    correcta: 2
+    explicacion: "Un descuento fijo no se redondea, así que `SAVE5` no puede mostrar el defecto. Un test que pasa en los dos escenarios es válido, pero no protege contra ese defecto: necesitas otro que sí lo mire."

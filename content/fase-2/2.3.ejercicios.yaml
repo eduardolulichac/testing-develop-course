@@ -1,0 +1,140 @@
+ejercicios:
+  - slug: ej-2-3-esquema-del-producto
+    tipo: guiado
+    titulo: "Valida el detalle de producto con un esquema"
+    escenario: fase2-api
+    pistas:
+      - "Importa `Producto` de `schemas/producto.ts` en `tests/api/catalogo.spec.ts`. El esquema ya existe: describe un producto con sus ocho campos y exige que `id`, `priceCents` y `stock` sean enteros."
+      - "En la prueba del detalle, en lugar de leer `.name` directamente, pasa el cuerpo por `Producto.parse(await res.json())`. `parse` devuelve el producto tipado y lanza un error si algún campo no cumple."
+      - "Ejecútala con `baseline`: pasa. Actívala con `fase2-api` y lee el error de Zod: te indica la ruta del campo (`path`) y qué esperaba frente a qué recibió."
+    solucion: 'Cambia el cuerpo de la prueba por `const res = await request.get("/api/products/1"); expect(res.status()).toBe(200); expect(Producto.parse(await res.json()).priceCents).toBe(990);`. Con `baseline` pasa. Con `fase2-api` falla con un `ZodError` cuyo detalle dice `"expected": "number"`, `"path": ["priceCents"]` y `"message": "Invalid input: expected number, received string"`: la API devuelve el precio como texto aunque el contrato dice entero. Es un defecto de contrato que la prueba anterior (solo el nombre) no veía.'
+  - slug: ej-2-3-cierre-de-sesion
+    tipo: guiado
+    titulo: "Prueba el ciclo completo de la sesión"
+    escenario: fase2-api
+    pistas:
+      - "Usa `loginPorApi(request)` para obtener un token. Comprueba que `GET /api/auth/me` con ese token (cabecera con `conToken(token)`) responde 200."
+      - "Cierra la sesión con `POST /api/auth/logout` y la misma cabecera: la API responde 204, sin cuerpo. Comprueba ese código exacto."
+      - "Vuelve a pedir `GET /api/auth/me` con el MISMO token. Un token revocado debe responder 401. Ejecuta con `baseline` y con `fase2-api` y compara el resultado."
+    solucion: 'La prueba: `const token = await loginPorApi(request); expect((await request.get("/api/auth/me", { headers: conToken(token) })).status()).toBe(200); const salir = await request.post("/api/auth/logout", { headers: conToken(token) }); expect(salir.status()).toBe(204); const despues = await request.get("/api/auth/me", { headers: conToken(token) }); expect(despues.status()).toBe(401);`. Con `baseline` pasa. Con `fase2-api` falla en la última línea con `Expected: 401` y `Received: 200`: el cierre de sesión responde 204 pero el token sigue valiendo. En la pantalla no se nota, porque te lleva al login.'
+  - slug: ej-2-3-paginacion-completa
+    tipo: guiado
+    titulo: "Recorre todas las páginas del catálogo"
+    escenario: fase2-api
+    pistas:
+      - "Haz un bucle que pida `/api/products?page=N&pageSize=5` empezando en 1 y valide cada respuesta con `ListaDeProductos`. Guarda los ids de cada página en un arreglo y guarda `total`. Sal del bucle cuando una página venga vacía."
+      - "Comprueba dos cosas: que no hay ids repetidos (`new Set(ids).size` es igual a `ids.length`) y que `ids.length` es igual a `total`."
+      - "Ejecuta con `baseline` (pasa) y con `fase2-api`. El mensaje del fallo compara dos números: lee cuál es mayor y por qué."
+    solucion: 'El bucle: `const ids: number[] = []; let total = 0; for (let pagina = 1; ; pagina++) { const res = await request.get("/api/products", { params: { page: pagina, pageSize: 5 } }); const cuerpo = ListaDeProductos.parse(await res.json()); total = cuerpo.total; if (cuerpo.items.length === 0) break; ids.push(...cuerpo.items.map((p) => p.id)); }` y después `expect(new Set(ids).size).toBe(ids.length); expect(ids).toHaveLength(total);`. Con `baseline` hay 24 productos y pasa. Con `fase2-api` falla en la primera comprobación con `Expected: 25` y `Received: 24`: se recibieron 25 elementos pero solo 24 distintos, porque cada página después de la primera empieza repitiendo el último producto de la anterior.'
+  - slug: ej-2-3-cupon-doble
+    tipo: guiado
+    titulo: "Repasa el cupón doble por API"
+    escenario: fase1-compra
+    pistas:
+      - "Crea un cliente con `registrarCliente(request)` y agrégale 2 unidades del producto 1 con `POST /api/cart/items`. El subtotal será `1980` centavos."
+      - 'Lanza dos `POST /api/cart/coupon` con el cuerpo `{ code: "SAVE5" }` dentro de un `Promise.all([...])`, sin `await` en cada una. Comprueba que las dos responden 200.'
+      - "Pide `GET /api/cart` y valida el cuerpo con `Carrito`. El contrato dice que aplicar un cupón es idempotente, así que `discountCents` debe ser `500` (el descuento de una sola aplicación). Ejecuta con `baseline` y con `fase1-compra`."
+    solucion: 'Tras agregar los productos: `const [primera, segunda] = await Promise.all([request.post("/api/cart/coupon", { headers: conToken(token), data: { code: "SAVE5" } }), request.post("/api/cart/coupon", { headers: conToken(token), data: { code: "SAVE5" } })]); expect(primera.status()).toBe(200); expect(segunda.status()).toBe(200); const carrito = await request.get("/api/cart", { headers: conToken(token) }); expect(Carrito.parse(await carrito.json()).discountCents).toBe(500);`. Con `baseline` pasa. Con `fase1-compra` falla con `Expected: 500` y `Received: 1000`: dos aplicaciones casi simultáneas del mismo cupón descuentan dos veces. Es el defecto que viste en el módulo 1.3 con el doble clic, ahora demostrado sin navegador. Con `fase2-api` activo esta prueba pasa: ese defecto pertenece a otro escenario.'
+  - slug: ej-2-3-datos-propios
+    tipo: guiado
+    titulo: "Arregla una prueba que depende de datos compartidos"
+    pistas:
+      - "Escribe la prueba con `loginPorApi(request)` (la cuenta de Ana): agrega 2 unidades del producto 1 con `POST /api/cart/items`, valida el cuerpo con `Carrito` y espera `subtotalCents` igual a `1980`. Con `baseline` pasa."
+      - "Ejecútala con `npx playwright test <tu archivo> --repeat-each=3`. Mira los números que recibe en la segunda y la tercera vuelta: el carrito de Ana conserva lo que agregaron las vueltas anteriores."
+      - "Reemplaza `loginPorApi` por `registrarCliente`: cada vuelta crea un cliente nuevo con carrito vacío. Vuelve a ejecutar con `--repeat-each=3`."
+    solucion: "Con la cuenta de Ana (`const token = await loginPorApi(request);`) pasa la primera vuelta y falla la segunda con `Expected: 1980` y `Received: 3960`, y la tercera con `Received: 5940`: cada vuelta suma 2 unidades al mismo carrito. Con `const token = await registrarCliente(request);` pasan las tres vueltas, porque cada una parte de un carrito propio. Regla: toda prueba que cambie datos crea los suyos."
+  - slug: reto-2-3-api
+    tipo: reto
+    titulo: "Prueba la API de la tienda"
+    escenario: fase2-api
+    criterio_aprobacion:
+      version: 1
+      arena: { escenario: fase2-api, release: null, semilla: 2301 }
+      umbral: 70
+      obligatorios: [suite-verde-baseline, detecta-fase2-api, sin-arena-interna]
+      criterios:
+        - id: suite-ejecuta
+          titulo: "La suite tiene al menos 20 pruebas de API"
+          tipo: suite_ejecuta
+          min: 20
+          peso: 5
+          competencia: tecnica
+          feedback_fallo: "Escribe al menos 20 pruebas de API."
+        - id: suite-verde-baseline
+          titulo: "Todas las pruebas pasan contra la API correcta"
+          tipo: suite_pasa
+          escenario: baseline
+          peso: 15
+          competencia: tecnica
+          feedback_fallo: "Alguna prueba falla contra la API correcta; revisa los datos que comparten tus pruebas (se acumulan)."
+        - id: detecta-fase2-api
+          titulo: "Tus pruebas detectan los defectos de la lección"
+          tipo: suite_detecta
+          escenario: fase2-api
+          release: null
+          peso: 10
+          competencia: analisis
+          feedback_fallo: "Con los defectos de la lección activos, todas tus pruebas pasan."
+        - id: detecta-esquema
+          titulo: "Tus pruebas detectan un campo con el tipo equivocado"
+          tipo: suite_detecta
+          escenario: eval-2-3-esquema
+          release: null
+          peso: 12
+          competencia: analisis
+          feedback_fallo: "Tus pruebas no validan el tipo de los campos: usa un esquema para cada respuesta."
+        - id: detecta-estado
+          titulo: "Tus pruebas detectan un código de estado incorrecto"
+          tipo: suite_detecta
+          escenario: eval-2-3-estado
+          release: null
+          peso: 10
+          competencia: analisis
+          feedback_fallo: "Prueba los casos de error y su código exacto, no solo los caminos felices."
+        - id: detecta-sesion
+          titulo: "Tus pruebas detectan un fallo en el ciclo de la sesión"
+          tipo: suite_detecta
+          escenario: eval-2-3-sesion
+          release: null
+          peso: 10
+          competencia: analisis
+          feedback_fallo: "Prueba el ciclo completo del token: qué pasa después de cerrar sesión."
+        - id: detecta-paginacion
+          titulo: "Tus pruebas detectan un fallo en la paginación"
+          tipo: suite_detecta
+          escenario: eval-2-3-paginacion
+          release: null
+          peso: 8
+          competencia: analisis
+          feedback_fallo: "Recorre varias páginas y compara: ¿hay repetidos o faltantes?"
+        - id: detecta-no-guiado
+          titulo: "Tus pruebas detectan un defecto que la lección no menciona"
+          tipo: suite_detecta
+          escenario: eval-2-3-limite
+          release: null
+          peso: 15
+          competencia: autonomia
+          feedback_fallo: "Hay un defecto que la lección no menciona. Relee el contrato completo y cuestiona cada regla que describe: ¿tus pruebas la ejercitan?"
+        - id: informe-defectos
+          titulo: "Documentas al menos dos defectos demostrados por un test"
+          tipo: informe
+          formato: defectos-v1
+          archivo: defectos.yaml
+          min: 2
+          peso: 10
+          competencia: comunicacion
+          feedback_fallo: "Documenta en `defectos.yaml` al menos dos defectos, cada uno ligado a un test que los demuestre."
+        - id: sin-credenciales-en-codigo
+          titulo: "Sin contraseñas escritas en el código"
+          tipo: estatico
+          regla: sin-credenciales-en-codigo
+          peso: 5
+          competencia: tecnica
+          feedback_fallo: "No escribas contraseñas en el código: léelas de `USUARIO_CLAVE` (en CI las pone el evaluador)."
+        - id: sin-arena-interna
+          titulo: "La suite no usa los endpoints internos de la Arena"
+          tipo: estatico
+          regla: sin-arena-interna
+          peso: 0
+          competencia: autonomia
+          feedback_fallo: "Los tests no deben llamar a /__arena ni leer variables ARENA_*: prueba la API como lo haría un cliente."

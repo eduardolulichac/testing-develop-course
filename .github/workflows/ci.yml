@@ -1,0 +1,234 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege by default (the repo is public); jobs that need more declare it themselves.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm validate:content
+      # evaluator/retos/*.json must equal criterio_aprobacion in content/ (design §6.3).
+      - run: pnpm --filter @course/evaluator retos:check
+
+  # Platform tests that need a real Supabase stack (RLS tests + Playwright E2E).
+  # Runs in parallel with `verify` so the fast job stays fast; both are required checks.
+  platform-db-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: apps/platform
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Exclude services the tests do not use (Studio, logs, image proxy, edge runtime...)
+      # to cut image pulls and startup time. Mailpit, Auth, REST and Storage stay on.
+      - name: Start Supabase
+        run: pnpm db:start -x studio,imgproxy,vector,logflare,edge-runtime,supavisor,postgres-meta
+
+      # Local demo keys, generated per run. Masked and exported via GITHUB_ENV, never printed.
+      - name: Export Supabase keys
+        run: |
+          status="$(pnpm --silent db:status -o json 2>/dev/null)"
+          url="$(jq -r .API_URL <<<"$status")"
+          pub="$(jq -r .PUBLISHABLE_KEY <<<"$status")"
+          secret="$(jq -r .SECRET_KEY <<<"$status")"
+          for v in "$pub" "$secret"; do
+            if [ -z "$v" ] || [ "$v" = null ]; then echo "::error::Missing Supabase key in db:status output"; exit 1; fi
+            echo "::add-mask::$v"
+          done
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$url"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$pub"
+            echo "SUPABASE_SECRET_KEY=$secret"
+            echo "NEXT_PUBLIC_SITE_URL=http://localhost:3100"
+          } >> "$GITHUB_ENV"
+
+      - name: DB tests (RLS)
+        run: pnpm test:db
+
+      - run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E tests
+        run: pnpm test:e2e
+
+      # Public sample lesson (no session): its own production server on port 3200.
+      - name: E2E tests (sample lesson)
+        run: pnpm exec playwright test --config playwright.sample.config.ts
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            apps/platform/playwright-report/
+            apps/platform/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Stop Supabase
+        if: always()
+        run: pnpm db:stop --no-backup
+
+  # Self-test of the challenge evaluator against a real ephemeral Arena built from this commit
+  # (design §9.4), one matrix entry per reto (E4_F2 Q11). Also the Docker Compose smoke test of the
+  # evaluator's compose file (H17). The reto-2-8-docker entry runs the REAL `runDocker`
+  # (SELFTEST_DOCKER=1, builds the ~2 GB Playwright image), so it is added only on push to main, never on PRs.
+  # `files` are the integration tests of that entry; `chromium`/`actionlint` install only what it needs.
+  evaluator-selftest:
+    name: evaluator-selftest (${{ matrix.reto }})
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.timeout }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(format('[{0}{1}]', '{"reto":"reto-1-1-login","files":"test/selftest.integration.test.ts test/browser-confirmers.integration.test.ts test/flaky-positions.integration.test.ts","chromium":true,"actionlint":false,"docker":false,"timeout":30},{"reto":"reto-2-2-pom","files":"test/selftest-reto-2-2-pom.integration.test.ts","chromium":true,"actionlint":false,"docker":false,"timeout":30},{"reto":"reto-2-3-api","files":"test/selftest-reto-2-3-api.integration.test.ts","chromium":false,"actionlint":false,"docker":false,"timeout":30},{"reto":"reto-2-6-pipeline","files":"test/selftest-reto-2-6-pipeline.integration.test.ts","chromium":true,"actionlint":true,"docker":false,"timeout":30},{"reto":"reto-2-9-ia-framework","files":"test/selftest-reto-2-9-ia-framework.integration.test.ts","chromium":true,"actionlint":false,"docker":false,"timeout":30}', (github.event_name == 'push' && github.ref == 'refs/heads/main') && ',{"reto":"reto-2-8-docker","files":"test/selftest-reto-2-8-docker.integration.test.ts","chromium":true,"actionlint":false,"docker":true,"timeout":40}' || '')) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build Arena images
+        run: |
+          docker build -f apps/qa-arena/api/Dockerfile -t qa-arena-api:ci .
+          docker build -f apps/qa-arena/web/Dockerfile -t qa-arena-web:ci .
+
+      # Same protection as the real evaluator workflow: a per-run secret that only the evaluator
+      # process holds (compose reads ARENA_RUNNER_TOKEN, the tests read SELFTEST_ARENA_TOKEN).
+      - name: Generate runner token
+        run: |
+          token="$(openssl rand -hex 24)"
+          echo "::add-mask::$token"
+          echo "ARENA_RUNNER_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "SELFTEST_ARENA_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Start ephemeral Arena
+        working-directory: evaluator
+        env:
+          ARENA_API_IMAGE: qa-arena-api:ci
+          ARENA_WEB_IMAGE: qa-arena-web:ci
+        run: docker compose -f compose/arena.yml up -d --wait
+
+      # Same Playwright version as every template (1.64.1, pinned there), so the browser matches.
+      - name: Install Chromium
+        if: matrix.chromium
+        working-directory: apps/platform
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Same pinned release and checksum as evaluator/.github/workflows/evaluate.yml.
+      - name: Install actionlint
+        if: matrix.actionlint
+        env:
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 --output "$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --strict -
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -version
+          echo "ACTIONLINT=$RUNNER_TEMP/actionlint" >> "$GITHUB_ENV"
+
+      - name: Self-test
+        working-directory: evaluator
+        env:
+          SELFTEST_ARENA_URL: http://localhost:18080
+          SELFTEST_DOCKER: ${{ matrix.docker && '1' || '' }}
+          SELFTEST_API_IMAGE: qa-arena-api:ci
+          SELFTEST_WEB_IMAGE: qa-arena-web:ci
+          SELFTEST_FILES: ${{ matrix.files }}
+        # Word splitting of SELFTEST_FILES is intended (space-separated test paths).
+        run: pnpm exec vitest run $SELFTEST_FILES
+
+      - name: Arena logs
+        if: failure()
+        working-directory: evaluator
+        run: docker compose -f compose/arena.yml logs --no-color | tail -100
+
+      - name: Stop Arena
+        if: always()
+        working-directory: evaluator
+        run: docker compose -f compose/arena.yml down -v
+
+  # Publishes the Arena images to GHCR on main. They are born PRIVATE: making both packages public
+  # is a one-time manual step (irreversible), after which set the repo variable ARENA_IMAGES_PUBLIC=true
+  # to enable the anonymous-pull check below.
+  arena-images:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [verify, evaluator-selftest]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api_digest: ${{ steps.api.outputs.digest }}
+      web_digest: ${{ steps.web.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: api
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/qa-arena/api/Dockerfile
+          push: true
+          tags: ghcr.io/eduardolulichac/qa-arena-api:${{ github.sha }}
+      - id: web
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/qa-arena/web/Dockerfile
+          push: true
+          tags: ghcr.io/eduardolulichac/qa-arena-web:${{ github.sha }}
+      - name: Digests
+        run: |
+          echo "api  ${{ steps.api.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "web  ${{ steps.web.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
+      # Fails while a package is still private: that is the point (an evaluator that cannot pull is broken).
+      - name: Anonymous pull
+        if: vars.ARENA_IMAGES_PUBLIC == 'true'
+        run: |
+          docker logout ghcr.io
+          docker pull ghcr.io/eduardolulichac/qa-arena-api@${{ steps.api.outputs.digest }}
+          docker pull ghcr.io/eduardolulichac/qa-arena-web@${{ steps.web.outputs.digest }}

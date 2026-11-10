@@ -1,0 +1,20 @@
+name: reto-docker
+
+include:
+  - arena/compose.yml
+
+services:
+  tests:
+    build: .
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      ARENA_URL: http://web
+      USUARIO_EMAIL:
+      USUARIO_CLAVE:
+      CI: "1"
+    ipc: host
+    init: true
+    volumes:
+      - ./resultados:/app/resultados

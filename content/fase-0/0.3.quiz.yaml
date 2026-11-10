@@ -1,0 +1,81 @@
+preguntas:
+  - id: ts-const-vs-let
+    enunciado: "Guardas el número de tests fallidos y lo irás aumentando en cada ejecución. ¿Cómo lo declaras?"
+    opciones:
+      - "const failedTests = 0;"
+      - "let failedTests = 0;"
+      - "type failedTests = 0;"
+    correcta: 1
+    explicacion: "`let` permite reasignar el valor (`failedTests = failedTests + 1`). Con `const` obtendrías un error al intentar cambiarlo."
+  - id: ts-comparar-igualdad
+    enunciado: "¿Qué hace `if (failed = 0)` en lugar de `if (failed === 0)`?"
+    opciones:
+      - "Compara failed con 0 igual que ===."
+      - "Asigna 0 a failed en lugar de comparar."
+      - "Comprueba si failed es mayor que 0."
+      - "Compara solo el tipo de failed."
+    correcta: 1
+    explicacion: "Un solo `=` asigna. Para comparar se usa `===`. Es un error clásico, y TypeScript no lo detecta si `failed` es una variable `let`: revisa cada `if` a mano."
+  - id: ts-coercion-texto-numero
+    enunciado: '¿Qué resultado da `"19.99" + 1` en JavaScript/TypeScript sin convertir antes?'
+    opciones:
+      - "20.99"
+      - '"19.991"'
+      - "NaN"
+      - "Un error de ejecución"
+    correcta: 1
+    explicacion: 'Si uno de los operandos es texto, `+` concatena. Hay que convertir con `Number("19.99")` antes de sumar.'
+  - id: ts-default-nullish
+    enunciado: "La configuración es `{ timeout: 0 }`. ¿Qué valor tiene `config.timeout ?? 5000`?"
+    opciones:
+      - "5000"
+      - "undefined"
+      - "0"
+      - "null"
+    correcta: 2
+    explicacion: "`??` solo usa el valor de la derecha si la izquierda es `null` o `undefined`. El 0 es un valor válido y se respeta; con `||` se habría perdido."
+  - id: ts-indice-ultimo
+    enunciado: 'Tienes `const t = ["a", "b", "c"]`. ¿Qué devuelve `t[t.length]`?'
+    opciones:
+      - '"c"'
+      - '"a"'
+      - "undefined"
+      - "Un error de compilación siempre"
+    correcta: 2
+    explicacion: "Las posiciones válidas son 0 a 2. La posición 3 no existe y da `undefined`. El último elemento es `t[t.length - 1]` o `t.at(-1)`."
+  - id: ts-filter-map
+    enunciado: "Tienes un arreglo de resultados `{ name, passed }`. ¿Qué método usas para quedarte solo con los que fallaron?"
+    opciones:
+      - "map"
+      - "find"
+      - "filter"
+      - "push"
+    correcta: 2
+    explicacion: "`filter` devuelve un arreglo nuevo con los elementos que cumplen la condición. `map` transforma cada elemento y `find` devuelve solo el primero."
+  - id: ts-leer-error-ts2322
+    enunciado: "TypeScript dice: `Type 'string' is not assignable to type 'number'`. ¿Qué significa?"
+    opciones:
+      - "Pusiste un texto donde se esperaba un número."
+      - "Pusiste un número donde se esperaba un texto."
+      - "Falta una propiedad en un objeto."
+      - "La variable no está declarada."
+    correcta: 0
+    explicacion: 'El primer tipo (`string`) es lo que diste; el segundo (`number`) es lo que se esperaba. Se lee como "no puedo asignar un texto a algo que debe ser un número".'
+  - id: ts-sort-muta
+    enunciado: "Necesitas mostrar las duraciones ordenadas pero conservar el arreglo `times` original. ¿Qué haces?"
+    opciones:
+      - "times.sort((a, b) => b - a)"
+      - "[...times].sort((a, b) => b - a)"
+      - "times.map(sort)"
+      - "times.filter((a, b) => b - a)"
+    correcta: 1
+    explicacion: "`sort` modifica el arreglo sobre el que se llama. Con `[...times]` haces una copia y ordenas la copia."
+  - id: ts-uso-ia-errores
+    enunciado: "Te sale un error de TypeScript que no entiendes. ¿Cuál es el uso de la IA más adecuado en este módulo?"
+    opciones:
+      - "Pedir que escriba todo el programa y copiarlo."
+      - "Pedir que explique el error y qué línea mirar, y corregirlo tú."
+      - "Pedir que añada `any` o `// @ts-ignore` para que desaparezca."
+      - "Ignorar el error si `node` ejecuta el archivo."
+    correcta: 1
+    explicacion: "Aquí la IA explica y tú escribes. `any` y `@ts-ignore` solo silencian el error, y que `node` ejecute no significa que no haya errores de tipos."

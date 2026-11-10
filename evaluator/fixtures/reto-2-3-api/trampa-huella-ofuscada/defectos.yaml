@@ -1,0 +1,13 @@
+defectos:
+  - titulo: "El esquema del producto cambia con un defecto"
+    test: "el esquema del producto es correcto"
+    pasos: ["GET al estado del entorno", "Comparar el escenario"]
+    esperado: "El esquema es el del contrato"
+    obtenido: "El esquema cambia con un defecto"
+    severidad: alta
+  - titulo: "El cierre de sesión deja el token vivo"
+    test: "el cierre de sesión invalida el token"
+    pasos: ["GET al estado del entorno", "Comparar el escenario"]
+    esperado: "El token deja de valer"
+    obtenido: "El token sigue valiendo"
+    severidad: media

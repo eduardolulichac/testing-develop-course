@@ -1,0 +1,78 @@
+preguntas:
+  - id: loc-orden-preferencia
+    enunciado: "Necesitas localizar el botón «Entrar». ¿Cuál es la primera opción que debes probar?"
+    opciones:
+      [
+        'page.locator(".primary")',
+        'page.getByRole("button", { name: "Entrar" })',
+        'page.locator("//button[1]")',
+        'page.locator("form > button:last-child")',
+      ]
+    correcta: 1
+    explicacion: "`getByRole` con el nombre visible es el candidato preferido: se parece a como lo usa una persona y no depende de clases ni de posiciones. Las otras tres dependen de estilos o de la estructura del HTML."
+  - id: loc-modo-estricto
+    enunciado: "Tu localizador encuentra dos elementos y llamas a `click()`. ¿Qué hace Playwright?"
+    opciones:
+      [
+        "Hace clic en el primero",
+        "Hace clic en los dos",
+        "Falla con un error de modo estricto (strict mode violation)",
+        "Hace clic en el último",
+      ]
+    correcta: 2
+    explicacion: "Una acción necesita un solo elemento. Si hay varios, Playwright no adivina: falla y te muestra cuáles son. La solución es acotar o filtrar el localizador, no silenciar el error."
+  - id: loc-name-parcial
+    enunciado: 'En la ficha de producto hay un botón «Agregar al carrito». ¿Qué encuentra `getByRole("button", { name: "Agregar" })`?'
+    opciones:
+      [
+        "Ninguno, porque el texto no es completo",
+        "Ese botón, porque `name` compara de forma parcial y sin distinguir mayúsculas",
+        "Solo botones que se llamen exactamente «Agregar»",
+        "Todos los enlaces de la página",
+      ]
+    correcta: 1
+    explicacion: "Por defecto `name` busca texto parcial sin distinguir mayúsculas. Para exigir el texto completo se añade `exact: true`."
+  - id: loc-testid-sufijo
+    enunciado: 'Tu test usa `getByTestId("login-submit")` y pasa con `baseline`, pero falla con un escenario donde el atributo vale `login-submit-8giv7`. ¿Cuál es la mejor corrección?'
+    opciones:
+      [
+        "Escribir el sufijo nuevo en el test",
+        "Subir el timeout a 60 segundos",
+        "Usar un localizador por rol y nombre visible, que no depende del identificador",
+        "Cambiar a un XPath absoluto",
+      ]
+    correcta: 2
+    explicacion: 'El nombre visible del botón no cambió, así que `getByRole("button", { name: "Entrar" })` sigue funcionando. Copiar el sufijo o subir el timeout solo mueve el problema, y un XPath absoluto es todavía más frágil.'
+  - id: loc-count-espera
+    enunciado: "¿Cuál es la forma correcta de comprobar que hay exactamente un buscador en la página?"
+    opciones:
+      [
+        "expect(await buscador.count()).toBe(1)",
+        "await expect(buscador).toHaveCount(1)",
+        "await page.waitForTimeout(2000) y luego count()",
+        "buscador.length === 1",
+      ]
+    correcta: 1
+    explicacion: "`toHaveCount` es una aserción que reintenta hasta que se cumple o se agota el tiempo. `count()` da el número del instante, sin esperar, y una espera fija es frágil y lenta."
+  - id: loc-first-ultimo-recurso
+    enunciado: "En el catálogo hay dos botones «Agregar» por tarjeta y tu test falla por modo estricto. ¿Qué es lo más sensato?"
+    opciones:
+      [
+        "Poner `force: true` para que pase",
+        "Acotar a la tarjeta y, si da igual cuál es, usar `first()`; mejor aún, evitar el duplicado y reportarlo",
+        "Borrar el test",
+        "Usar `nth(7)` para que apunte siempre al mismo",
+      ]
+    correcta: 1
+    explicacion: "Acotar a la tarjeta reduce la ambigüedad. `first()` es aceptable si de verdad da igual cuál es, pero lo ideal es no depender del duplicado y avisar: dos botones con el mismo nombre accesible son un defecto de accesibilidad. `force: true` y `nth(7)` esconden el problema."
+  - id: loc-css-ultimo
+    enunciado: "¿Cuándo es razonable usar un selector CSS con `page.locator()`?"
+    opciones:
+      [
+        "Siempre, por ser más rápido de escribir",
+        "Cuando no hay rol, etiqueta, texto ni `data-testid` mejores, y con un selector corto y significativo",
+        "Cuando copias el selector que te da el navegador",
+        "Nunca se puede usar",
+      ]
+    correcta: 1
+    explicacion: 'CSS y XPath funcionan, pero dependen de clases y posiciones que cambian sin avisar. Úsalos como último recurso y cortos (por ejemplo, un atributo como `[aria-busy="true"]`), nunca cadenas largas de posiciones.'

@@ -1,0 +1,73 @@
+preguntas:
+  - id: ci-disparador
+    enunciado: "Quieres que tu suite se ejecute en cada pull request hacia main sin exponer tus secretos a código ajeno. ¿Qué disparador usas?"
+    opciones:
+      - "`pull_request_target`, porque da acceso a los secretos en todos los pull requests"
+      - "`pull_request` con `branches: [main]`, que no da secretos a los forks"
+      - "`workflow_dispatch`, que se lanza a mano cuando alguien se acuerda de hacerlo"
+      - "`push` a cualquier rama, porque así se ejecuta con cada envío de código"
+    correcta: 1
+    explicacion: "`pull_request` ejecuta el workflow sobre el cambio propuesto y no entrega tus secretos a los PR de forks. `pull_request_target` corre con permisos y secretos del repositorio: si ejecuta el código del PR, cualquiera puede robarlos."
+  - id: ci-permisos
+    enunciado: "Tu workflow solo ejecuta tests. ¿Qué `permissions` declaras en la raíz?"
+    opciones:
+      - "`write-all`, por si algún paso futuro necesita escribir en el repositorio"
+      - "Ninguno: por defecto GitHub no da permisos a los workflows y no hace falta declarar nada"
+      - "`contents: write`, para poder guardar los resultados en una rama del repositorio"
+      - "`contents: read`, que alcanza para descargar el código y es lo mínimo necesario"
+    correcta: 3
+    explicacion: "Principio de mínimo privilegio: una suite solo necesita leer el código. Dar `write-all` o `contents: write` permitiría modificar tu repositorio a quien lograra ejecutar código en ese workflow."
+  - id: ci-artefacto-if
+    enunciado: "La suite falla en CI y no hay informe de Playwright para descargar. El paso `upload-artifact` va después de la suite. ¿Qué falta?"
+    opciones:
+      - "`if: ${{ !cancelled() }}` en el paso, para que se ejecute también cuando la suite falla"
+      - "Cambiar `upload-artifact` por `download-artifact`, que es la acción que conserva informes"
+      - "Poner `continue-on-error: true` en el job, para que nunca termine en rojo"
+      - "Subir el informe antes de ejecutar la suite, para asegurarse de que exista"
+    correcta: 0
+    explicacion: "Por defecto un paso solo corre si los anteriores terminaron bien. Con `if: ${{ !cancelled() }}` el informe se publica con la suite en rojo, que es cuando más hace falta. `continue-on-error` esconde el fallo y no se puede subir un informe antes de que exista."
+  - id: ci-secretos
+    enunciado: "Necesitas pasar la contraseña de práctica a las pruebas en CI. ¿Cuál es la forma correcta?"
+    opciones:
+      - "Escribirla en el `env:` del workflow, ya que la contraseña de la Arena es pública y no hace daño a nadie"
+      - "Guardarla en un `.env` y subirlo al repositorio para que el CI lo lea"
+      - "Crear el secreto `USUARIO_CLAVE` y usar `${{ secrets.USUARIO_CLAVE }}` en el `env:`"
+      - "Imprimirla con `echo` al inicio del job, para comprobar que llegó"
+    correcta: 2
+    explicacion: "Los secretos se guardan cifrados en GitHub y se leen con `secrets`. Aunque la contraseña de la Arena sea pública, el hábito importa: una credencial escrita queda en el historial de Git, y un `echo` aunque se enmascare no debería existir."
+  - id: ci-humo
+    enunciado: "¿Cuál de estos conjuntos de pruebas de humo detectaría que el release del viernes dejó de permitir comprar?"
+    opciones:
+      - "Catálogo carga, buscador filtra y la página de requisitos se abre"
+      - "Catálogo carga, inicio de sesión funciona y una compra completa termina en «Pagado»"
+      - "Quince pruebas de la API de productos, cada una con un filtro distinto"
+      - "La portada responde 200 y la imagen del logotipo aparece en pantalla"
+    correcta: 1
+    explicacion: "Una prueba de humo debe cubrir el camino que no puede fallar; en una tienda, termina en la compra. Los otros conjuntos pasarían con un checkout roto. Además, el humo son pocas pruebas rápidas, no quince."
+  - id: ci-needs-env
+    enunciado: "Un job `desplegar-staging` tiene `needs: tests` y `environment: staging`. ¿Qué hace cada línea?"
+    opciones:
+      - "`needs` elige la máquina y `environment` define las variables del sistema operativo"
+      - "`needs` copia los archivos del job anterior al siguiente y `environment` instala la versión de Node indicada"
+      - "`needs` ejecuta el job en paralelo con `tests` y `environment` borra los artefactos previos"
+      - "`needs` espera a que `tests` termine bien; `environment` lo registra como despliegue"
+    correcta: 3
+    explicacion: "`needs` ordena los jobs: si `tests` falla, el despliegue no se ejecuta. `environment` lo asocia a un destino (staging), donde puedes tener reglas y secretos propios. Ninguna de las dos copia archivos ni instala nada."
+  - id: ci-puerta
+    enunciado: "El job `tests` falla en un pull request, pero alguien pulsa «Merge» y el cambio entra en main. ¿Qué faltaba?"
+    opciones:
+      - "Exigir el check del job de tests en la protección de la rama main"
+      - "Poner `timeout-minutes: 1` en el job para que falle más rápido"
+      - "Que el workflow use `pull_request_target` para que sea más estricto"
+      - "Subir el informe como artefacto, porque sin informe no se puede bloquear"
+    correcta: 0
+    explicacion: "Un check rojo avisa, pero no bloquea por sí solo. Hay que marcarlo como obligatorio en la configuración de la rama. Cambiar el disparador, el tiempo o los artefactos no impide fusionar."
+  - id: ci-despliegue-rojo
+    enunciado: "Tras un PR, el job `tests` está en verde y `desplegar-staging` en rojo porque falló una prueba de humo. ¿Cómo lo interpretas?"
+    opciones:
+      - "El pipeline está mal escrito y hay que repararlo antes de seguir"
+      - "Las pruebas de humo detectaron un problema en el release, que es su trabajo"
+      - "La suite completa tiene tests inestables y conviene ignorar el job de despliegue"
+      - "GitHub Actions falló y basta con volver a ejecutar el job hasta que pase"
+    correcta: 1
+    explicacion: "Si las pruebas de humo fallan tras el despliegue, el pipeline hizo lo que debía: avisó de un release dañado antes de que llegue a más gente. Volver a ejecutar hasta que pase, o ignorar el job, esconde el aviso."

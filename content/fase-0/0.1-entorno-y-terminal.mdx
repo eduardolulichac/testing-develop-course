@@ -1,0 +1,339 @@
+---
+modulo: "0.1"
+titulo: "Entorno y terminal"
+fase: 0
+nivel: "Base"
+duracion_min: 90
+prerequisitos: []
+escenario: "fase0-entorno"
+version: "2026-11"
+herramientas: ["Node 24 (verificado 24.14)", "VS Code", "Docker Compose v2", "curl"]
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Al terminar sabrás moverte por la terminal, entender qué es una ruta y una variable de entorno,
+  comprobar que Node funciona y levantar QA Arena en tu máquina para verificar que responde. Es el
+  suelo sobre el que se apoya todo el curso.
+</Objetivo>
+
+Un tester pasa mucho tiempo fuera de la pantalla bonita: ejecuta pruebas, mira registros y arranca la aplicación que va a probar. Todo eso se hace desde la **terminal**, una ventana donde escribes comandos y el equipo responde con texto.
+
+En este módulo usarás tres herramientas:
+
+- **VS Code**: el editor donde escribirás código y pruebas. Trae una terminal integrada (menú _Terminal > New Terminal_).
+- **Node**: el programa que ejecuta JavaScript y TypeScript fuera del navegador. El curso usa Node 24.
+- **Docker Compose**: levanta varios servicios con un solo comando. Lo usaremos para QA Arena, la aplicación de práctica.
+
+> Los ejemplos son para macOS y Linux (`bash` o `zsh`). **En Windows, en toda la Fase 0 la única vía es WSL2** (Linux dentro de Windows, que además Docker exige): instálalo una sola vez como se explica en el paso 0 y abre siempre tu terminal de Ubuntu (WSL2). No uses PowerShell ni `cmd`: los comandos del curso no funcionan igual allí. En los demás módulos solo diremos «tu terminal (WSL2 en Windows)».
+
+## 2. Explicación paso a paso
+
+<Paso numero={0} titulo="Prepara tu equipo: Windows, Docker y el repositorio del curso">
+Antes de abrir la terminal necesitas tres cosas instaladas o descargadas. Hazlas una sola vez.
+
+**1. Windows: instala WSL2.** Solo si usas Windows. WSL2 es un Linux real dentro de Windows y es la única vía para la Fase 0. Sigue la guía oficial de Microsoft («Install WSL», en `learn.microsoft.com/windows/wsl/install`). En esencia, abres PowerShell como administrador **solo esta vez**, ejecutas `wsl --install`, reinicias y creas tu usuario de Ubuntu. Desde ahí, todo el curso se hace en la terminal de Ubuntu. En macOS y Linux no hace falta este punto.
+
+**2. Instala Docker.** Docker ejecuta la Arena en contenedores, así que debe estar instalado y en marcha:
+
+- macOS y Windows: instala **Docker Desktop** (página oficial de Docker, «Get Docker»). En Windows, durante la instalación deja activada la opción de usar WSL2.
+- Linux: instala **Docker Engine** con el plugin de Compose (la documentación oficial de Docker explica cada distribución).
+
+Comprueba la instalación en tu terminal (en WSL2 si usas Windows):
+
+```bash
+docker --version
+docker compose version
+```
+
+Necesitas Docker Compose **v2**: el segundo comando debe responder `Docker Compose version v2...` o superior. Si dice `command not found`, abre Docker Desktop y espera a que termine de arrancar.
+
+**3. Consigue el repositorio del curso.** QA Arena vive dentro de él (carpeta `apps/qa-arena`) y Docker construye las imágenes con el repositorio completo, así que no basta con copiar una carpeta. La dirección es `https://github.com/eduardolulichac/testing-develop-course`. El repositorio es **público**: no necesitas permiso ni cuenta de GitHub para descargarlo. Elige una de estas dos formas:
+
+- **ZIP**: en la página del repositorio pulsa el botón verde _Code_ y luego _Download ZIP_. Descomprímelo en tu carpeta personal (por ejemplo `~/testing-develop-course`).
+- **Clone**: con Git instalado (lo verás en el módulo 0.2), ejecuta `git clone https://github.com/eduardolulichac/testing-develop-course.git`. No pide credenciales porque el repositorio es público.
+
+Cuando termines, `ls ~/testing-develop-course/apps/qa-arena` debe mostrar un archivo `docker-compose.yml`. Si usaste otra carpeta, ajusta la ruta en los pasos siguientes.
+
+</Paso>
+
+<Paso numero={1} titulo="Dónde estoy y qué hay aquí">
+La terminal siempre está «dentro» de una carpeta, el **directorio actual**. Tres comandos bastan para orientarte:
+
+```bash
+pwd
+ls
+ls -a
+```
+
+- `pwd` imprime la ruta del directorio actual.
+- `ls` lista lo que hay dentro.
+- `ls -a` también lista los archivos **ocultos** (los que empiezan por punto, como `.env` o `.git`).
+
+Con `ls -la` ves además permisos, tamaño y fecha.
+
+</Paso>
+
+<Paso numero={2} titulo="Crear, copiar, mover y borrar">
+Estos comandos crean y ordenan archivos. Pruébalos en una carpeta de práctica, nunca en una con trabajo real:
+
+```bash
+mkdir practica-qa          # crea una carpeta
+cd practica-qa             # entra en ella
+mkdir -p datos/logs        # crea carpetas anidadas de una vez
+echo "hola QA" > nota.txt  # crea un archivo con ese texto
+cat nota.txt               # muestra el contenido: hola QA
+cp nota.txt copia.txt      # copia
+mv copia.txt datos/        # mueve (también sirve para renombrar)
+rm datos/copia.txt         # borra un archivo
+rmdir datos/logs           # borra una carpeta vacía
+```
+
+Cuidado con `rm`: **no hay papelera**. Lo que borras desaparece.
+
+Si un nombre tiene espacios, ponlo entre comillas: `ls "mi archivo.txt"`. Sin comillas, la terminal cree que son dos nombres distintos.
+
+</Paso>
+
+<Paso numero={3} titulo="Rutas absolutas y relativas">
+Una **ruta** es la dirección de un archivo.
+
+- **Absoluta**: empieza desde la raíz (`/`) o desde tu carpeta personal (`~`). Funciona desde cualquier sitio. Ejemplo: `~/proyectos/qa`.
+- **Relativa**: se cuenta desde donde estás. `.` es «aquí» y `..` es «la carpeta de arriba». Ejemplo: `../practica-qa/nota.txt`.
+
+```bash
+cd ~          # ir a tu carpeta personal
+cd -          # volver a la carpeta anterior
+cd ..         # subir un nivel
+```
+
+En macOS, Linux y WSL2 las rutas usan `/`. Dentro de WSL2 tus archivos de Windows están en `/mnt/c/Users/tu-usuario`, pero para el curso trabaja en tu carpeta personal de Linux (`~`): es más rápido y evita problemas de permisos.
+
+</Paso>
+
+<Paso numero={4} titulo="Variables de entorno">
+Una **variable de entorno** es un valor con nombre que los programas pueden leer: una dirección, un puerto, una clave. Sirven para cambiar el comportamiento de un programa sin tocar su código.
+
+```bash
+export ARENA_URL=http://localhost:18080   # la defines
+echo $ARENA_URL                           # http://localhost:18080
+node -e 'console.log(process.env.ARENA_URL)'   # Node también la ve
+unset ARENA_URL                           # la quitas
+```
+
+También puedes dársela a **un solo comando**, sin dejarla puesta:
+
+```bash
+ARENA_URL=otra node -e 'console.log(process.env.ARENA_URL)'   # otra
+```
+
+Las variables no se guardan al cerrar la terminal. Para proyectos, se escriben en un archivo `.env` y **ese archivo no se sube a Git** (lo verás en el módulo 0.2). Las claves reales nunca van al repositorio.
+
+</Paso>
+
+<Paso numero={5} titulo="Comprobar Node y ejecutar un archivo">
+```bash
+node --version    # v24.x.x
+npm --version     # la versión de npm que viene con Node
+```
+
+Para ejecutar un archivo de JavaScript:
+
+```bash
+echo 'console.log("hola")' > hola.js
+node hola.js      # hola
+```
+
+Si `node --version` dice `command not found`, Node no está instalado o la terminal no lo encuentra. Instálalo con el instalador oficial o con un gestor de versiones como `nvm`, y abre una terminal nueva.
+
+</Paso>
+
+<Paso numero={6} titulo="Levantar QA Arena con Docker Compose">
+QA Arena está en el repositorio del curso que descargaste en el paso 0, en `apps/qa-arena`. Docker debe estar en marcha. Desde la raíz del repositorio:
+
+```bash
+cd apps/qa-arena
+docker compose up --build
+```
+
+Qué hace:
+
+- `docker compose up` arranca los tres servicios definidos en `docker-compose.yml`: la base de datos, la API y la web.
+- `--build` construye las imágenes la primera vez (o si cambió el código). La primera vez tarda unos minutos.
+- La terminal queda ocupada mostrando los registros. Para pararla presiona `Ctrl+C`. Si prefieres dejarla en segundo plano, añade `-d` y apágala con `docker compose down`.
+
+El puerto por defecto es **18080**: ahí escuchan la web y, bajo la ruta `/api`, la API. (La API también se publica directamente en el **18081**, pero en el curso usaremos siempre el 18080.) Si ya lo usas para otra cosa, cámbialo con la variable `WEB_PORT` (y `API_PORT` para el 18081).
+
+</Paso>
+
+<Paso numero={7} titulo="Comprobar con curl que responde">
+`curl` hace una petición web desde la terminal. Con `-i` muestra también las **cabeceras** de la respuesta (datos sobre la respuesta, antes del cuerpo).
+
+```bash
+curl -i http://localhost:18080/healthz
+```
+
+Verás `HTTP/1.1 200 OK` y el cuerpo `{"ok":true}`: la API está viva. Esa ruta es solo un «¿sigues ahí?» y **no lleva** la cabecera `X-Arena-Release`.
+
+Esa cabecera aparece en las rutas de la aplicación. Pídele a la API el estado de la sesión:
+
+```bash
+curl -i http://localhost:18080/__arena/state
+```
+
+Entre las cabeceras verás `x-arena-release: none` (las cabeceras no distinguen mayúsculas). La Arena puede simular «versiones» de la aplicación con fallos distintos; `none` significa que no hay ninguna versión especial activa. En el cuerpo, el campo `seedVersion` empieza por `arena-seed-2`: es la versión de los datos de ejemplo.
+
+Si `curl` dice `Failed to connect`, la API aún no ha arrancado o el puerto es otro. Revisa los registros del paso anterior.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="De una carpeta vacía a una Arena comprobada">
+Un recorrido completo, con lo que verías en cada paso:
+
+```bash
+mkdir mi-primer-qa && cd mi-primer-qa
+pwd                      # .../mi-primer-qa
+node --version           # v24.x.x
+cd ~/testing-develop-course/apps/qa-arena
+docker compose up --build -d
+curl -i http://localhost:18080/healthz
+curl -i http://localhost:18080/__arena/state
+```
+
+Qué leer en las respuestas:
+
+1. `HTTP/1.1 200 OK` en ambas: el servidor entendió la petición y respondió bien.
+2. `{"ok":true}` en `/healthz`: la API está sana.
+3. `x-arena-release: none` en `/__arena/state`: sin versión simulada activa.
+4. `seedVersion` empezando por `arena-seed-2`: los datos son los esperados.
+
+Si algo de esto no coincide, no sigas: es mejor descubrir ahora que el entorno está roto que más tarde, cuando no sepas si falla tu prueba o tu entorno.
+
+</Ejemplo>
+
+También puedes abrir la web de la Arena en `http://localhost:18080` desde el navegador.
+
+El botón de abajo abre la Arena **alojada** del curso, no la que levantaste en tu máquina. Tus `curl` a `localhost` solo ven tu Arena local, así que si quieres que el escenario `fase0-entorno` esté activo en ella, actívalo así (los ejercicios de este módulo también funcionan con el escenario por defecto, `baseline`):
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase0-entorno"}'
+```
+
+Para volver al estado inicial usa el mismo comando con `{"id":"baseline"}`.
+
+## 4. Ejercicios guiados
+
+<Ejercicio id="ej-0-1-crear-carpeta-de-practica">
+  Abre una terminal y crea una carpeta llamada `practica-qa` en tu directorio actual. Después entra
+  en ella y comprueba que estás dentro.
+</Ejercicio>
+
+<Ejercicio id="ej-0-1-rutas-y-archivos">
+  Dentro de `practica-qa`, crea la carpeta `datos/logs` con un solo comando y un archivo `nota.txt`
+  que contenga la frase `hola QA`. Muestra su contenido y lista la carpeta incluyendo los archivos
+  ocultos. Por último, desde `datos/logs`, escribe la ruta relativa que llega hasta `nota.txt`.
+</Ejercicio>
+
+<Ejercicio id="ej-0-1-variable-de-entorno">
+  Define una variable de entorno `ARENA_URL` con el valor `http://localhost:18080`. Comprueba que la
+  ve la terminal y que la ve Node. Después bórrala y confirma que ya no existe.
+</Ejercicio>
+
+<Ejercicio id="ej-0-1-arena-responde">
+  Levanta QA Arena con Docker Compose y comprueba con `curl` que la API responde en el puerto 18080.
+  Localiza la cabecera `x-arena-release` y anota su valor. Al terminar, apaga los servicios.
+</Ejercicio>
+
+<AbrirArena escenario="fase0-entorno" />
+
+## 5. Reto sin guía
+
+<Reto titulo="Tu entorno, comprobado de principio a fin">
+  Es una práctica abierta: nadie la corrige por ti, así que tú decides si está bien con esta lista.
+
+Prepara una carpeta nueva y, solo con la terminal, deja evidencia de que tu entorno funciona. Guarda las órdenes que usaste en un archivo `entorno.md`, junto con lo que viste.
+
+Criterios de autocomprobación:
+
+- Tu `entorno.md` indica la versión de Node (debe ser la 24) y la de Docker Compose (v2).
+- Levantaste QA Arena y `curl -i` a `/healthz` te dio `200`.
+- Encontraste el valor de `x-arena-release` y la `seedVersion` en `/__arena/state` y los anotaste.
+- Usaste al menos una variable de entorno para guardar la dirección de la API en lugar de repetirla.
+- Apagaste los servicios al terminar (`docker compose down`).
+- Otra persona podría repetir tus pasos solo leyendo el archivo.
+
+Si cumples todos los puntos, tu entorno está listo para el resto del curso.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+La IA es muy útil para explicarte un comando o un error de terminal. Pero la terminal **ejecuta de verdad**, así que aquí hay que ser prudente.
+
+**Qué pedirle:**
+
+- «Explícame este comando parte por parte: `docker compose up --build -d`».
+- «Me sale este error al ejecutar `node hola.js`; ¿qué significa?» (pégale el texto completo del error).
+- «¿Qué hace cada opción de este comando y qué pasa si la quito?»
+
+**Qué revisar antes de ejecutar:**
+
+- Que entiendes cada parte del comando. Si no, pídele que la explique.
+- Qué carpeta será afectada: ¿estás en el directorio correcto (`pwd`)?
+- Que las versiones y los puertos coinciden con los del curso (Node 24, puerto 18080).
+
+**Qué rechazar:**
+
+- Comandos con `rm -rf`, `sudo` o `chmod -R` que no pediste ni entiendes.
+- Comandos que descargan un script y lo ejecutan a la vez (`curl ... | sh`).
+- Que te pida pegar claves reales en la conversación o en un archivo del repositorio.
+- Opciones que no encuentras en la ayuda real (`comando --help`): la IA a veces inventa opciones que no existen.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Ejecutar órdenes en la carpeta equivocada">
+  Crear o borrar archivos donde no querías. Antes de cualquier comando que cambie algo, ejecuta
+  `pwd` y `ls` para confirmar dónde estás.
+</ErrorComun>
+
+<ErrorComun titulo="Olvidar las comillas con espacios en los nombres">
+  `ls mi archivo.txt` busca dos archivos: `mi` y `archivo.txt`. Escribe `ls "mi archivo.txt"` o,
+  mejor, evita espacios en los nombres.
+</ErrorComun>
+
+<ErrorComun titulo="Esperar la cabecera X-Arena-Release en /healthz">
+  `/healthz` solo responde `{"ok":true}`. La cabecera aparece en las rutas de la aplicación, como
+  `/__arena/state`. Si no la ves, revisa que pides la ruta correcta y que usas `curl -i`.
+</ErrorComun>
+
+<ErrorComun titulo="Dar por muerta la API porque curl no conecta al instante">
+  Tras `docker compose up` la API tarda unos segundos en estar lista. Reintenta y mira los registros
+  antes de concluir que algo falló. Si el puerto ya está ocupado, cambia `WEB_PORT`.
+</ErrorComun>
+
+<ErrorComun titulo="Guardar secretos en el repositorio">
+  Un archivo `.env` con claves reales no se sube a Git, ni siquiera en un repositorio privado. Se
+  ignora con `.gitignore` y se comparte un `.env.example` sin valores.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- La terminal siempre trabaja en un directorio actual: `pwd` lo muestra y `ls -a` lista su contenido, ocultos incluidos.
+- `mkdir`, `cd`, `cp`, `mv` y `rm` crean, mueven y borran; `rm` no tiene papelera.
+- Una ruta absoluta parte de `/` o `~`; una relativa se cuenta desde donde estás (`.` y `..`).
+- Las variables de entorno (`export`, `echo`, `unset`) configuran programas sin tocar su código y no incluyen secretos en el repositorio.
+- `node --version` confirma que Node está listo; el curso usa Node 24.
+- `docker compose up --build` levanta QA Arena (todo por el puerto 18080) y `curl -i` comprueba que responde.
+- `/healthz` dice que la API vive; `x-arena-release` se ve en rutas como `/__arena/state`.
+- Antes de ejecutar un comando de la IA, entiéndela y confirma en qué carpeta estás.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

@@ -1,0 +1,174 @@
+{
+  "config": {
+    "rootDir": "tests"
+  },
+  "suites": [
+    {
+      "title": "a.spec.ts",
+      "file": "a.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "raíz",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 0,
+                  "retry": 0,
+                  "errors": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4bb17c2992a2b9ccc470-4ace09314977c221802a",
+          "file": "a.spec.ts",
+          "line": 7,
+          "column": 5
+        }
+      ],
+      "suites": [
+        {
+          "title": "carrito",
+          "file": "a.spec.ts",
+          "line": 2,
+          "column": 6,
+          "specs": [
+            {
+              "title": "suma importes @smoke",
+              "ok": true,
+              "tags": ["smoke", "smoke", "REQ-3"],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [
+                    {
+                      "type": "requisito",
+                      "description": "REQ-2",
+                      "location": {
+                        "file": "tests/a.spec.ts",
+                        "line": 3,
+                        "column": 7
+                      }
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1,
+                      "retry": 0,
+                      "errors": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "4bb17c2992a2b9ccc470-b9e1b8d4f0bc6dbd8f1a",
+              "file": "a.spec.ts",
+              "line": 3,
+              "column": 7
+            },
+            {
+              "title": "falla a propósito",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 1,
+                      "retry": 0,
+                      "errorLocation": {
+                        "file": "/tmp/work/pw/tests/a.spec.ts",
+                        "column": 53,
+                        "line": 4
+                      },
+                      "errors": []
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "4bb17c2992a2b9ccc470-50e1c67ef3cd5aa940cc",
+              "file": "a.spec.ts",
+              "line": 4,
+              "column": 7
+            },
+            {
+              "title": "omitido",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "location": {
+                        "file": "tests/a.spec.ts",
+                        "line": 3,
+                        "column": 7
+                      }
+                    }
+                  ],
+                  "expectedStatus": "skipped",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "skipped",
+                      "duration": 0,
+                      "retry": 0,
+                      "errors": []
+                    }
+                  ],
+                  "status": "skipped"
+                }
+              ],
+              "id": "4bb17c2992a2b9ccc470-342a46e34ef83af20a95",
+              "file": "a.spec.ts",
+              "line": 5,
+              "column": 8
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-11-07T17:43:36.140Z",
+    "duration": 15,
+    "expected": 2,
+    "skipped": 1,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}

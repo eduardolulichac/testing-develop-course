@@ -1,0 +1,14 @@
+# Cheat: documents defects with tests that do not exist in the suite.
+defectos:
+  - titulo: "El carrito acepta cantidades negativas"
+    test: "carrito › este test no existe"
+    pasos: ["POST /api/cart/items con quantity -1", "GET /api/cart"]
+    esperado: "La API rechaza la cantidad con 400"
+    obtenido: "La API acepta la cantidad y descuenta"
+    severidad: alta
+  - titulo: "El pedido se crea sin dirección de envío"
+    test: "pedidos › tampoco existe este"
+    pasos: ["POST /api/checkout sin dirección", "GET /api/orders"]
+    esperado: "El pago responde 400 por dirección faltante"
+    obtenido: "Se crea el pedido igualmente"
+    severidad: media

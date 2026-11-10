@@ -1,0 +1,25 @@
+{
+  "name": "@course/scenario-engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "QA Arena scenario engine: pure schemas, seeded RNG and fault decisions",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "vitest": "^5.1.0"
+  }
+}

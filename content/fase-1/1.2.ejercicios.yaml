@@ -1,0 +1,43 @@
+ejercicios:
+  - slug: ej-1-2-localizar-el-formulario
+    tipo: guiado
+    titulo: "Localiza el formulario de login sin CSS"
+    pistas:
+      - "Los campos de un formulario tienen una etiqueta visible: hay un localizador que busca por ella."
+      - 'Para los campos usa `getByLabel` con el texto de la etiqueta («Correo», «Contrasena», sin tilde) y para el botón `getByRole("button", { name: ... })`.'
+      - "Para comprobar que cada localizador es único usa `await expect(localizador).toHaveCount(1)`, no `count()`."
+    solucion: 'Con `await page.goto("/login")`: `await expect(page.getByLabel("Correo")).toHaveCount(1)`, `await expect(page.getByLabel("Contrasena")).toHaveCount(1)` y `await expect(page.getByRole("button", { name: "Entrar" })).toHaveCount(1)`. Ninguno usa CSS ni `data-testid`.'
+  - slug: ej-1-2-buscador-y-filtros
+    tipo: guiado
+    titulo: "Localiza el buscador y el filtro del catálogo"
+    pistas:
+      - "El campo de búsqueda tiene un rol propio, distinto de `textbox`. Mira la pista del paso 2 de la lección."
+      - 'El buscador es `getByRole("searchbox", { name: "Buscar productos" })` y la lista desplegable se localiza por su etiqueta, «Categoria». Para elegir una opción existe `selectOption`.'
+      - "Los productos son elementos de una lista (`listitem`). Para comprobar el resultado usa `toHaveCount(1)` y `toContainText(...)` con un `expect`."
+    solucion: 'Con `await page.goto("/")`: `await page.getByRole("searchbox", { name: "Buscar productos" }).fill("Atlas")` y `await expect(page.getByRole("listitem")).toHaveCount(1)` (contiene «Atlas mundial»). Después `.clear()` del buscador, `await page.getByLabel("Categoria").selectOption("Libros")` y `await expect(page.getByRole("listitem").first()).toContainText("Libros")`.'
+  - slug: ej-1-2-testid-que-cambia
+    tipo: guiado
+    titulo: "Arregla un test que depende de un data-testid cambiante"
+    escenario: fase1-localizadores
+    pistas:
+      - 'Activa el escenario con el `PUT` del paso 9, ejecuta el test con `getByTestId("login-submit")` y espera a que falle por tiempo. Después de `goto("/login")` añade `await expect(page.getByTestId("arena-ready")).toBeAttached()`: sin esa línea, el test puede pasar por suerte (carrera de carga del paso 9).'
+      - "Inspecciona el botón en el navegador (clic derecho, Inspeccionar): compara el valor real del atributo `data-testid` con el que escribiste."
+      - "El nombre visible del botón no cambia con el escenario. Usa un localizador por rol y nombre en lugar del identificador."
+    solucion: 'Con el escenario activo, el botón tiene un `data-testid` con un sufijo (por ejemplo `login-submit-8giv7`), así que `getByTestId("login-submit")` ya no lo encuentra y el test termina por tiempo. El localizador estable es `page.getByRole("button", { name: "Entrar" })`, que pasa en `baseline` y con el escenario activo. Vuelve a `baseline` al terminar.'
+  - slug: ej-1-2-botones-duplicados
+    tipo: guiado
+    titulo: "Encuentra los botones duplicados del catálogo"
+    escenario: fase1-localizadores
+    pistas:
+      - 'Primero localiza la tarjeta: un elemento de la lista que contenga el texto del producto (`getByRole("listitem").filter(...)`).'
+      - "Dentro de la tarjeta, busca los botones con nombre «Agregar» y comprueba con `toHaveCount` cuántos hay. Si los usas sin `.first()`, el modo estricto avisa."
+      - "Haz clic en el primero y comprueba la dirección con `toHaveURL`. Ambos botones llevan a la ficha del producto, que es donde está el botón «Agregar al carrito»."
+    solucion: 'Con el escenario activo: `const tarjeta = page.getByRole("listitem").filter({ hasText: "Auriculares BT" })`, `await expect(tarjeta.getByRole("button", { name: "Agregar", exact: true })).toHaveCount(2)` y `await tarjeta.getByRole("button", { name: "Agregar" }).first().click()`, que lleva a `/products/1`. Sin `.first()` falla con `strict mode violation ... resolved to 2 elements`, porque hay dos botones con el mismo nombre accesible. Lo más sano en un test es no depender de ellos y usar el enlace con el nombre del producto; además es un defecto de accesibilidad que conviene reportar.'
+  - slug: ej-1-2-filtrar-por-texto
+    tipo: guiado
+    titulo: "Localiza una tarjeta filtrando por texto"
+    pistas:
+      - "Las tarjetas del catálogo son elementos de lista. Un localizador de lista admite `.filter({ hasText: ... })`."
+      - 'Para el precio basta `toContainText("$9.90")` sobre la tarjeta. Para el enlace, localízalo dentro de la tarjeta por rol `link` y su nombre.'
+      - 'Para comprobar adónde apunta el enlace usa `toHaveAttribute("href", ...)`.'
+    solucion: 'Con `await page.goto("/")`: `const tarjeta = page.getByRole("listitem").filter({ hasText: "Auriculares BT" })`, `await expect(tarjeta).toContainText("$9.90")` y `await expect(tarjeta.getByRole("link", { name: "Auriculares BT" })).toHaveAttribute("href", "/products/1")`. No hay posiciones: si cambia el orden del catálogo, el test sigue pasando.'

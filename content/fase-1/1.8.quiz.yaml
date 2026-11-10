@@ -1,0 +1,89 @@
+preguntas:
+  - id: ia-test-en-verde
+    enunciado: "Una IA te entrega un test y al ejecutarlo pasa en verde. ¿Qué puedes concluir?"
+    opciones:
+      [
+        "Que el test es correcto y se puede subir al repositorio",
+        "Que el test no encontró ningún fallo, pero aún no sabes si es capaz de encontrarlo",
+        "Que la aplicación no tiene defectos",
+        "Que el test es rápido",
+      ]
+    correcta: 1
+    explicacion: "Un test en verde solo demuestra que no vio nada que lo haga fallar. Para saber si protege algo hay que leerlo, romperlo a propósito y comprobar que falla cuando debe."
+  - id: ia-asercion-vacia
+    enunciado: "¿Cuál de estas aserciones no puede fallar nunca, exista o no el elemento?"
+    opciones:
+      [
+        'await expect(page.getByTestId("cart-total")).toBeVisible()',
+        'await expect(page.getByTestId("cart-total")).toHaveText("$13.91")',
+        'expect(page.locator("[data-testid=''cart-total'']")).toBeDefined()',
+        'await expect(page.getByTestId("cart-error")).toHaveCount(0)',
+      ]
+    correcta: 2
+    explicacion: "page.locator(...) devuelve un objeto que describe cómo buscar, y siempre está definido. Esa aserción no consulta la página. Las demás sí lo hacen, con await y un matcher de Playwright."
+  - id: ia-espera-fija
+    enunciado: "¿Por qué es mala idea una espera fija como waitForTimeout(3000)?"
+    opciones:
+      [
+        "Porque Playwright no la permite",
+        "Porque si la página tarda más el test falla a veces, y si tarda menos se pierde tiempo",
+        "Porque cambia los datos de la Arena",
+        "Porque borra las cookies",
+      ]
+    correcta: 1
+    explicacion: "Una espera fija apuesta a cuánto tardará la página. Las aserciones web-first esperan solo lo necesario y reintentan hasta que se cumple la condición o se agota el tiempo."
+  - id: ia-solo-camino-feliz
+    enunciado: "En el escenario de este módulo la Arena acepta un cupón vencido. Un test generado solo prueba WELCOME10 y sigue en verde. ¿Qué le falta?"
+    opciones:
+      [
+        "Más esperas fijas",
+        "Un caso negativo: comprobar que EXPIRED20 se rechaza",
+        "Cambiar el navegador",
+        "Ejecutarlo con más lentitud",
+      ]
+    correcta: 1
+    explicacion: "Un test que solo cubre el camino feliz no puede detectar un defecto en el camino de rechazo. El caso negativo (el cupón vencido debe rechazarse) es el que falla cuando la Arena lo acepta."
+  - id: ia-repetible
+    enunciado: "Ejecutas un test con --repeat-each=2: pasa la primera vez y falla la segunda. ¿Cuál es la causa más probable?"
+    opciones:
+      [
+        "Playwright se cansa",
+        "El test depende de un estado que dejó la ejecución anterior y no reinicia los datos",
+        "La IA no sabe escribir tests",
+        "El navegador está desactualizado",
+      ]
+    correcta: 1
+    explicacion: "En la Arena el carrito vive en el servidor: la segunda ejecución encuentra lo que dejó la primera. Un test debe partir de un estado conocido, por ejemplo reiniciando con /__arena/reset."
+  - id: ia-funcion-inexistente
+    enunciado: "El test de una IA hace clic en un enlace «Recuperar contraseña». Revisas la Arena y no existe. ¿Qué decides?"
+    opciones:
+      [
+        "Lo acepto: si la IA lo escribió, algo hay",
+        "Lo rechazo o lo corrijo: usa una función de la aplicación que no existe",
+        "Agrego una espera fija para que aparezca",
+        "Cambio el selector por una clase CSS",
+      ]
+    correcta: 1
+    explicacion: "Las IAs inventan textos, ids y funciones plausibles. Todo lo que el test usa debe existir en la aplicación real; si no existe, se corrige o se rechaza, no se parchea con esperas."
+  - id: ia-registro-uso
+    enunciado: "¿Qué debe incluir tu registro de uso de IA?"
+    opciones:
+      [
+        "Tu contraseña, para poder repetir el experimento",
+        "Qué pediste, qué aceptaste y qué corregiste, sin claves ni datos personales",
+        "Solo la respuesta completa de la IA",
+        "Nada: el registro no sirve para nada",
+      ]
+    correcta: 1
+    explicacion: "El registro resume qué pediste, si aceptaste, modificaste o rechazaste, y qué corregiste y por qué. No lleva claves, contraseñas reales ni datos personales. Quien revisa tu trabajo ve así cómo pensaste."
+  - id: ia-que-pedir-en-el-prompt
+    enunciado: "¿Para qué sirve pedirle a la IA, al final del prompt, que liste las suposiciones que hizo sobre la aplicación?"
+    opciones:
+      [
+        "Para que el código sea más corto",
+        "Para que sepas qué textos, ids y precios debes comprobar tú antes de confiar en el test",
+        "Para que la IA aprenda de ti",
+        "Para evitar escribir aserciones",
+      ]
+    correcta: 1
+    explicacion: "La lista de suposiciones es tu guía de verificación: cada texto, data-testid o precio que la IA dio por hecho se comprueba contra la aplicación real. Esa es la parte «verificar» del método de cuatro partes."

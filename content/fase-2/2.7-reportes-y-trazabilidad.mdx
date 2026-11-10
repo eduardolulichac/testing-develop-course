@@ -1,0 +1,625 @@
+---
+modulo: "2.7"
+titulo: "Reportes y trazabilidad"
+fase: 2
+nivel: "Semi Senior"
+duracion_min: 90
+prerequisitos: ["2.6"]
+escenario: "fase2-e2e-combinado"
+version: "2026-11"
+herramientas:
+  [
+    "Playwright 1.64.1",
+    "Node 24 (verificado 24.14)",
+    "QA Arena (local)",
+    "allure-playwright 3.14.0 (opcional)",
+  ]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Al terminar sabrás atar cada test a un requisito (REQ-n), generar en cada ejecución un informe
+  HTML y uno JSON, construir con un script pequeño una matriz que dice qué requisitos están
+  cubiertos, cuáles fallan y cuáles no tienen pruebas, y publicar esa matriz desde la integración
+  continua para que otras personas la lean sin abrir tu código.
+</Objetivo>
+
+Un test que pasa dice poco si nadie sabe **qué protege**. Quien lee «87 tests en verde» no sabe si el envío gratis está probado o si el cierre de sesión nunca se comprobó. La pregunta que hace una persona de producto, de negocio o de auditoría es otra: «¿qué requisitos están cubiertos y cuáles fallan?».
+
+Responderla es la **trazabilidad**: una línea que va del requisito al test y del test al resultado. Con ella puedes:
+
+- Ver los **huecos**: requisitos sin ninguna prueba.
+- Explicar un fallo en lenguaje de negocio («falla REQ-3, el envío gratis»), no solo con el nombre de un archivo.
+- Saber qué tests revisar cuando **cambia un requisito**.
+- Dejar evidencia de cada ejecución, no solo de la última que corriste en tu máquina.
+
+En este módulo usas el escenario `fase2-e2e-combinado`: la tienda de QA Arena tiene una página **Requisitos** con REQ-1 a REQ-10 y dos defectos de precio y envío. Lo importante aquí no es encontrarlos (eso lo hiciste en el módulo 2.4), sino **contar qué cubre tu suite y publicarlo**.
+
+Lo que necesitas antes de empezar:
+
+- El proyecto `practica-playwright` de los módulos anteriores, con Playwright 1.64.1 y Node 24.
+- Tu archivo `tests/support/tienda.ts` (módulos 1.3 y 1.4).
+- QA Arena levantada en `http://localhost:18080`.
+- Las variables `USUARIO_EMAIL` y `USUARIO_CLAVE` en tu `.env.local` (módulo 1.5). La contraseña de práctica **no se escribe en el código**.
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Lee los requisitos antes de escribir un test">
+Abre la Arena y entra en **Requisitos**. Es una lista cerrada, REQ-1 a REQ-10, cada una con su fuente (Producto, Negocio, Pagos...). Resumida:
+
+| Requisito | De qué trata                                      |
+| --------- | ------------------------------------------------- |
+| REQ-1     | Inicio de sesión y error con datos incorrectos    |
+| REQ-2     | Catálogo, búsqueda y filtro por categoría         |
+| REQ-3     | Envío gratis desde 50 USD, **después** del cupón  |
+| REQ-4     | Cupones: un solo uso, vencidos y agotados         |
+| REQ-5     | Carrito: añadir, cambiar, quitar, máximo 10       |
+| REQ-6     | Checkout: tarjetas válidas e inválidas, y pedido  |
+| REQ-7     | «Envío gratis en compras desde 50 USD»            |
+| REQ-8     | «Mis pedidos» con estado y total                  |
+| REQ-9     | Notificación de confirmación al aprobarse el pago |
+| REQ-10    | Cierre de sesión: el token deja de valer          |
+
+Dos cosas que debes notar desde ya:
+
+- **REQ-3 y REQ-7 no dicen lo mismo.** Uno calcula los 50 USD después del descuento y el otro no dice cuándo. Cuando dos requisitos se contradicen, el defecto no está en el código sino en el requisito, y se resuelve preguntando.
+- **REQ-9 no se puede comprobar en la Arena**: la tienda no envía correos ni notificaciones. Una suite honesta lo marca como «no verificable» y no inventa un test que pase sin probar nada.
+
+</Paso>
+
+<Paso numero={2} titulo="Atar un test a un requisito con una anotación">
+Playwright permite poner **anotaciones** a un test. Una anotación es un par `type` y `description` que viaja con el test hasta el informe. Usaremos el tipo `requisito`:
+
+```ts
+import { test, expect } from "@playwright/test";
+import { abrir } from "./support/tienda";
+
+test(
+  "el catálogo busca por nombre",
+  { annotation: { type: "requisito", description: "REQ-2" } },
+  async ({ page }) => {
+    await abrir(page, "/");
+    await page.getByRole("searchbox", { name: "Buscar productos" }).fill("Atlas");
+    await expect(page.getByTestId("product-list").getByRole("listitem")).toHaveCount(1);
+  },
+);
+```
+
+El objeto del medio, entre el título y la función, son las **opciones** del test. Repetir ese objeto en cada test cansa y se presta a errores de escritura, así que conviene una función pequeña que lo construya. Si un test cubre más de un requisito, recibe una lista de anotaciones:
+
+```ts
+// Ata un test a uno o más requisitos: req("REQ-6", "REQ-8").
+const req = (...ids: string[]) => ({
+  annotation: ids.map((id) => ({ type: "requisito", description: id })),
+});
+
+test("un pago aprobado crea el pedido", req("REQ-6", "REQ-8"), async ({ page }) => {
+  // ...
+});
+```
+
+Un error típico: pasar directamente un arreglo de anotaciones como segundo argumento (`[{ ... }, { ... }]`). Playwright responde con `Error: details: expected object, got array`. Las opciones son un objeto con la clave `annotation`, y esa clave sí admite una lista.
+
+Hay una segunda forma, la **etiqueta**: `{ tag: "@REQ-2" }`. Sirve para algo distinto, que es **elegir qué ejecutar**:
+
+```bash
+npx playwright test --grep @REQ-2
+```
+
+Con la anotación describes y con la etiqueta filtras. En este curso, la anotación `requisito` es la que cuenta como trazabilidad (también la entiende el evaluador del reto de Docker del módulo 2.8). Tu proyecto puede usar las dos.
+
+</Paso>
+
+<Paso numero={3} titulo="Un test, un comportamiento, un requisito claro">
+La trazabilidad solo vale si cada anotación es **verdad**. Reglas para que lo sea:
+
+- Anota el requisito que el test **comprueba**, no el que «se le parece».
+- Si un requisito tiene varias partes (REQ-4 habla de vencidos, agotados y un solo uso), escribe un test por parte y anota todos con el mismo REQ-4.
+- Un requisito está **cubierto** cuando tiene al menos un test y **todos** sus tests pasan. Si dos tests dicen REQ-3 y uno falla, REQ-3 no está cubierto: está en fallo.
+- Un test sin anotación no es malo, pero no aparece en la matriz. Los que protegen un requisito deben llevarla.
+
+Y una advertencia: la anotación no valida nada por sí sola. Puedes escribir `REQ-9` en un test que no comprueba nada de notificaciones y la matriz dirá «cubierto». La trazabilidad es tan honesta como la persona que anota, y por eso la sección 6 insiste en revisar lo que sugiere una IA.
+
+</Paso>
+
+<Paso numero={4} titulo="Los reporteros de Playwright: lista, HTML y JSON">
+Un **reportero** (_reporter_) decide cómo se muestra el resultado de la ejecución. Puedes usar varios a la vez. En `playwright.config.ts`:
+
+```ts
+export default defineConfig({
+  testDir: "./tests",
+  workers: 1,
+  reporter: [
+    ["list"], // la consola, línea por test
+    ["html", { outputFolder: "playwright-report", open: "never" }], // para personas
+    ["json", { outputFile: "resultados/informe.json" }], // para programas
+  ],
+  // ... el resto de tu configuración (expect, use, dotenv)
+});
+```
+
+Cada uno sirve para algo:
+
+- **`list`**: lo que ves en la terminal mientras desarrollas.
+- **`html`**: una página con todos los tests, sus pasos, sus errores y las trazas. `open: "never"` evita que se abra el navegador solo, algo que en un servidor de integración dejaría la ejecución colgada. Se abre a mano con `npx playwright show-report`.
+- **`json`**: el mismo resultado en un archivo que un programa puede leer. Es la base de la matriz.
+
+Ejecuta tu suite y comprueba que aparecen la carpeta `playwright-report/` y el archivo `resultados/informe.json`. Añade ambas rutas a tu `.gitignore`: son resultados, no código.
+
+En el JSON, cada test conserva sus anotaciones. Esta es la forma de lo que importa (recortada):
+
+```json
+{
+  "title": "un envío de $5.00 se cobra por debajo de 50 USD",
+  "tests": [
+    {
+      "annotations": [{ "type": "requisito", "description": "REQ-3" }],
+      "expectedStatus": "passed",
+      "status": "expected"
+    }
+  ]
+}
+```
+
+Fíjate: el campo `status` del test dice `expected` (salió como se esperaba), `unexpected` (falló) o `flaky` (falló y pasó al reintentar). No es lo mismo que `status` dentro de `results`, que dice `passed` o `failed`. Para la matriz usamos el del test.
+
+Más detalle para el informe: `test.step` agrupa acciones con un nombre legible y `testInfo.attach` adjunta evidencia (una captura, un texto):
+
+```ts
+test("el catálogo muestra productos", { tag: "@REQ-2" }, async ({ page }, testInfo) => {
+  await test.step("abrir el catálogo", async () => {
+    await abrir(page, "/");
+  });
+  await test.step("comprobar la lista", async () => {
+    await expect(page.getByTestId("product-list").getByRole("listitem").first()).toBeVisible();
+  });
+  await testInfo.attach("catalogo", { body: await page.screenshot(), contentType: "image/png" });
+});
+```
+
+En el informe HTML, cada paso aparece con su nombre y la captura queda adjunta al test.
+
+</Paso>
+
+<Paso numero={5} titulo="La matriz de trazabilidad con un script">
+Con el JSON puedes responder a la pregunta de negocio. Guarda este script como `scripts/trazabilidad.mts` (la extensión `.mts` hace que Node 24 lo ejecute directamente, sin compilar, como módulo):
+
+```ts
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+
+// Requisitos de la Arena (REQ-1 a REQ-10) y los que ninguna prueba puede cubrir.
+const REQUISITOS = Array.from({ length: 10 }, (_, i) => `REQ-${i + 1}`);
+const NO_VERIFICABLES: Record<string, string> = {
+  "REQ-9": "la Arena no envía correos ni notificaciones",
+};
+
+interface Prueba {
+  titulo: string;
+  estado: string;
+}
+interface Nodo {
+  title?: string;
+  suites?: Nodo[];
+  specs?: {
+    title: string;
+    tests: { annotations: { type: string; description?: string }[]; status: string }[];
+  }[];
+}
+
+const informe: { suites: Nodo[] } = JSON.parse(readFileSync("resultados/informe.json", "utf8"));
+const porRequisito = new Map<string, Prueba[]>();
+
+function recorrer(nodo: Nodo): void {
+  for (const spec of nodo.specs ?? []) {
+    for (const t of spec.tests) {
+      const ids = t.annotations
+        .filter((a) => a.type === "requisito")
+        .flatMap((a) => a.description?.match(/REQ-\d+/g) ?? []);
+      for (const id of ids) {
+        const lista = porRequisito.get(id) ?? [];
+        lista.push({ titulo: spec.title, estado: t.status });
+        porRequisito.set(id, lista);
+      }
+    }
+  }
+  nodo.suites?.forEach(recorrer);
+}
+informe.suites.forEach(recorrer);
+
+const filas = REQUISITOS.map((id) => {
+  const pruebas = porRequisito.get(id) ?? [];
+  const fallan = pruebas.filter((p) => p.estado !== "expected").length;
+  let estado: string;
+  if (NO_VERIFICABLES[id]) estado = `no verificable (${NO_VERIFICABLES[id]})`;
+  else if (pruebas.length === 0) estado = "SIN PRUEBAS";
+  else estado = fallan === 0 ? "cubierto" : `FALLA (${fallan} de ${pruebas.length})`;
+  return `| ${id} | ${pruebas.length} | ${estado} |`;
+});
+
+const tabla = ["| Requisito | Pruebas | Estado |", "| --- | ---: | --- |", ...filas].join("\n");
+mkdirSync("resultados", { recursive: true });
+writeFileSync("resultados/trazabilidad.md", `${tabla}\n`);
+if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${tabla}\n`);
+console.log(tabla);
+```
+
+Cómo leerlo:
+
+- El informe es un árbol de suites dentro de suites (archivo, bloque `describe`...), por eso `recorrer` se llama a sí misma.
+- De cada test saca los `REQ-n` de sus anotaciones `requisito`.
+- Un requisito con pruebas y todas en `expected` está **cubierto**; con alguna `unexpected` o `flaky`, **falla**; sin pruebas, tiene un **hueco**.
+- `NO_VERIFICABLES` guarda, con su motivo, lo que no se puede probar. Es una decisión documentada, no un olvido.
+- Si existe la variable `GITHUB_STEP_SUMMARY` (la define GitHub Actions), la tabla también se escribe ahí, en el resumen de la ejecución.
+
+Se usa así, después de ejecutar la suite:
+
+```bash
+npx playwright test
+node scripts/trazabilidad.mts
+```
+
+Si el script falla porque no encuentra el informe, ejecuta antes los tests: el JSON lo crea el reportero.
+
+</Paso>
+
+<Paso numero={6} titulo="Publicar el informe en cada ejecución">
+Un informe que solo existe en tu máquina no sirve al equipo. En integración continua (módulo 2.6) el servidor ejecuta la suite en cada `push`, y debe **conservar el informe aunque la suite falle**: justo ahí es cuando más se necesita. Los pasos de un workflow de GitHub Actions, después de instalar y de ejecutar los tests:
+
+```yaml
+- name: Ejecutar la suite
+  run: npx playwright test
+
+- name: Matriz de trazabilidad
+  if: ${{ !cancelled() }}
+  run: node scripts/trazabilidad.mts
+
+- name: Publicar el informe HTML y el JSON
+  if: ${{ !cancelled() }}
+  uses: actions/upload-artifact@v7
+  with:
+    name: informe-playwright
+    path: |
+      playwright-report/
+      resultados/
+    retention-days: 14
+```
+
+- `if: ${{ !cancelled() }}` ejecuta el paso aunque el anterior haya fallado (y no si alguien cancela la ejecución).
+- La tabla aparece en el resumen de la ejecución gracias a `GITHUB_STEP_SUMMARY`.
+- `upload-artifact` guarda las carpetas para descargarlas desde la pestaña **Actions**. Quien las descargue abre `playwright-report/index.html` y ve el mismo informe que tú.
+- Ojo: el informe y las trazas guardan lo que el test escribe en los formularios, contraseña incluida. Con secretos reales, no subas trazas o restringe quién descarga los artefactos.
+- `retention-days` limita cuánto tiempo se guarda, para no acumular informes viejos.
+
+</Paso>
+
+<Paso numero={7} titulo="Cuando cambia un requisito">
+En la Arena, el escenario tiene dos versiones de los requisitos: `v1.0.0` y `v1.1.0`. Se elige desde tu terminal:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase2-e2e-combinado","release":"v1.0.0"}'
+```
+
+Cambia `v1.0.0` por `v1.1.0` para la segunda. En la versión 1.1, REQ-3 y REQ-7 se reconcilian: el envío gratis se mide sobre el subtotal **antes** del descuento. Lo que en la versión 1.0 era un defecto (envío gratis aunque el cupón deje el total en menos de 50 USD) en la 1.1 es el **comportamiento correcto**.
+
+La consecuencia para tu suite es concreta: el test «el envío se calcula después del descuento», anotado con REQ-3, falla en las dos versiones, porque la tienda se comporta igual. En la 1.0 el fallo es un defecto; en la 1.1 el fallo está en **tu test**, que quedó desactualizado. La matriz te lo dice (`REQ-3 FALLA`), pero decidir si arreglas el código o el test requiere leer qué dice el requisito vigente.
+
+Moraleja: un test con anotación es un contrato con una versión de un requisito. Cuando el requisito cambia, la matriz te dice a qué tests tienes que volver.
+
+</Paso>
+
+<Paso numero={8} titulo="Un vistazo a Allure (opcional)">
+**Allure** es otra herramienta de informes, muy usada en equipos grandes. Se añade con el paquete `allure-playwright` y un generador. Lo verificamos con estas versiones: `allure-playwright` 3.14.0 con Playwright 1.64.1, y el paquete `allure` 3.33.0 como generador (necesita Node 22.18 o más):
+
+```bash
+npm install --save-dev allure-playwright@3.14.0 allure@3.33.0
+```
+
+En el reportero se añade `["allure-playwright"]`, y al ejecutar la suite se crea la carpeta `allure-results/`. Se convierte en un informe con:
+
+```bash
+npx allure generate allure-results
+```
+
+Para este curso **no lo necesitas**. El informe HTML de Playwright ya muestra pasos, errores, trazas y anotaciones, y el JSON más tu script dan la matriz con un archivo de 50 líneas y ninguna dependencia nueva. Allure aporta historial entre ejecuciones y gráficos, lo cual vale la pena cuando tienes cientos de tests y varias personas leyendo; antes de eso, es una herramienta más que mantener.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Una suite con trazabilidad y su matriz, en tres versiones de la tienda">
+Guarda esto como `tests/requisitos.spec.ts`. Son ocho tests que cubren ocho de los diez requisitos (REQ-7 y REQ-9 quedan fuera a propósito: mira la matriz). Las contraseñas llegan por entorno: `iniciarSesion` lee `USUARIO_EMAIL` y `USUARIO_CLAVE`, sin valores por defecto escritos en el código (es el cambio que hiciste en el paso 1 del módulo 2.4; si no lo hiciste, hazlo ahora).
+
+```ts
+import { test, expect } from "@playwright/test";
+import { abrir, agregarProducto, iniciarSesion, vaciarCarrito } from "./support/tienda";
+
+// Ata un test a uno o más requisitos: req("REQ-6", "REQ-8").
+const req = (...ids: string[]) => ({
+  annotation: ids.map((id) => ({ type: "requisito", description: id })),
+});
+
+test.describe("trazabilidad a requisitos", () => {
+  test.beforeEach(async ({ page }) => {
+    await iniciarSesion(page);
+    await vaciarCarrito(page);
+  });
+
+  test("un login incorrecto muestra un error y no entra", req("REQ-1"), async ({ page }) => {
+    await page.getByTestId("logout").click();
+    await abrir(page, "/login");
+    await page.getByLabel("Correo").fill("ana@arena.test");
+    await page.getByLabel("Contrasena").fill("clave-incorrecta");
+    await page.getByRole("button", { name: "Entrar" }).click();
+    await expect(page.getByRole("alert")).toHaveText("Invalid email or password");
+    await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test("el catálogo busca por nombre", req("REQ-2"), async ({ page }) => {
+    await abrir(page, "/");
+    await page.getByRole("searchbox", { name: "Buscar productos" }).fill("Atlas");
+    await expect(page.getByTestId("product-list").getByRole("listitem")).toHaveCount(1);
+  });
+
+  test("por debajo de 50 USD el envío cuesta $5.00", req("REQ-3"), async ({ page }) => {
+    await agregarProducto(page, 1, 1);
+    await abrir(page, "/cart");
+    await expect(page.getByTestId("cart-shipping")).toHaveText("$5.00");
+  });
+
+  test("el envío se calcula después del descuento", req("REQ-3"), async ({ page }) => {
+    await agregarProducto(page, 1, 15); // 50,90 USD
+    await abrir(page, "/cart");
+    await page.getByLabel("Cupon").fill("WELCOME10"); // -5,09 USD: queda en 45,81
+    await page.getByRole("button", { name: "Aplicar" }).click();
+    await expect(page.getByTestId("cart-discount")).toHaveText("-$5.09");
+    await expect(page.getByTestId("cart-shipping")).toHaveText("$5.00");
+  });
+
+  test("un cupón vencido se rechaza", req("REQ-4"), async ({ page }) => {
+    await agregarProducto(page, 1, 1);
+    await abrir(page, "/cart");
+    await page.getByLabel("Cupon").fill("EXPIRED20");
+    await page.getByRole("button", { name: "Aplicar" }).click();
+    await expect(page.getByTestId("cart-error")).toHaveText("Coupon has expired");
+  });
+
+  test("no admite más de 10 unidades por producto", req("REQ-5"), async ({ page }) => {
+    await agregarProducto(page, 1, 1);
+    await abrir(page, "/cart");
+    await page.getByLabel("Cantidad de Auriculares BT").fill("11");
+    await page.getByLabel("Cantidad de Auriculares BT").blur();
+    await expect(page.getByTestId("cart-error")).toHaveText("Maximum 10 units per product");
+  });
+
+  test("un pago aprobado crea el pedido", req("REQ-6", "REQ-8"), async ({ page }) => {
+    await agregarProducto(page, 1, 1);
+    await abrir(page, "/checkout");
+    await page.getByLabel("Direccion de envio").fill("Calle Falsa 123");
+    await page.getByRole("button", { name: "Pagar ahora" }).click();
+    await expect(page.getByRole("status")).toHaveText("Pago aprobado. Gracias por tu compra.");
+    await abrir(page, "/orders");
+    await expect(page.getByTestId("order-list")).toContainText("Pagado");
+  });
+
+  // REQ-10 dice que el token deja de valer: solo lo comprueba una prueba que reutilice el token.
+  test("tras cerrar sesión el token ya no sirve", req("REQ-10"), async ({ request }) => {
+    const login = await request.post("/api/auth/login", {
+      data: { email: process.env.USUARIO_EMAIL, password: process.env.USUARIO_CLAVE },
+    });
+    expect(login.status()).toBe(200);
+    const { token } = (await login.json()) as { token: string };
+    const cabeceras = { Authorization: `Bearer ${token}` };
+
+    expect((await request.post("/api/auth/logout", { headers: cabeceras })).status()).toBe(204);
+    expect((await request.get("/api/auth/me", { headers: cabeceras })).status()).toBe(401);
+  });
+});
+```
+
+Los mensajes de error de la API están en inglés (`Invalid email or password`, `Coupon has expired`, `Maximum 10 units per product`): escribe el texto exacto que ves en la pantalla.
+
+Antes de ejecutar, exporta tus credenciales de práctica en la terminal (o tenlas en tu `.env.local`, como en el módulo 1.5). Con la Arena en `baseline`:
+
+```bash
+curl -X POST http://localhost:18080/__arena/reset
+npx playwright test
+node scripts/trazabilidad.mts
+```
+
+Los ocho tests pasan y la matriz sale así:
+
+```text
+| Requisito | Pruebas | Estado |
+| --- | ---: | --- |
+| REQ-1 | 1 | cubierto |
+| REQ-2 | 1 | cubierto |
+| REQ-3 | 2 | cubierto |
+| REQ-4 | 1 | cubierto |
+| REQ-5 | 1 | cubierto |
+| REQ-6 | 1 | cubierto |
+| REQ-7 | 0 | SIN PRUEBAS |
+| REQ-8 | 1 | cubierto |
+| REQ-9 | 0 | no verificable (la Arena no envía correos ni notificaciones) |
+| REQ-10 | 1 | cubierto |
+```
+
+Ahora activa el escenario con la versión 1.0 y vuelve a ejecutar:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase2-e2e-combinado","release":"v1.0.0"}'
+curl -X POST http://localhost:18080/__arena/reset
+npx playwright test
+node scripts/trazabilidad.mts
+```
+
+Falla un test y la matriz cambia en una sola fila:
+
+```text
+  ✘  4 tests/requisitos.spec.ts:37:7 › trazabilidad a requisitos › el envío se calcula después del descuento
+    Expected: "$5.00"
+    Received: "$0.00"
+...
+| REQ-3 | 2 | FALLA (1 de 2) |
+```
+
+Esto es lo que debes observar:
+
+1. **El nombre del requisito explica el fallo.** «REQ-3 falla» le dice a negocio que el envío gratis se calcula mal, sin leer código.
+2. **El test que falla es uno de dos.** El de $5.00 por debajo de 50 USD sigue en verde: la matriz muestra «2 pruebas, 1 falla», no «roto o sano».
+3. **Hay un hueco que ninguna ejecución muestra como fallo.** REQ-7 está en «SIN PRUEBAS» en todas las versiones. Un informe en verde puede esconder requisitos sin cubrir: por eso existe la matriz.
+4. **En esta versión de la Arena el login es más lento** (`auth.slow_login`, 1,2 a 1,8 segundos por petición): la ejecución completa tardó unos 30 segundos en lugar de 3 (diez de ellos, esperando el fallo). Con un `beforeEach` que entra por pantalla en cada test, ese coste se paga ocho veces. El módulo 2.4 muestra cómo pagarlo una sola vez con `storageState`.
+5. **Con `v1.1.0` el mismo test sigue fallando**, pero ahora es culpa del test: el requisito vigente dice «antes del descuento». Compruébalo en el ejercicio 4.
+
+Los errores típicos de esta práctica:
+
+- **Un arreglo en vez de un objeto:** `test("...", [req(...)], ...)` falla con `Error: details: expected object, got array`. Pasa el objeto con la clave `annotation`.
+- **Una anotación que miente:** poner `REQ-9` en un test de otra cosa para «llegar a 10 de 10». La matriz lo da por bueno y tu informe deja de ser fiable.
+- **Escribir la contraseña en el código** para no configurar el entorno. Va en las variables `USUARIO_EMAIL` y `USUARIO_CLAVE`.
+- **Ejecutar el script sin informe previo:** el JSON lo crea `npx playwright test`; sin ese paso, el script no encuentra `resultados/informe.json`.
+- **Dejar la Arena en `v1.0.0`:** al terminar, vuelve a `baseline`.
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+Todos usan el proyecto y los archivos del paso 5 y del ejemplo. El botón abre la Arena **alojada** (para explorar la página «Requisitos» y cambiar la versión); tus tests van contra tu Arena local. Vuelve a `baseline` al terminar cada ejercicio.
+
+<Ejercicio id="ej-2-7-anotar-requisito">
+  Elige uno de tus tests de F1 que compruebe algo de la lista de requisitos (por ejemplo, un login
+  incorrecto o un cupón rechazado), anótalo con el requisito correcto usando una función `req` como
+  la del paso 2 y comprueba, en `resultados/informe.json`, que la anotación llegó al informe.
+</Ejercicio>
+
+<Ejercicio id="ej-2-7-informe-html">
+  Con la Arena en `v1.0.0`, ejecuta la suite del ejemplo y abre el informe HTML con `npx playwright
+  show-report`. Encuentra el test que falla, el paso en el que falla y su traza, y apunta qué
+  requisito tiene anotado.
+</Ejercicio>
+
+<Ejercicio id="ej-2-7-hueco-req7">
+  La matriz del ejemplo dice «SIN PRUEBAS» en REQ-7. Escribe un test anotado con REQ-7 que compruebe
+  que una compra de 50,90 USD sin cupón tiene envío gratis. Ejecuta la matriz de nuevo, y luego
+  repite con `v1.0.0` y con `v1.1.0`.
+</Ejercicio>
+
+<Ejercicio id="ej-2-7-requisito-cambia">
+  Con la Arena en `v1.1.0`, lee de nuevo REQ-3 en la página «Requisitos». Decide si falla el código
+  o falla tu test «el envío se calcula después del descuento», corrígelo y comprueba que la matriz
+  vuelve a mostrar REQ-3 como cubierto.
+</Ejercicio>
+
+<Ejercicio id="ej-2-7-resumen-en-ci">
+  Comprueba en tu máquina que el script escribe la tabla en el resumen de una ejecución: define la
+  variable `GITHUB_STEP_SUMMARY` apuntando a un archivo de prueba, ejecuta el script y mira el
+  contenido. Después escribe los tres pasos del workflow que publican la matriz y el informe aunque
+  los tests fallen.
+</Ejercicio>
+
+<AbrirArena escenario="fase2-e2e-combinado" />
+
+## 5. Reto sin guía
+
+<Reto titulo="La matriz de trazabilidad de tu suite, comprobada por ti">
+  Es una práctica abierta: este módulo no tiene evaluador automático. Tú decides si tu trabajo está
+  bien con la lista de comprobación del final. El informe con trazabilidad sí lo exigirá el reto del
+  módulo 2.8, así que es una buena preparación.
+
+Parte de tu suite de los módulos anteriores (por ejemplo, los tests UI + API del 2.4) y haz lo siguiente:
+
+1. Anota con `requisito` todos los tests que protegen un REQ-n.
+2. Configura los reporteros `list`, `html` (sin abrirse solo) y `json` en `resultados/informe.json`.
+3. Guarda el script de la matriz en `scripts/trazabilidad.mts`, adáptalo a tu proyecto y añade `resultados/` y `playwright-report/` a `.gitignore`.
+4. Cubre **al menos 7 de los 10 requisitos**, con todos sus tests en verde en `baseline`, y marca como «no verificable» (con su motivo) lo que no pueda probarse.
+5. Escribe los pasos del workflow que publican la matriz en el resumen y suben el informe como artefacto, también cuando la suite falla.
+6. Ejecuta tu suite con `v1.0.0` y guarda en `trazabilidad.md` la matriz resultante y **una frase por cada requisito en fallo** que diga si es un defecto de la tienda o un test desactualizado.
+
+Criterios de autocomprobación:
+
+- `npx playwright test` crea `playwright-report/index.html` y `resultados/informe.json`.
+- En el JSON, cada test anotado tiene una anotación de tipo `requisito` con un `REQ-n` escrito sin errores.
+- La matriz muestra, para cada uno de REQ-1 a REQ-10, cuántas pruebas tiene y su estado.
+- Al menos 7 requisitos aparecen como «cubierto» en `baseline`, y ningún requisito «cubierto» está anotado a un test que no lo comprueba.
+- Los requisitos que no puedes probar figuran como «no verificable» con un motivo, no como «cubierto».
+- Con `v1.0.0` la matriz refleja el fallo de REQ-3 y tu `trazabilidad.md` explica la causa.
+- No hay contraseñas ni valores de `ARENA_*` en el código; tus tests no usan `/__arena`.
+- Dejaste la Arena de nuevo en `baseline`.
+
+Si cumples todos los puntos, tu suite no solo pasa: cuenta qué protege.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+Una IA ahorra tiempo en lo mecánico de este módulo: el script de la matriz, el YAML del workflow y las anotaciones repetitivas. Lo que no puede hacer es saber qué comprueba **de verdad** cada test.
+
+**Qué pedirle:**
+
+- «Escribe un script de Node que lea el informe JSON de Playwright y construya una tabla de requisitos con estado. Las anotaciones tienen `type: "requisito"` y `description: "REQ-n"`».
+- «Dame los pasos de un workflow de GitHub Actions que suban el informe aunque fallen los tests».
+- «Dado este test, ¿qué requisito de esta lista cubre y cuál no?» (pásale el texto de los requisitos).
+
+**Qué revisar antes de aceptarlo:**
+
+- Que el script lea la estructura real de tu JSON (`suites`, `specs`, `tests`, `annotations`) y no una inventada: ejecútalo contra tu informe.
+- Que cada `REQ-n` propuesto lo comprueba el test, no solo «se parece».
+- Que las acciones del workflow tengan una versión que existe (`actions/upload-artifact@v7`, por ejemplo) y que el paso corra aunque los tests fallen.
+- Que no te haya inventado requisitos: la lista es REQ-1 a REQ-10.
+
+**Qué rechazar:**
+
+- Anotar REQ-9 en cualquier test para que la matriz quede «completa».
+- Un reportero o paquete que no conoces, añadido para «mejorar» el informe.
+- Pegar la contraseña de práctica en el prompt o en el workflow: va por variables de entorno o secretos.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Confiar en el verde sin mirar los huecos">
+  «Todos los tests pasan» no significa que todo esté probado. Un requisito sin ninguna prueba no
+  falla nunca. La matriz sirve justo para eso: muestra los que están en «SIN PRUEBAS».
+</ErrorComun>
+
+<ErrorComun titulo="Anotar un requisito que el test no comprueba">
+  La anotación no valida nada. Si la pones por completar la tabla, el informe da una falsa seguridad
+  y deja de ser evidencia. Anota solo lo que el test comprueba.
+</ErrorComun>
+
+<ErrorComun titulo="Dejar que el informe HTML abra el navegador en CI">
+  Sin `open: "never"`, el reportero HTML puede intentar abrir el navegador cuando hay fallos y dejar
+  colgado el servidor. Ábrelo tú con `npx playwright show-report`.
+</ErrorComun>
+
+<ErrorComun titulo="Publicar el informe solo cuando todo pasa">
+  Si el paso que sube el informe se ejecuta solo tras un paso exitoso, justo en las ejecuciones con
+  fallos no queda nada que revisar. Usa `if: ${{ !cancelled() }}`.
+</ErrorComun>
+
+<ErrorComun titulo="No actualizar los tests cuando cambia el requisito">
+  Un test que falla puede estar bien y el requisito haber cambiado. Compara con la versión vigente
+  del requisito antes de «arreglar» la tienda o el test.
+</ErrorComun>
+
+<ErrorComun titulo="Inventar una prueba para un requisito que no se puede verificar">
+  REQ-9 no tiene comportamiento en la Arena. Un test que «lo cubre» sin comprobar nada es peor que
+  un hueco declarado: márcalo como «no verificable» y explica por qué.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- La trazabilidad une requisito, test y resultado, y responde qué está protegido y qué no.
+- Se anota con `{ annotation: { type: "requisito", description: "REQ-n" } }`; varios requisitos van en una lista dentro de la clave `annotation`.
+- Las etiquetas (`tag: "@REQ-2"`) sirven para filtrar con `--grep`; las anotaciones, para describir.
+- Un requisito está cubierto cuando tiene tests y todos pasan; sin tests es un hueco; con un test en fallo, falla.
+- Los reporteros `list`, `html` y `json` se combinan en `playwright.config.ts`; `open: "never"` evita bloquear la integración continua.
+- Un script de 50 líneas convierte el JSON en una matriz que entiende negocio, y puede escribirla en el resumen de la ejecución.
+- Lo que no se puede probar se declara «no verificable» con su motivo; no se inventa un test.
+- Cuando cambia un requisito, la matriz te dice qué tests revisar; el informe se publica siempre, también cuando fallan los tests.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

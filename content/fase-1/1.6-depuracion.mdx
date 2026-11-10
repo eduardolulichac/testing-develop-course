@@ -1,0 +1,528 @@
+---
+modulo: "1.6"
+titulo: "Depuración"
+fase: 1
+nivel: "Junior"
+duracion_min: 120
+prerequisitos: ["1.5"]
+escenario: "fase1-fallos-sembrados"
+version: "2026-11"
+herramientas: ["Playwright 1.64.1", "Trace Viewer", "Node 24 (verificado 24.14)"]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Al terminar sabrás leer el error de un test que falla, reunir pruebas con capturas, video y
+  trazas, reproducir un fallo intermitente y decidir si la culpa es del test, de los datos o de la
+  aplicación. Resolverás una suite con 8 tests rotos.
+</Objetivo>
+
+Escribir tests es la mitad del trabajo. La otra mitad es lo que haces cuando uno **falla**. Un QA que no sabe depurar pierde horas, o peor: reporta como defecto lo que era un error de su test, o «arregla» el test para esconder un defecto real.
+
+En este módulo trabajas con una suite de 8 tests de la compra que falla. Aprenderás un método para investigar cada fallo y las herramientas de Playwright que te dan pruebas: el **reporte HTML**, las **capturas**, el **video** y el **Trace Viewer** (visor de trazas), que es la más potente.
+
+La suite tiene dos tipos de problemas mezclados, como en el trabajo real:
+
+- Errores de **tus tests**: un texto mal escrito, un `await` olvidado, un dato que caducó.
+- **Defectos de la aplicación**: algo que falla de verdad.
+
+Tu tarea es separarlos con evidencia. Usarás el escenario `fase1-fallos-sembrados` de QA Arena, que tiene dos situaciones reales: un pago que falla una de cada diez veces y una regresión que llega con el deploy del viernes.
+
+> En Windows, toda la Fase 1 se hace en la terminal de Ubuntu (WSL2).
+
+## 2. Explicación paso a paso
+
+<Paso numero={0} titulo="Prepara el escenario y la suite rota">
+Necesitas tu proyecto de Playwright con las ayudas de los módulos 1.3 a 1.5 (`tests/support/tienda.ts`, con `abrir`, `iniciarSesion`, `agregarProducto`, `pagar` y `vaciarCarrito`, y tu `.env.local`). Esta suite **importa** `pagar` de `tienda.ts`: no la vuelvas a escribir. Deja el `playwright.config.ts` del módulo 1.5 y añade el reporte HTML y las pruebas que se guardan al fallar:
+
+```ts
+import fs from "node:fs";
+import path from "node:path";
+import { defineConfig } from "@playwright/test";
+import dotenv from "dotenv";
+
+const entorno = process.env.ENTORNO ?? "local";
+const archivo = path.resolve(__dirname, `.env.${entorno}`);
+if (process.env.ENTORNO && !fs.existsSync(archivo)) {
+  throw new Error(
+    `No existe el ambiente "${entorno}": falta el archivo .env.${entorno}. Copia .env.example y complétalo.`,
+  );
+}
+dotenv.config({ path: archivo, quiet: true });
+
+export default defineConfig({
+  testDir: "./tests",
+  workers: 1, // los tests comparten el carrito de Ana: uno a la vez
+  reporter: [["list"], ["html", { open: "never" }]],
+  use: {
+    baseURL: process.env.ARENA_URL ?? "http://localhost:18080",
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
+  },
+});
+```
+
+Activa el escenario y reinicia los datos. El escenario trae dos «versiones» de la aplicación: `v1.4.0` (jueves 12:00) y `v1.5.0` (viernes 18:30, el deploy). Empieza con la primera:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase1-fallos-sembrados","release":"v1.4.0"}'
+curl -X POST http://localhost:18080/__arena/reset
+```
+
+El `reset` deja los datos como al principio (pedidos, stock, y el contador del fallo intermitente). **Repítelo antes de cada ronda de pruebas**; si no, los pagos de rondas anteriores agotan el stock y ensucian los resultados.
+
+Ahora crea `tests/compra.spec.ts` con esta suite. Cópiala tal cual: los fallos están dentro a propósito. El test 8 no usa `pagar` porque necesita cambiar el año de la tarjeta, un campo que la ayuda no toca.
+
+```ts
+import { test, expect } from "@playwright/test";
+import { abrir, agregarProducto, iniciarSesion, pagar, vaciarCarrito } from "./support/tienda";
+
+test("1. la pantalla de acceso se ve bien", async ({ page }) => {
+  await abrir(page, "/login");
+  await expect(page.getByRole("heading", { name: "Iniciar sesión" })).toBeVisible();
+});
+
+test("2. quitar un producto del carrito", async ({ page }) => {
+  await iniciarSesion(page);
+  await vaciarCarrito(page);
+  await agregarProducto(page, 1, 15);
+  await agregarProducto(page);
+  await abrir(page, "/cart");
+  await page.getByRole("button", { name: "Quitar" }).click();
+  await expect(page.getByTestId("cart-item-1")).toHaveCount(0);
+});
+
+test("3. agregar y ver el carrito", async ({ page }) => {
+  await iniciarSesion(page);
+  await vaciarCarrito(page);
+  await abrir(page, "/products/1");
+  page.getByRole("button", { name: "Agregar al carrito" }).click();
+  await abrir(page, "/cart");
+  await expect(page.getByTestId("cart-item-1")).toBeVisible();
+});
+
+test("4. después de pagar se ve el pedido", async ({ page }) => {
+  await iniciarSesion(page);
+  await vaciarCarrito(page);
+  await agregarProducto(page);
+  await pagar(page, "Av. Siempre Viva 123");
+  await expect(page).toHaveURL(/\/pedidos\/\d+/);
+});
+
+test("5. pagar con tarjeta aprobada", async ({ page }) => {
+  await iniciarSesion(page);
+  await vaciarCarrito(page);
+  await agregarProducto(page, 1, 24);
+  await pagar(page, "Av. Siempre Viva 123");
+  await expect(page.getByTestId("order-success")).toBeVisible();
+});
+
+test("6. enviar a una dirección con tilde y número", async ({ page }) => {
+  await iniciarSesion(page);
+  await vaciarCarrito(page);
+  await agregarProducto(page);
+  await pagar(page, "Calle Peña #12");
+  await expect(page.getByTestId("order-success")).toBeVisible();
+});
+
+test("7. mis pedidos muestra los 2 de siempre", async ({ page }) => {
+  await iniciarSesion(page);
+  await page.getByTestId("nav-orders").click();
+  await expect(page.locator("[data-testid^=order-row-]")).toHaveCount(2);
+});
+
+test("8. pagar con otra tarjeta", async ({ page }) => {
+  await iniciarSesion(page);
+  await vaciarCarrito(page);
+  await agregarProducto(page);
+  await abrir(page, "/checkout");
+  await page.getByLabel("Direccion de envio").fill("Av. Siempre Viva 123");
+  await page.getByLabel("Anio").fill("2025");
+  await page.getByRole("button", { name: "Pagar ahora" }).click();
+  await expect(page.getByTestId("order-success")).toBeVisible();
+});
+```
+
+Ejecútala (solo este archivo, para que el recuento no incluya los tests de los módulos anteriores):
+
+```bash
+npx playwright test tests/compra.spec.ts
+```
+
+Verás **6 tests fallidos y 2 que pasan** (el 5 y el 6). Los otros dos problemas no se ven en una sola ejecución: los descubrirás más adelante.
+
+</Paso>
+
+<Paso numero={1} titulo="Un método para investigar un fallo">
+Ante un test rojo, no cambies código al azar. Sigue estos pasos, en orden:
+
+1. **Reproduce**: ejecuta solo ese test (`npx playwright test -g "nombre"`). ¿Falla siempre, o a veces?
+2. **Lee el error**: tipo de error, localizador, valor esperado y recibido, y la línea que falla.
+3. **Reúne pruebas**: captura, traza, lo que respondió el servidor.
+4. **Formula una hipótesis**: «el texto real no lleva tilde».
+5. **Comprueba la hipótesis** con un cambio pequeño.
+6. **Clasifica**: ¿el test estaba mal, el dato caducó o la aplicación falla con datos válidos?
+
+Lo que sirve para el día a día: **cambia una cosa a la vez** y vuelve a ejecutar. Si cambias dos y pasa, no sabes cuál lo arregló.
+
+</Paso>
+
+<Paso numero={2} titulo="Leer un error de Playwright">
+Un error tiene siempre la misma anatomía. Este es el del test 1 (verdadero, ejecutado):
+
+```text
+Error: expect(locator).toBeVisible() failed
+
+Locator: getByRole('heading', { name: 'Iniciar sesión' })
+Expected: visible
+Timeout: 5000ms
+Error: element(s) not found
+
+Call log:
+  - Expect "toBeVisible" getByRole('heading', { name: 'Iniciar sesión' }) with timeout 5000ms
+  - waiting for getByRole('heading', { name: 'Iniciar sesión' })
+
+  4 | test("1. la pantalla de acceso se ve bien", async ({ page }) => {
+  5 |   await abrir(page, "/login");
+> 6 |   await expect(page.getByRole("heading", { name: "Iniciar sesión" })).toBeVisible();
+    |                                                                       ^
+```
+
+Léelo de arriba abajo:
+
+- **La primera línea** dice qué aserción falló: `toBeVisible()`.
+- **Locator** dice qué buscaba. **Expected** y **Received** (cuando hay) dicen qué esperaba y qué obtuvo.
+- **`element(s) not found`**: el localizador no encontró nada en 5 segundos. Puede que el elemento no exista, que se llame distinto o que aparezca tarde.
+- **Call log**: el diario de Playwright. Dice qué estuvo haciendo y esperando.
+- **El código con la flecha `^`** marca la línea exacta.
+
+Otros mensajes que verás en esta suite:
+
+| Mensaje                                            | Qué significa                                                                |
+| -------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `element(s) not found`                             | El localizador no encontró nada                                              |
+| `strict mode violation ... resolved to 2 elements` | El localizador es ambiguo: encontró más de uno y Playwright no adivina cuál  |
+| `Expected pattern: ... Received string: ...`       | Una dirección (`toHaveURL`) no coincide                                      |
+| `Test timeout of 30000ms exceeded`                 | El test entero tardó más de 30 s (suele ser una acción que esperó en vano)   |
+| `Test ended`                                       | Algo seguía en marcha cuando el test terminó (típico de un `await` olvidado) |
+| `element is not enabled`                           | El botón existe pero está desactivado                                        |
+
+</Paso>
+
+<Paso numero={3} titulo="El reporte HTML: la vista general">
+Cada ejecución crea una carpeta `playwright-report`. Ábrela con:
+
+```bash
+npx playwright show-report
+```
+
+Verás la lista de tests (con filtros por estado) y, al abrir uno, sus pasos, el error, las capturas, el video y un enlace a la traza. Es el mejor punto de partida para ver **qué** falló. Para saber **por qué**, baja un nivel.
+
+Todo lo que Playwright guarda al fallar queda también en la carpeta `test-results`, en una subcarpeta por test: `test-failed-1.png` (captura), `video.webm`, `trace.zip` y `error-context.md`. Este último es un resumen en texto de la página en el momento del fallo (en forma de árbol de elementos). Sirve para leer qué había en pantalla sin abrir nada, y para pegárselo a una IA.
+
+Las opciones de `use` en la configuración controlan qué se guarda:
+
+| Opción                          | Qué guarda                                                |
+| ------------------------------- | --------------------------------------------------------- |
+| `screenshot: "only-on-failure"` | Una captura al fallar                                     |
+| `video: "retain-on-failure"`    | Graba siempre y conserva el video solo si el test falla   |
+| `trace: "retain-on-failure"`    | Graba la traza siempre y la conserva solo si falla        |
+| `trace: "on-first-retry"`       | La traza solo en el primer reintento (útil con `retries`) |
+
+</Paso>
+
+<Paso numero={4} titulo="El Trace Viewer: la grabación del test">
+La traza (`trace.zip`) es una grabación de todo el test: cada acción con una foto de la página, las peticiones de red, los mensajes de la consola y el código. Ábrela con la ruta que Playwright imprime al fallar:
+
+```bash
+npx playwright show-trace test-results/compra-1-la-pantalla-de-acceso-se-ve-bien/trace.zip
+```
+
+También puedes abrirla desde el reporte HTML (el icono de traza) o arrastrando el archivo a `trace.playwright.dev`: se abre en tu navegador y no se sube a ningún servidor.
+
+Las partes principales de la ventana:
+
+- **Actions** (lista de acciones): cada paso del test, con su duración. Los que fallaron aparecen marcados.
+- **Línea de tiempo**: fotos de la página a lo largo del tiempo. Pasa el ratón por encima para ampliarlas.
+- **Captura de la página**: para la acción elegida puedes ver la página **Before** (antes), **Action** (en el momento de actuar, con el punto exacto del clic) y **After** (después). Esta es la parte más valiosa: ves lo que el test veía.
+- **Source**: la línea de tu código que ejecutó esa acción.
+- **Call** y **Log**: detalle de la acción y lo que Playwright esperó.
+- **Errors**: el error con su contexto.
+- **Console**: mensajes de la consola del navegador.
+- **Network**: todas las peticiones, con su estado (`200`, `422`, `503`...) y su respuesta.
+
+Cuando el error dice «element not found», la pestaña **Before/After** te enseña si la página estaba en otra pantalla. Cuando la acción parece correcta pero el resultado no, **Network** te dice qué contestó el servidor.
+
+**Alternativa por terminal.** Playwright 1.64 también deja leer una traza sin abrir ventanas. Es útil en una conexión remota o para pasarle datos concretos a una IA:
+
+```bash
+npx playwright trace open test-results/<carpeta>/trace.zip
+npx playwright trace actions     # lista de acciones, con las que fallaron
+npx playwright trace requests    # peticiones de red con su estado
+npx playwright trace errors      # errores con su pila
+npx playwright trace close       # borra los datos extraídos
+```
+
+</Paso>
+
+<Paso numero={5} titulo="Depurar en vivo: el modo debug y la interfaz UI">
+A veces necesitas ver el test paso a paso mientras corre:
+
+```bash
+npx playwright test -g "quitar un producto" --debug
+```
+
+`--debug` abre el navegador con ventana, un panel llamado **Inspector** y desactiva el límite de tiempo. Puedes avanzar acción por acción, ver el localizador resaltado en la página y probar localizadores. Si quieres detener el test en un punto concreto, escribe `await page.pause();` en el código y ejecútalo con `--debug`; el test se detiene ahí hasta que presionas «Resume».
+
+Otras dos ayudas:
+
+- `npx playwright test --ui`: abre la **interfaz UI**, con la lista de tests, un botón para ejecutarlos, la línea de tiempo y la traza a la vez. Es cómoda para investigar varios tests.
+- `npx playwright test --headed`: ejecuta con el navegador visible, sin pausas.
+
+También hay una extensión de Playwright para VS Code: permite poner puntos de parada junto al código y ejecutar un test con un clic.
+
+Regla práctica: empieza por la **traza** (no cambia nada y lo ves todo). Pasa al `--debug` cuando necesitas probar localizadores o parar en un punto.
+
+</Paso>
+
+<Paso numero={6} titulo="Aislar: ejecutar solo lo que importa">
+Cuando tienes muchos tests, no ejecutes todos para investigar uno:
+
+| Comando                                | Qué hace                                               |
+| -------------------------------------- | ------------------------------------------------------ |
+| `npx playwright test -g "quitar un"`   | Solo los tests cuyo nombre contiene ese texto          |
+| `npx playwright test --last-failed`    | Solo los que fallaron en la última ejecución           |
+| `npx playwright test --max-failures=1` | Se detiene al primer fallo                             |
+| `npx playwright test --list`           | Muestra qué tests ejecutaría, sin ejecutarlos          |
+| `npx playwright test --repeat-each=10` | Ejecuta cada test 10 veces (para fallos intermitentes) |
+
+Nota: `-g` busca en el nombre completo, así que usa un trozo del título (`"5. pagar"`), no un patrón que empiece con `^`.
+
+</Paso>
+
+<Paso numero={7} titulo="Fallos intermitentes (flaky)">
+Un test **intermitente** (_flaky_) pasa unas veces y falla otras sin que cambies nada. Son los más caros: nadie confía en ellos. Hay tres causas típicas:
+
+1. **El test**: esperas mal hechas, datos compartidos, orden de ejecución.
+2. **El ambiente**: lentitud, datos viejos.
+3. **La aplicación**: un defecto que ocurre solo de vez en cuando.
+
+Para investigarlo, repite el test muchas veces y observa **cuándo** falla:
+
+```bash
+npx playwright test -g "5. pagar" --repeat-each=10
+```
+
+Si falla 1 de cada 10 y siempre por el mismo motivo, sospecha de la aplicación. Si falla por motivos distintos, sospecha del test.
+
+La tentación es poner `retries: 1`: si falla, se reintenta y pasa. Los reintentos son útiles para tener informes y trazas de fallos raros (`trace: "on-first-retry"`), y Playwright marca como **flaky** al test que falló y luego pasó. Pero **no son una solución**: esconden un defecto real. Si quieres que un test intermitente haga fallar el proceso, usa `--fail-on-flaky-tests`.
+
+</Paso>
+
+<Paso numero={8} titulo="Regresiones: ¿desde cuándo falla?">
+Una **regresión** es algo que funcionaba y dejó de funcionar. La pregunta clave es: ¿**desde qué versión**? QA Arena te deja cambiar de release para comparar:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase1-fallos-sembrados","release":"v1.5.0"}'
+curl -X POST http://localhost:18080/__arena/reset
+```
+
+También puedes cambiarla desde la propia Arena, con el selector de «Release» de la cabecera. Ejecuta el mismo test en las dos versiones. Si pasa en una y falla en la otra, el defecto entró con esa versión, y el reporte lleva ese dato exacto: eso ahorra horas al equipo de desarrollo.
+
+</Paso>
+
+<Paso numero={9} titulo="Cómo reportar un defecto con evidencia">
+Cuando concluyas que es un defecto de la aplicación, el reporte debe poder reproducirse sin preguntarte nada:
+
+- **Título**: qué falla y dónde (una línea).
+- **Versión y ambiente**: por ejemplo `v1.5.0`, local.
+- **Pasos para reproducir**, numerados.
+- **Resultado esperado** y **resultado obtenido**.
+- **Frecuencia**: siempre, o «1 de cada 10, comprobado en 10 ejecuciones».
+- **Evidencia**: la captura, la traza y la respuesta del servidor (por ejemplo, `POST /api/checkout` → `503`).
+
+Y un dato importante: separa lo que **viste** de lo que **supones**. «El pago devolvió 503» es un hecho; «el servidor se cae por falta de memoria» es una suposición.
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Tres tests rotos, tres causas distintas">
+Partimos de la primera ejecución de la suite (6 rojos). Resolvemos tres con el método y, al final, mostramos cómo se descubre el intermitente.
+
+**Test 2 — «quitar un producto del carrito».**
+
+1. _Reproducir_: `npx playwright test -g "quitar un"`. Falla siempre.
+2. _Leer el error_:
+
+```text
+Error: locator.click: Error: strict mode violation: getByRole('button', { name: 'Quitar' }) resolved to 2 elements:
+    1) <button data-testid="cart-remove-1">Quitar</button> aka getByTestId('cart-remove-1')
+    2) <button data-testid="cart-remove-15">Quitar</button> aka getByTestId('cart-remove-15')
+```
+
+3. _Hipótesis_: el carrito tiene dos líneas (agregamos los productos 15 y 1) y cada una tiene su botón «Quitar». El localizador es ambiguo. Playwright incluso sugiere los localizadores (`aka getByTestId(...)`).
+4. _Cambio_: elegir el botón de la línea que queremos quitar.
+
+```ts
+await page.getByTestId("cart-remove-1").click();
+```
+
+5. _Clasificación_: **error del test**. La aplicación está bien.
+
+**Test 1 — «la pantalla de acceso se ve bien».** El error dice `element(s) not found` para un título con nombre `Iniciar sesión`. Al abrir la traza (`show-trace`), la pestaña **Before/After** muestra la pantalla de acceso y su título: dice **«Iniciar sesion»**, sin tilde. La aplicación no usa tildes en sus textos. Arreglo: `name: "Iniciar sesion"`. Clasificación: **error del test** (el dato real estaba delante, bastaba mirarlo).
+
+**Test 3 — «agregar y ver el carrito».** El error mezcla dos mensajes: `element(s) not found` en la última línea y `locator.click: Test ended` más abajo. Mira la línea del `click`: no tiene `await`.
+
+```ts
+page.getByRole("button", { name: "Agregar al carrito" }).click(); // sin await
+await abrir(page, "/cart"); // se va de la página antes de que el clic termine
+```
+
+El test navegó al carrito antes de que el clic terminara, así que el producto nunca se agregó. Arreglo: `await` en el clic y una comprobación de que se agregó antes de cambiar de página:
+
+```ts
+await page.getByRole("button", { name: "Agregar al carrito" }).click();
+await expect(page.getByRole("status")).toHaveText("Agregado al carrito");
+await abrir(page, "/cart");
+```
+
+Clasificación: **error del test**. La pista era el mensaje `Test ended`.
+
+**Resultado.** Después de arreglar los 6 tests rojos que son errores de test o de datos (los ejercicios te guían en ellos), la suite pasa. Pero faltan dos problemas que una sola ejecución no revela: los verás en los ejercicios 3 y 4.
+
+**Errores típicos de este recorrido:**
+
+1. Arreglar el test sin entender el error (quitar la aserción para que pase).
+2. Reportar como defecto de la aplicación algo que era un `await` olvidado.
+3. Ejecutar todo el proyecto para depurar un solo test, en lugar de aislarlo con `-g`.
+
+</Ejemplo>
+
+<AbrirArena escenario="fase1-fallos-sembrados" />
+
+## 4. Ejercicios guiados
+
+Antes de cada ejercicio, reinicia los datos con `curl -X POST http://localhost:18080/__arena/reset`. Los ejercicios 1 y 2 usan la versión `v1.4.0`.
+
+<Ejercicio id="ej-1-6-leer-el-error">
+  Arregla los tests 1 y 4 de la suite sin cambiar la intención del test. Para cada uno, anota el
+  tipo de error, qué esperaba el test y qué había realmente en la página, usando el mensaje de error
+  y la traza.
+</Ejercicio>
+
+<Ejercicio id="ej-1-6-esperas-y-await">
+  Arregla los tests 2 y 3. Después demuestra que ya no dependen de un `await` olvidado ni de un
+  localizador ambiguo: ejecuta cada uno cinco veces con `--repeat-each=5` y comprueba que pasan las
+  cinco.
+</Ejercicio>
+
+<Ejercicio id="ej-1-6-el-pago-intermitente">
+  El test 5 pasa casi siempre. Con los datos recién reiniciados, ejecútalo diez veces seguidas,
+  encuentra en qué repetición falla, abre la traza de ese fallo y averigua qué respondió el
+  servidor. Escribe un reporte de defecto con la evidencia.
+</Ejercicio>
+
+<Ejercicio id="ej-1-6-la-regresion-del-viernes">
+  El test 6 pasa en `v1.4.0`. Cambia a la versión `v1.5.0` (con su `reset`), ejecútalo de nuevo y
+  determina por qué falla. Escribe el reporte de defecto indicando desde qué versión ocurre y qué
+  datos lo provocan.
+</Ejercicio>
+
+## 5. Reto sin guía
+
+<Reto titulo="Los 8 fallos, resueltos con evidencia">
+  Es una práctica abierta: nadie la corrige por ti, así que tú decides si está bien con esta lista.
+
+Cierra los 8 fallos de la suite. Los ejercicios te guiaron en seis; los tests 7 y 8 los resuelves tú, sin pistas. Documenta todo en un archivo `depuracion.md` con una tabla de 8 filas: test, mensaje de error, causa, clasificación (test, dato o aplicación), arreglo y evidencia (una captura, una traza o la respuesta del servidor).
+
+Criterios de autocomprobación:
+
+- Los 8 tests están clasificados con una causa que puedes demostrar, no solo adivinar.
+- Con `v1.4.0` y los datos recién reiniciados, tus tests corregidos pasan una ronda completa.
+- Los tests 7 y 8 pasan solos y en cualquier orden, y ninguno depende de datos que cambian con el tiempo o con otros tests.
+- No quitaste ninguna aserción, no usaste `waitForTimeout` y no pusiste `retries` para esconder un fallo.
+- Para cada defecto de la aplicación escribiste un reporte con título, versión, pasos, esperado, obtenido, frecuencia y evidencia.
+- Separaste en cada reporte lo que viste de lo que supones.
+- Al final, tu tabla muestra dos defectos de la aplicación y seis problemas de tus tests o de sus datos.
+
+Si cumples todos los puntos, sabes depurar: investigaste con método y no cambiaste código al azar.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+La IA es excelente para explicar un error y proponer hipótesis. Pero solo ve lo que le das, y a veces propone «arreglos» que esconden el problema.
+
+**Qué pedirle:**
+
+- «Explícame este error de Playwright línea por línea» (pega el mensaje completo, incluido el call log).
+- «Con este `error-context.md` y este test, ¿qué hipótesis ves? Dame tres ordenadas por probabilidad».
+- «Ayúdame a redactar un reporte de defecto con esta evidencia» (después revisa que no invente datos).
+
+**Qué revisar:**
+
+- Que su explicación coincida con el error **real**. Verifícalo con la traza antes de aplicar nada.
+- Que el arreglo cambie **una** cosa y no toque la intención del test.
+- Que los datos que menciona (códigos de estado, textos) estén en tu evidencia.
+
+**Qué rechazar:**
+
+- «Aumenta el timeout» o «agrega `waitForTimeout`» como solución sin una causa.
+- «Agrega `retries`» para un fallo que no entiendes.
+- Quitar o debilitar una aserción para que el test pase.
+- Que declare un defecto de la aplicación sin que lo hayas comprobado con una traza o con la respuesta del servidor.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Cambiar código sin reproducir primero">
+  Si no sabes cuándo falla, no sabes cuándo lo arreglaste. Reproduce el fallo, aíslalo con `-g` y
+  recién entonces cambia algo, una sola cosa.
+</ErrorComun>
+
+<ErrorComun titulo="Subir el tiempo de espera para que «pase»">
+  Un `timeout` más grande esconde una causa que no entiendes (un localizador equivocado, un `await`
+  olvidado). Si el elemento nunca va a aparecer, esperar más solo hace el fallo más lento.
+</ErrorComun>
+
+<ErrorComun titulo="Usar retries para tapar un fallo intermitente">
+  Un test que falla 1 de cada 10 veces suele indicar un defecto real. `retries` hace que el informe
+  salga verde, pero el defecto sigue ahí y llega a producción.
+</ErrorComun>
+
+<ErrorComun titulo="Probar un test solo y creer que está bien">
+  Un test que pasa solo y falla dentro de la suite (o al revés) depende de datos o del orden de
+  ejecución. El test 7 es un ejemplo: cuenta pedidos que otros tests acaban de crear.
+</ErrorComun>
+
+<ErrorComun titulo="No reiniciar los datos entre rondas">
+  Cada compra gasta stock y agrega pedidos. Si no ejecutas el `reset`, un test falla en la tercera
+  ronda con «element is not enabled» y parece un misterio. Reinicia antes de cada ronda.
+</ErrorComun>
+
+<ErrorComun titulo="Reportar un defecto sin versión ni evidencia">
+  «El pago falla a veces» no sirve. Indica la versión, los pasos, cuántas veces de cuántas y adjunta
+  la traza o la respuesta del servidor.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Depurar es un método: reproduce, lee el error, reúne pruebas, plantea una hipótesis, cambia una cosa y clasifica.
+- Un error de Playwright se lee por partes: la aserción, el localizador, lo esperado y lo recibido, el call log y la línea marcada.
+- Capturas, video y traza se guardan al fallar según la configuración; el reporte HTML (`show-report`) da la vista general.
+- El Trace Viewer (`show-trace`) muestra la página antes y después de cada acción, la red y la consola: empieza siempre por la traza.
+- `--debug`, `page.pause()` y `--ui` sirven para parar y probar en vivo; `-g`, `--last-failed` y `--repeat-each` sirven para aislar y repetir.
+- Un fallo intermitente se investiga repitiendo el test; los `retries` ayudan a recolectar evidencia, no a esconder defectos.
+- Una regresión se ubica comparando versiones: el reporte dice desde cuál ocurre.
+- Cada fallo se clasifica con evidencia (test, dato o aplicación); un buen reporte separa lo visto de lo supuesto.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

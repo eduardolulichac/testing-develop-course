@@ -1,0 +1,622 @@
+---
+modulo: "2.4"
+titulo: "Pruebas E2E: UI + API combinadas"
+fase: 2
+nivel: "Semi Senior"
+duracion_min: 120
+prerequisitos: ["2.3"]
+escenario: "fase2-e2e-combinado"
+version: "2026-11"
+herramientas: ["Playwright 1.64.1", "Node 24 (verificado 24.14)", "QA Arena (local)"]
+estado: borrador
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Al terminar sabrás preparar los datos de un test por API y verificar el resultado en la interfaz,
+  iniciar sesión una sola vez con un token y reutilizarlo en toda la suite, aislar los tests para
+  que no se pisen, reducir el tiempo de una suite lenta y detectar cuándo un requisito ambiguo o
+  contradictorio hace que un «defecto» dependa de quién lea el texto.
+</Objetivo>
+
+Una suite de extremo a extremo (E2E) hace lo que haría una persona: abre la tienda, entra, compra. Es la prueba que más se parece a la realidad, y también la más lenta y la más frágil. Casi siempre el tiempo se va en lo que **no** se quiere probar: iniciar sesión en cada test, llenar el carrito haciendo clic, vaciarlo después.
+
+La idea de este módulo es repartir el trabajo entre dos capas:
+
+- **La API prepara.** Crea el cliente, llena el carrito, aplica el cupón. Es rápida y no depende de cómo se ve la página.
+- **La interfaz verifica.** Solo lo que ve la persona: el envío que muestra el carrito, el pedido que aparece en «Mis pedidos».
+
+Así cada test sigue probando el flujo real, pero tarda una fracción y falla solo por lo que importa.
+
+Trabajas con el escenario `fase2-e2e-combinado`. Es un sprint de la tienda con dos particularidades. La primera, una «condición de entorno»: el inicio de sesión tarda más de un segundo. La segunda, que los requisitos de la tienda no son del todo claros y que hay algo raro en cómo se calculan precios y envío. Un buen test debe pasar con la lentitud y detectar lo que de verdad está mal.
+
+Lo que necesitas antes de empezar:
+
+- El proyecto `practica-playwright` de los módulos anteriores, con `tests/support/tienda.ts` (módulos 1.3 y 1.4) y la configuración del módulo 1.5.
+- Los conocimientos de API del módulo 2.3 (peticiones con `request` y códigos de estado).
+- QA Arena local en `http://localhost:18080`.
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Preparar el proyecto: variables y una ayuda menos insegura">
+Desde esta fase, **ninguna contraseña se escribe en el código**, ni siquiera como valor por defecto: se lee del entorno. Es lo que hará tu CI en el módulo 2.6 y lo que comprueba la regla `sin-credenciales-en-codigo` de los retos. Ana y el administrador son cuentas de práctica públicas, pero el hábito es el que importa.
+
+Comprueba que tu `.env.local` tiene estas variables (`USUARIO_EMAIL` y `USUARIO_CLAVE` ya las usas desde el módulo 2.2; añade las que falten) (la contraseña de cada cuenta aparece bajo el formulario de la pantalla de inicio de sesión de la Arena) y deja sus nombres, sin valores, en `.env.example`:
+
+```text
+ARENA_URL=http://localhost:18080
+AMBIENTE=local
+USUARIO_EMAIL=ana@arena.test
+USUARIO_CLAVE=
+ADMIN_EMAIL=admin@arena.test
+ADMIN_CLAVE=
+```
+
+Las plantillas de los retos sí traen la clave de práctica en su `.env.example`: es una clave pública y ahorra fricción. En tu repositorio propio, deja el valor vacío: es la costumbre que te servirá con claves reales.
+
+Para el resto de las variables (el administrador, la base de datos del módulo 2.5), crea `tests/support/env.ts`, junto a `fixtures/credenciales.ts` del módulo 2.2. Falla con un mensaje claro si falta una variable:
+
+```ts
+/** Lee una variable de entorno o dice qué falta (en local viene de `.env.local`; en CI, de los secretos). */
+export function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value)
+    throw new Error(`Falta la variable ${name}: revisa tu .env.local o los secretos del CI`);
+  return value;
+}
+```
+
+En el módulo 1.3 la ayuda `iniciarSesion` tenía la contraseña como valor por defecto. Cámbiala para que lea las variables (el resto de `tests/support/tienda.ts` no cambia):
+
+```ts
+import { requireEnv } from "./env";
+
+export async function iniciarSesion(
+  page: Page,
+  correo = requireEnv("USUARIO_EMAIL"),
+  clave = requireEnv("USUARIO_CLAVE"),
+) {
+  await abrir(page, "/login");
+  await page.getByLabel("Correo").fill(correo);
+  await page.getByLabel("Contrasena").fill(clave);
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.getByTestId("user-name")).toBeVisible();
+}
+```
+
+Si usaste en el módulo 1.5 un `conDefecto("USUARIO_CLAVE", "...")`, cámbialo por `requireEnv` también.
+
+Tampoco se usan `/__arena` ni variables `ARENA_*` dentro de los tests (la única excepción es `ARENA_URL` en la configuración). El reinicio de datos lo haces **tú, en la terminal**, antes de ejecutar:
+
+```bash
+curl -X POST http://localhost:18080/__arena/reset
+```
+
+</Paso>
+
+<Paso numero={2} titulo="Un test, dos capas">
+Mira cómo se reparte el trabajo en un test de «el carrito muestra el envío»:
+
+| Qué                        | Cómo                     | Por qué                              |
+| -------------------------- | ------------------------ | ------------------------------------ |
+| Tener sesión               | API (token)              | No es lo que se prueba               |
+| Llenar el carrito y cupón  | API                      | Cuesta milisegundos, no segundos     |
+| Ver el envío en el carrito | Interfaz (`getByTestId`) | Es lo que ve la persona: se verifica |
+
+La regla práctica: **prepara por la vía más barata y verifica por la vía que le importa al usuario**. Si el test es sobre el formulario de inicio de sesión, ese test sí lo hace por pantalla. Pero basta uno.
+
+</Paso>
+
+<Paso numero={3} titulo="Iniciar sesión por API: el token">
+La pantalla de inicio de sesión llama a `POST /api/auth/login` con el correo y la contraseña. La API responde con un `token`, y desde entonces cada petición lo manda en la cabecera `Authorization: Bearer <token>`. Tú puedes hacer esa llamada sin abrir la página. Abre `tests/support/api.ts`, el que creaste en el módulo 2.3: ya trae `credenciales`, `conToken`, `loginPorApi` y `registrarCliente`, y **no se reescriben**. Este módulo lo amplía (los módulos 2.5 y 2.6 lo reutilizan). Primero reemplaza su primera línea de importación por las siguientes, y deja la de `credenciales` como está:
+
+```ts
+import { expect, request, type APIRequestContext } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+
+/** Dónde guarda el front el token (localStorage de la Arena). */
+export const CLAVE_TOKEN = "arena.token";
+/** Archivo donde `auth.setup.ts` deja la sesión de Ana. */
+export const SESION_ANA = ".auth/ana.json";
+
+export interface Carrito {
+  items: { productId: number }[];
+  couponCode: string | null;
+  subtotalCents: number;
+  discountCents: number;
+  shippingCents: number;
+  totalCents: number;
+}
+
+/** Un cliente HTTP que ya manda el token en cada petición. */
+export function apiConToken(baseURL: string, token: string): Promise<APIRequestContext> {
+  return request.newContext({ baseURL, extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
+}
+```
+
+Y cambia la firma de `loginPorApi` (la del módulo 2.3) para que acepte, si hace falta, a otra persona, por ejemplo el administrador. Sin argumentos se comporta igual que antes:
+
+```ts
+/** Inicia sesión por API y devuelve el token. Es lo que hace la pantalla de login, sin la pantalla. */
+export async function loginPorApi(
+  request: APIRequestContext,
+  correo = credenciales().email,
+  clave = credenciales().clave,
+): Promise<string> {
+  const res = await request.post("/api/auth/login", { data: { email: correo, password: clave } });
+  if (!res.ok()) throw new Error(`Login por API falló con ${res.status()}`);
+  const cuerpo = (await res.json()) as { token: string };
+  return cuerpo.token;
+}
+```
+
+Dos detalles:
+
+- Los importes de la API vienen en **centavos** (`subtotalCents: 5090` es 50,90 USD). La pantalla los muestra en dólares (`$50.90`).
+- `request.newContext` crea un cliente HTTP propio con la URL base y una cabecera fija. Es el mismo `request` que usas en los tests, pero configurable.
+
+Más abajo añadirás al mismo archivo las ayudas para el carrito y para crear clientes con su identificador.
+
+</Paso>
+
+<Paso numero={4} titulo="Iniciar sesión una sola vez: storageState">
+Entrar por la API es rápido, pero hacerlo en cada test sigue pagando el login lento de la Arena. Mejor entrar **una vez** y guardar la sesión. Playwright puede guardar el estado del navegador (cookies y `localStorage`) en un archivo, y abrir cada test con ese estado ya puesto: es el **`storageState`**.
+
+La Arena guarda el token en `localStorage`, con la clave `arena.token`. Por eso `storageState` sirve: al abrir cualquier página con ese estado, el front ya encuentra el token y te trata como a Ana.
+
+Crea `tests/auth.setup.ts`:
+
+```ts
+import { test as setup } from "@playwright/test";
+import { CLAVE_TOKEN, SESION_ANA, loginPorApi } from "./support/api";
+
+setup("guardar la sesión de Ana", async ({ page, request }) => {
+  const token = await loginPorApi(request);
+  await page.goto("/"); // abre el origen de la tienda para poder escribir en su localStorage
+  await page.evaluate(([clave, valor]) => localStorage.setItem(clave, valor), [CLAVE_TOKEN, token]);
+  await page.context().storageState({ path: SESION_ANA });
+});
+```
+
+Es un test especial: no prueba nada, **prepara**. Para que corra antes que los demás, decláralo como un proyecto de `playwright.config.ts` del que dependen los tests:
+
+```ts
+export default defineConfig({
+  testDir: "./tests",
+  workers: 1,
+  expect: { timeout: 10_000 },
+  use: {
+    baseURL: process.env.ARENA_URL ?? "http://localhost:18080",
+    trace: "retain-on-failure",
+  },
+  projects: [
+    { name: "setup", testMatch: /auth\.setup\.ts/ },
+    { name: "tienda", testIgnore: /auth\.setup\.ts/, dependencies: ["setup"] },
+  ],
+});
+```
+
+(Deja el resto de tu configuración del módulo 1.5, con `dotenv`, tal como está.) Añade `.auth/` a tu `.gitignore`: la sesión guardada es un secreto.
+
+Los tests que quieran la sesión de Ana lo piden con una línea:
+
+```ts
+test.use({ storageState: SESION_ANA });
+```
+
+Y un test sin esa línea sigue empezando sin sesión, como los de los módulos anteriores.
+
+Ahora el lado de la API: Playwright guardó el token dentro del archivo, y puedes leerlo de ahí. Añade a `tests/support/api.ts`:
+
+```ts
+/** Lee el token que `auth.setup.ts` guardó dentro de la sesión de Ana. */
+export function tokenDeAna(): string {
+  const sesion = JSON.parse(readFileSync(SESION_ANA, "utf8"));
+  const guardado = sesion.origins
+    .flatMap((o: { localStorage: { name: string; value: string }[] }) => o.localStorage)
+    .find((i: { name: string }) => i.name === CLAVE_TOKEN);
+  if (!guardado) throw new Error("La sesión guardada no trae token: ejecuta el proyecto setup");
+  return guardado.value;
+}
+```
+
+El token dura 24 horas. Cada ejecución repite el proyecto `setup`, así que siempre es uno recién emitido.
+
+</Paso>
+
+<Paso numero={5} titulo="Preparar datos por API">
+Añade estas dos ayudas a `tests/support/api.ts`. La primera deja el carrito vacío; la segunda lo llena y devuelve lo que la API calculó:
+
+```ts
+/** Deja el carrito vacío (sin cupón ni líneas). Pensado para la sesión compartida de Ana. */
+export async function vaciarCarritoApi(api: APIRequestContext): Promise<void> {
+  await api.delete("/api/cart/coupon");
+  const carrito: Carrito = await (await api.get("/api/cart")).json();
+  for (const linea of carrito.items) {
+    await api.delete(`/api/cart/items/${linea.productId}`);
+  }
+}
+
+/** Añade un producto al carrito y, si se indica, aplica un cupón. Devuelve el carrito que calculó la API. */
+export async function prepararCarrito(
+  api: APIRequestContext,
+  productId: number,
+  cantidad: number,
+  cupon?: string,
+): Promise<Carrito> {
+  const alta = await api.post("/api/cart/items", { data: { productId, quantity: cantidad } });
+  expect(alta.status()).toBe(200);
+  if (!cupon) return alta.json();
+  const conCupon = await api.post("/api/cart/coupon", { data: { code: cupon } });
+  expect(conCupon.status()).toBe(200);
+  return conCupon.json();
+}
+```
+
+Fíjate en que **la propia preparación comprueba el estado** (`expect(alta.status()).toBe(200)`). Si falla la preparación, el test debe fallar ahí, con un mensaje sobre la preparación, y no más adelante con un «no encuentro el subtotal» que confunde.
+
+Ahora un fixture que entrega a cada test el cliente de API de Ana con el carrito vacío. Crea `tests/support/fixtures.ts`. **No empieza de cero**: extiende el `test` de `fixtures/index.ts` del módulo 2.2, así que un mismo test puede pedir a la vez `carrito` (Page Object) y `api` (cliente de API). Solo existe un `test.extend` base en tu proyecto:
+
+```ts
+import type { APIRequestContext } from "@playwright/test";
+import { test as base, expect } from "../../fixtures";
+import { apiConToken, tokenDeAna, vaciarCarritoApi } from "./api";
+
+export const test = base.extend<{ api: APIRequestContext }>({
+  // Ana, con su carrito vacío. Su sesión de pantalla viene de `test.use({ storageState })`.
+  api: async ({ baseURL }, use) => {
+    const api = await apiConToken(baseURL!, tokenDeAna());
+    await vaciarCarritoApi(api);
+    await use(api);
+    await api.dispose();
+  },
+});
+
+export { expect };
+```
+
+`baseURL!` usa el `!` de TypeScript para decir «sé que no es `undefined`»: viene de tu configuración.
+
+</Paso>
+
+<Paso numero={6} titulo="Aislar las pruebas: un cliente nuevo por test">
+Con Ana pasa lo de siempre: todos los tests comparten **el mismo carrito**. Por eso en el módulo 1.3 usabas `workers: 1`. Es seguro, pero no escala: con cien tests, o con varios en paralelo, se pisan.
+
+La alternativa es que cada test cree **su propio cliente**. La API permite registrarse (`POST /api/auth/register`) y devuelve un token sin pasar por el login lento. En el módulo 2.3 ya tienes `registrarCliente(request)`, que devuelve solo el token. Aquí necesitas además el identificador y el correo, así que añade a `tests/support/api.ts` una variante con otro nombre (la del 2.3 sigue intacta):
+
+```ts
+/** Crea un cliente nuevo (correo único) y devuelve su token. No pasa por el login: no paga su lentitud. */
+export async function crearCliente(baseURL: string) {
+  const anonimo = await request.newContext({ baseURL });
+  const correo = `qa+${randomUUID().slice(0, 8)}@arena.test`;
+  const res = await anonimo.post("/api/auth/register", {
+    data: { email: correo, password: randomUUID(), name: "Cliente de prueba" },
+  });
+  expect(res.status()).toBe(201);
+  const { token, user } = await res.json();
+  await anonimo.dispose();
+  return { id: user.id as number, correo, token: token as string };
+}
+```
+
+La contraseña es un valor aleatorio que nadie necesita conocer: el test entra con el token. Y amplía `tests/support/fixtures.ts` con un segundo fixture, `cliente`. El archivo completo queda así:
+
+```ts
+import type { APIRequestContext } from "@playwright/test";
+import { test as base, expect } from "../../fixtures";
+import { CLAVE_TOKEN, apiConToken, crearCliente, tokenDeAna, vaciarCarritoApi } from "./api";
+
+interface Cliente {
+  id: number;
+  correo: string;
+  api: APIRequestContext;
+}
+
+export const test = base.extend<{ api: APIRequestContext; cliente: Cliente }>({
+  // Ana, con su carrito vacío. Su sesión de pantalla viene de `test.use({ storageState })`.
+  api: async ({ baseURL }, use) => {
+    const api = await apiConToken(baseURL!, tokenDeAna());
+    await vaciarCarritoApi(api);
+    await use(api);
+    await api.dispose();
+  },
+  // Un cliente nuevo para este test solo: nadie más toca su carrito.
+  cliente: async ({ baseURL, page }, use) => {
+    const { id, correo, token } = await crearCliente(baseURL!);
+    await page.addInitScript(
+      ([clave, valor]) => localStorage.setItem(clave, valor),
+      [CLAVE_TOKEN, token],
+    );
+    const api = await apiConToken(baseURL!, token);
+    await use({ id, correo, api });
+    await api.dispose();
+  },
+});
+
+export { expect };
+```
+
+`page.addInitScript` ejecuta ese código en cada página **antes** de que cargue la tienda, y deja el token en `localStorage`. Es otra forma de entrar con token, sin archivo de sesión: útil cuando cada test necesita una persona distinta. Con este fixture un test no necesita `test.use({ storageState })`, no comparte nada y puede correr en paralelo.
+
+Un coste que conviene conocer: cada ejecución crea clientes nuevos (`qa+xxxxxxxx@arena.test`) que se **acumulan**. En una Arena local no importa; en un ambiente compartido se limpia o se acuerda con el equipo. El módulo 2.5 trata los datos que se acumulan.
+
+</Paso>
+
+<Paso numero={7} titulo="Reducir el tiempo de la suite">
+Antes de optimizar, **mide**. Cuando ejecutas Playwright, la línea final dice cuánto tardó (`5 passed (10.9s)`), y cada test muestra su propia duración. Anota estos dos datos antes de tocar nada.
+
+Dónde se va el tiempo en una suite E2E típica:
+
+1. **Iniciar sesión por pantalla en cada test.** En esta Arena, más de 1,2 segundos solo en la petición, y casi 2 con la página.
+2. **Preparar datos haciendo clic.** Abrir una ficha, rellenar la cantidad, pulsar, esperar el mensaje.
+3. **Vaciar el estado por pantalla** (como hacía `vaciarCarrito` del módulo 1.4).
+
+Las tres tienen el mismo remedio: sesión guardada una vez y datos por API. No pierdes cobertura, porque la interfaz sigue verificando lo mismo.
+
+Una advertencia al medir: un test que **falla** espera hasta 10 segundos (el plazo de tus aserciones) antes de rendirse. Si mezclas tests que fallan, el tiempo total no dice nada sobre el login. Para comparar, usa tests que pasen en ambas versiones.
+
+</Paso>
+
+<Paso numero={8} titulo="Requisitos que se contradicen">
+Un E2E se escribe a partir de lo que **el sistema debe hacer**, y eso lo dicen los requisitos. En la Arena están en la página **Requisitos** (el enlace de la barra del escenario, o `/requirements`). Ábrela con el escenario `fase2-e2e-combinado` y lee REQ-3 y REQ-7, tal como están en la versión 1.0:
+
+> **REQ-3** (Negocio): «El envío es gratis en pedidos de 50 USD o más, calculados después de aplicar el descuento del cupón. Por debajo de ese valor el envío cuesta 5 USD.»
+>
+> **REQ-7** (Ventas): «Envío gratis en compras desde 50 USD.»
+
+Pregunta: un carrito de 50,90 USD con un cupón del 10 % queda en 45,81 USD. ¿Su envío es gratis?
+
+- Según REQ-3, **no**: después del descuento no llega a 50 USD.
+- Según REQ-7, **sí**: la compra «es desde 50 USD» (REQ-7 no dice antes ni después del descuento).
+
+No hay forma de escribir dos tests, uno por requisito, que pasen a la vez. Lo que hay es una **contradicción entre requisitos**, y un buen QA hace tres cosas con ella:
+
+1. **La detecta** al escribir los tests, no cuando ya hay un «defecto» en el tablero.
+2. **No elige por su cuenta** qué texto es el correcto: pregunta a quien decide (producto o negocio).
+3. **Anota la duda** donde el equipo la vea, con los dos textos citados.
+
+La Arena tiene un segundo lanzamiento. En el selector **Release** de la barra del escenario eliges entre «Sprint 14» (`v1.0.0`) y «Sprint 15 (requisitos revisados)» (`v1.1.0`). Desde la terminal:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase2-e2e-combinado","release":"v1.1.0"}'
+```
+
+En la versión 1.1 los dos requisitos cambian de texto. Lee cómo quedan: verás que lo que era contradicción deja de serlo y que **un test escrito contra el texto viejo ahora falla por el motivo contrario**. Un resultado «rojo» no siempre es un defecto del sistema: a veces el que cambió es el requisito.
+
+</Paso>
+
+<Paso numero={9} titulo="El escenario fase2-e2e-combinado">
+Actívalo en tu Arena local (reinicia antes los datos):
+
+```bash
+curl -X POST http://localhost:18080/__arena/reset
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"fase2-e2e-combinado"}'
+```
+
+Y cuando termines, vuelve a la versión correcta:
+
+```bash
+curl -X PUT http://localhost:18080/__arena/scenario -H 'content-type: application/json' -d '{"id":"baseline"}'
+```
+
+Lo que cambiará para tus tests: el inicio de sesión tarda entre 1,2 y 1,8 segundos (eso **no** es un defecto: es el ambiente), y hay comportamientos de precio y envío que no cuadran con los requisitos. Una buena suite pasa con la lentitud y detecta lo que está mal. Los productos que usarás: «Auriculares BT» (id 1, 9,90 USD), «Botella termica» (id 15, 50,90 USD, stock 6) y los cupones `SAVE5` (5 USD de descuento desde 10 USD) y `WELCOME10` (10 %).
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Comprobar envío y descuento con datos por API y verificación en pantalla">
+Guarda este archivo como `tests/e2e/precios.spec.ts`. Cada test recibe su `cliente`, prepara el carrito por API y verifica en la pantalla del carrito. Además de los dos requisitos, el tercer test cruza lo que calculó la API con lo que muestra la interfaz:
+
+```ts
+import { expect, test } from "../support/fixtures";
+import { prepararCarrito } from "../support/api";
+import { abrir } from "../support/tienda";
+
+// Cada test recibe un cliente nuevo (`cliente`): su carrito es suyo y nadie lo toca.
+// Producto 15, "Botella termica": 50,90 USD, stock 6. WELCOME10: 10 % de descuento.
+const BOTELLA = 15;
+
+test("REQ-3: el envío se calcula después del descuento", async ({ page, cliente }) => {
+  const carrito = await prepararCarrito(cliente.api, BOTELLA, 1, "WELCOME10");
+  // 5090 - 509 = 4581 centavos: después del descuento queda por debajo de 50 USD (5000 centavos).
+  expect(carrito.subtotalCents - carrito.discountCents).toBeLessThan(5000);
+
+  await abrir(page, "/cart");
+  await expect(page.getByTestId("cart-shipping")).toHaveText("$5.00");
+});
+
+test("REQ-4: el cupón descuenta también una línea con todo el stock", async ({ page, cliente }) => {
+  await prepararCarrito(cliente.api, BOTELLA, 6, "WELCOME10");
+  await abrir(page, "/cart");
+  await expect(page.getByTestId("cart-subtotal")).toHaveText("$305.40");
+  await expect(page.getByTestId("cart-discount")).toHaveText("-$30.54");
+});
+
+test("la pantalla muestra el total que calculó la API", async ({ page, cliente }) => {
+  const carrito = await prepararCarrito(cliente.api, 1, 3, "SAVE5");
+  await abrir(page, "/cart");
+  const dolares = (centavos: number) => `$${(centavos / 100).toFixed(2)}`;
+  await expect(page.getByTestId("cart-total")).toContainText(dolares(carrito.totalCents));
+});
+```
+
+Antes de ejecutar, reinicia los datos y elige el escenario (módulo 1.3 y paso 9). Con `baseline` pasan los tres tests, en poco más de un segundo en total. Con `fase2-e2e-combinado` pasa el tercero y fallan los dos primeros, después de esperar los 10 segundos de tus aserciones:
+
+```text
+  ✘  REQ-3: el envío se calcula después del descuento (10.2s)
+  ✘  REQ-4: el cupón descuenta también una línea con todo el stock (10.2s)
+  ✓  la pantalla muestra el total que calculó la API (152ms)
+
+    Error: expect(locator).toHaveText(expected) failed
+    Expected: "$5.00"
+    Received: "$0.00"
+
+    Error: expect(locator).toHaveText(expected) failed
+    Expected: "-$30.54"
+    Received: "-$0.00"
+```
+
+Qué observar:
+
+1. **Los dos fallos son reales y distintos.** El primero es de envío: el requisito REQ-3 pide cobrar 5 USD y la tienda lo regala. El segundo es una combinación: con el cupón, la línea cuya cantidad es igual al stock no recibe descuento. Fíjate en que el segundo no se vería con un solo producto sencillo: hay que **combinar** cupón, cantidad y stock.
+2. **El tercer test pasa**, y es útil: demuestra que la pantalla no es la que miente, sino el cálculo de la API. Ese cruce API contra interfaz ayuda a ubicar el problema.
+3. **Ningún test inicia sesión por pantalla** y ninguno pisa a otro: cada `cliente` es distinto. Por eso corren también en paralelo (ejercicio 5).
+4. **La preparación comprueba su propio estado**: si `prepararCarrito` no recibe 200, el test falla ahí.
+
+Los errores típicos de esta práctica:
+
+- **Olvidar `test.use({ storageState })`** en un test que usa `api` (Ana): el token de la API existe, pero la página no tiene sesión y te manda a `/login`.
+- **Escribir el test contra el requisito equivocado.** Con `v1.1.0` el primer test falla con `Expected: "$5.00"` y `Received: "$0.00"`, y no porque el sistema haya empeorado: el requisito REQ-3 cambió de texto (paso 8).
+- **Medir el tiempo con tests que fallan.** Cada fallo espera 10 segundos y tapa el efecto del login.
+- **Reutilizar a Ana en paralelo.** Dos tests de Ana a la vez comparten carrito y dan totales raros.
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+Todos asumen los archivos de `tests/support/` de los pasos anteriores, el escenario `fase2-e2e-combinado` (con el reinicio de datos antes de ejecutar) y que dejas la Arena en `baseline` al terminar. El botón abre la Arena **alojada**, solo para explorar: tus tests van contra tu Arena local.
+
+<Ejercicio id="ej-2-4-sesion-guardada">
+  Crea `tests/auth.setup.ts` y el proyecto `setup` en tu configuración. Escribe un test que, con
+  `test.use({storageState})`, abra `/orders` y compruebe que ves el encabezado «Mis pedidos» y el
+  nombre «Ana Cliente» sin haber pasado por la pantalla de inicio de sesión.
+</Ejercicio>
+
+<Ejercicio id="ej-2-4-carrito-por-api">
+  Escribe un test que prepare por API el carrito de Ana con dos unidades de «Auriculares BT», abra
+  `/cart` y compruebe que el subtotal es `$19.80`. Ejecútalo y compara su duración con la de un test
+  que llene el carrito por pantalla con `iniciarSesion` y `agregarProducto`.
+</Ejercicio>
+
+<Ejercicio id="ej-2-4-requisitos">
+  Lee REQ-3 y REQ-7 en la página Requisitos. Escribe un test para cada uno con el mismo carrito
+  (producto 15, una unidad, cupón `WELCOME10`) y ejecuta ambos. Explica con tus palabras por qué no
+  pueden pasar los dos y qué harías antes de reportar un defecto.
+</Ejercicio>
+
+<Ejercicio id="ej-2-4-combinacion">
+  Con un cliente nuevo, prepara por API el producto 15 con 6 unidades (su stock) y el cupón
+  `WELCOME10`. Comprueba en la pantalla el subtotal `$305.40` y el descuento `-$30.54`. Después
+  añade una comprobación que compare el descuento de la API con el de la interfaz y decide dónde
+  está el problema.
+</Ejercicio>
+
+<Ejercicio id="ej-2-4-cliente-aislado">
+  Ejecuta tus tests con `cliente` usando `--workers=4 --fully-parallel --repeat-each=4`. Luego haz
+  lo mismo con un archivo que use el carrito compartido de Ana y observa la diferencia.
+</Ejercicio>
+
+<Ejercicio id="ej-2-4-release-nueva">
+  Cambia al release `v1.1.0` con el comando del paso 8, lee los nuevos REQ-3 y REQ-7 y vuelve a
+  ejecutar tu test de envío. Actualízalo para que refleje el requisito vigente y explica qué cambió:
+  ¿el sistema o el requisito?
+</Ejercicio>
+
+<AbrirArena escenario="fase2-e2e-combinado" />
+
+## 5. Reto sin guía
+
+<Reto titulo="Tu suite E2E rápida y aislada, comprobada por ti">
+  Es una práctica abierta: no hay evaluador automático en este módulo. Tú decides si tu suite está
+  bien con la lista de comprobación del final.
+
+Crea en `tests/e2e/` una suite con **al menos seis tests** del flujo de compra de QA Arena que combine API y pantalla:
+
+1. Dos tests de precio o envío escritos contra los requisitos de la página Requisitos (con su `REQ-n` en el título).
+2. Una combinación de cupón, cantidad y stock.
+3. Un pedido pagado por API que aparece en «Mis pedidos».
+4. Un único test que inicie sesión **por pantalla**, porque lo que prueba es el propio inicio de sesión.
+5. Un test sobre algo que no sea de precios (por ejemplo, el carrito después de cambiar una cantidad).
+
+Guarda en `NOTAS.md` los requisitos que te parecieron ambiguos o contradictorios, con su texto citado y la pregunta que harías.
+
+Criterios de autocomprobación:
+
+- Con `baseline`, tu suite termina sin fallos, ejecutada tres veces seguidas.
+- Con el release `v1.0.0` de `fase2-e2e-combinado`, al menos un test falla y la lentitud del login por sí sola no hace fallar ninguno.
+- Solo un test inicia sesión por pantalla; los demás usan `storageState` o un cliente nuevo.
+- La preparación de datos es por API y comprueba su propio estado.
+- Con `--workers=4 --fully-parallel --repeat-each=3`, todos los tests que usan `cliente` pasan con `baseline`.
+- Una versión «por pantalla» de cuatro de tus tests tarda al menos un 40 % más que su versión por API (mide ambas con tests que pasen).
+- Ninguna contraseña está escrita en el código, y ningún test usa `/__arena`.
+- Dejaste la Arena de nuevo en `baseline`.
+
+Si cumples todos los puntos, tu suite es rápida, aislada y detecta lo que debe.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+La IA escribe muy bien los tests de pantalla y regular los de preparación por API. Justo ahí debes poner atención.
+
+**Qué pedirle:**
+
+- «Convierte este `beforeEach` que inicia sesión por pantalla en un setup con `storageState` de Playwright» (pega tu código y tu configuración).
+- «Escribe una función que prepare el carrito por API con estos endpoints» (dale la ruta, el cuerpo y la respuesta reales).
+- «¿Qué hace que estos tests se pisen entre sí si corren en paralelo?» (pega los tests).
+
+**Qué revisar antes de aceptarlo:**
+
+- Que los endpoints, los campos y los importes son los reales de la API (en centavos), y no inventados.
+- Que la clave del `localStorage` es la de la Arena (`arena.token`) y no la de otra aplicación.
+- Que ninguna contraseña quedó escrita en el código o en un valor por defecto.
+- Que la preparación comprueba el estado de la respuesta.
+
+**Qué rechazar:**
+
+- Tests que aplican el cupón por pantalla «para ser más realistas» y vuelven lenta la suite.
+- `waitForTimeout` para esperar al login o a la API.
+- Requisitos «aclarados» por la IA sin preguntar a nadie: si el texto es ambiguo, la IA elige uno al azar.
+- Un test que pasa porque la IA cambió el valor esperado al que devuelve el sistema.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Iniciar sesión por pantalla en todos los tests">
+  Es lo más lento y no prueba nada nuevo: solo un test necesita el formulario de inicio de sesión.
+  Guarda la sesión una vez con `storageState` y úsala en los demás.
+</ErrorComun>
+
+<ErrorComun titulo="Preparar por pantalla lo que no se prueba">
+  Llenar el carrito haciendo clic mezcla lo que preparas con lo que verificas. Si falla un clic, el
+  test dice «falló el carrito» cuando el problema era la preparación. Prepara por API y verifica por
+  pantalla.
+</ErrorComun>
+
+<ErrorComun titulo="Compartir el carrito de Ana entre tests en paralelo">
+  Los totales salen distintos según el orden y el fallo cambia en cada ejecución. Un cliente nuevo
+  por test elimina el problema; si usas a Ana, ejecuta de uno en uno.
+</ErrorComun>
+
+<ErrorComun titulo="Dar por defecto lo que el requisito no dice">
+  Cuando dos requisitos se contradicen, ningún test puede darte la razón. Escribir el que «parece
+  correcto» y reportar el otro como defecto traslada tu suposición al equipo. Cita los dos textos y
+  pregunta.
+</ErrorComun>
+
+<ErrorComun titulo="Escribir un test contra un requisito que ya cambió">
+  Un test rojo tras un cambio de versión no siempre es un defecto del sistema. Revisa primero la
+  versión del requisito (la página Requisitos la indica) y actualiza el test o el requisito, no
+  ambos a ciegas.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- Un E2E rápido reparte el trabajo: la API prepara los datos y la interfaz verifica lo que ve la persona.
+- Iniciar sesión por pantalla en cada test es lo más caro: se guarda la sesión una vez con un proyecto `setup` y `storageState`.
+- `storageState` guarda cookies y `localStorage`; la Arena guarda el token en `arena.token`, por eso funciona.
+- La preparación por API comprueba su propio estado, para que un fallo de preparación no parezca un fallo de la tienda.
+- Un cliente nuevo por test (`/api/auth/register`) aísla los tests y permite ejecutarlos en paralelo.
+- Antes de optimizar se mide, con tests que pasen; quitar el login lento y la preparación por pantalla reduce el tiempo de la suite en más de la mitad.
+- Dos requisitos que se contradicen (REQ-3 y REQ-7) no se resuelven con un test: se citan y se preguntan.
+- Un test rojo puede deberse a que cambió el requisito (release `v1.1.0`), no el sistema.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

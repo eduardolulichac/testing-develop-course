@@ -1,0 +1,55 @@
+ejercicios:
+  - slug: ej-2-5-conectar
+    tipo: guiado
+    titulo: "Conéctate con el usuario de solo lectura"
+    escenario: fase2-base-de-datos
+    pistas:
+      - "Desde la carpeta del `docker-compose.yml` de tu Arena ejecuta `docker compose exec db psql -U arena_qa -d arena`. El aviso cambia a `arena=>`."
+      - "`\\dv tienda.*` lista las vistas y `\\d tienda.orders` muestra las columnas de una. Para contar filas usa un `SELECT count(*) FROM tienda.orders;`."
+      - "Intenta `INSERT INTO orders (user_id, status) VALUES (1, 'paid');` o un `UPDATE orders SET status = 'paid';`. Lee el mensaje de error: dice qué permiso falta."
+    solucion: "`\\dv tienda.*` muestra once vistas (`users`, `products`, `inventory`, `carts`, `cart_items`, `coupons`, `coupon_redemptions`, `orders`, `order_items`, `payments` y `notifications`). `\\d tienda.orders` lista `id`, `user_id`, `status`, `subtotal_cents`, `discount_cents`, `shipping_cents`, `total_cents`, `coupon_code`, `shipping_address` y `created_at`. En el escenario `fase2-base-de-datos`, `SELECT count(*) FROM tienda.orders;` devuelve 42 antes de comprar nada. El `INSERT` y el `UPDATE` fallan con `ERROR:  permission denied for view orders`: el usuario `arena_qa` solo lee."
+  - slug: ej-2-5-consulta-pedido
+    tipo: guiado
+    titulo: "Busca en la base el pedido que acabas de comprar"
+    escenario: fase2-base-de-datos
+    pistas:
+      - "Compra por pantalla como Ana: ficha del producto 2, cantidad 2, cupón `SAVE5` en el carrito y «Pagar ahora». Usa la tarjeta precargada, que es la aprobada."
+      - "Necesitas unir `tienda.orders` con `tienda.payments` por `order_id`. Ana tiene `user_id = 1`."
+      - "Si no acotas, los pedidos de 2025 también aparecen entre los de Ana. Añade `AND o.created_at >= current_date - 1` para ver solo los recientes."
+    solucion: "`SELECT o.id, o.status, o.total_cents, p.amount_cents, p.status AS pago FROM tienda.orders o JOIN tienda.payments p ON p.order_id = o.id WHERE o.user_id = 1 AND o.created_at >= current_date - 1;` devuelve una fila, por ejemplo `43 | pending | 18580 | 19080 | approved`. Dos cosas llaman la atención: la pantalla dijo «Pago aprobado» y, sin embargo, el pedido sigue `pending`; y el cobro (19080) no coincide con el total del pedido (18580)."
+  - slug: ej-2-5-datos-viejos
+    tipo: guiado
+    titulo: "Separa el ruido de la señal en un ambiente compartido"
+    escenario: fase2-base-de-datos
+    pistas:
+      - "Cuenta los pedidos `pending` que no tienen ningún cobro con un `LEFT JOIN` a `tienda.payments` y la condición `p.id IS NULL`."
+      - "Repite la consulta añadiendo `AND o.user_id = 1 AND o.created_at >= current_date - 1`. Compara los dos números."
+      - "Para informar de un defecto real, busca lo contrario: pedidos recientes `pending` que SÍ tienen un cobro `approved`, acotados por usuario y fecha."
+    solucion: "Sin acotar, `SELECT count(*) FROM tienda.orders o LEFT JOIN tienda.payments p ON p.order_id = o.id WHERE p.id IS NULL AND o.status = 'pending';` devuelve 40; acotado por usuario y fecha devuelve 0. Los 40 pedidos son de 2025, datos viejos del ambiente, y nada tienen que ver con tu compra. El hallazgo está en la consulta inversa: `... WHERE p.status = 'approved' AND o.status = 'pending' AND o.user_id = 1 AND o.created_at >= current_date - 1` devuelve el pedido que acabas de pagar. Esa es la que va en el informe del defecto."
+  - slug: ej-2-5-cobro-distinto
+    tipo: guiado
+    titulo: "Encuentra los cobros que no coinciden con el pedido"
+    escenario: fase2-base-de-datos
+    pistas:
+      - "Une `tienda.orders` (alias `o`) con `tienda.payments` (alias `p`) y compara `p.amount_cents` con `o.total_cents`."
+      - "Solo interesan los cobros con `p.status = 'approved'` y cuyos importes sean distintos (`<>`). Calcula la diferencia con una resta y ponle un nombre con `AS`."
+      - "Un resultado positivo (`amount_cents - total_cents`) significa que se cobró más que el total del pedido; negativo, menos."
+    solucion: "`SELECT o.id, o.total_cents, p.amount_cents, p.amount_cents - o.total_cents AS diferencia FROM tienda.orders o JOIN tienda.payments p ON p.order_id = o.id WHERE p.status = 'approved' AND p.amount_cents <> o.total_cents ORDER BY o.id;` devuelve una fila tras tu compra: `43 | 18580 | 19080 | 500`. Cobró 500 centavos (5 USD) de más: justo el valor del descuento de `SAVE5`. El cobro registrado es el subtotal más el envío, sin aplicar el cupón."
+  - slug: ej-2-5-desde-test
+    tipo: guiado
+    titulo: "Comprueba el stock desde un test"
+    escenario: fase2-base-de-datos
+    pistas:
+      - "Instala `pg@8.23.1` y `@types/pg@8.23.1`, añade `TIENDA_DB_URL` a tu `.env.local` y crea `tests/support/db.ts` con la función `consulta`. Usa la misma estructura del paso 5."
+      - 'Lee el stock antes con `consulta<{ stock: number }>("SELECT stock FROM tienda.inventory WHERE product_id = $1", [2])`, compra dos unidades por API con el fixture `cliente` y vuelve a leerlo.'
+      - "Compara con `expect(stockDespues).toBe(stockAntes - 2)`. Ejecútalo con `baseline` y con el escenario, y mira el valor esperado y el recibido."
+    solucion: "Con `const antes = await stockDe(2)`, `await prepararCarrito(cliente.api, 2, 2)` y un `POST /api/checkout` con la tarjeta `4242424242424242`, `const despues = await stockDe(2)` y `expect(despues).toBe(antes - 2)`. Con `baseline` pasa. Con `fase2-base-de-datos` falla con `Expected: 9` y `Received: 11`: el pago se aprobó y el stock no se descontó. Como el stock es compartido, ejecuta esta prueba de uno en uno."
+  - slug: ej-2-5-sin-base
+    tipo: guiado
+    titulo: "Verifica el cobro sin acceso a la base"
+    escenario: fase2-base-de-datos
+    pistas:
+      - "Compra dos teclados con `SAVE5` por API con el fixture `cliente` y guarda `order` de la respuesta de `POST /api/checkout`."
+      - 'Inicia sesión como administrador con `loginPorApi(request, requireEnv("ADMIN_EMAIL"), requireEnv("ADMIN_CLAVE"))` y crea el cliente con `apiConToken(baseURL, token)`. Pide `/api/admin/payments?orderId=<id>`.'
+      - "La respuesta es una lista. Comprueba que tiene un elemento y compara su `amountCents` con `order.totalCents`."
+    solucion: 'Tras la compra: `const token = await loginPorApi(anonimo, requireEnv("ADMIN_EMAIL"), requireEnv("ADMIN_CLAVE"))`, `const admin = await apiConToken(baseURL!, token)`, `const cobros = await (await admin.get(`/api/admin/payments?orderId=${order.id}`)).json()`, `expect(cobros).toHaveLength(1)` y `expect(cobros[0].amountCents).toBe(order.totalCents)`. Con `baseline` pasa. Con el escenario falla con `Expected: 18580` y `Received: 19080`: la misma evidencia que el SQL, sin entrar a la base.'

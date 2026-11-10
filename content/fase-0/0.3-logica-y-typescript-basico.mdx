@@ -1,0 +1,699 @@
+---
+modulo: "0.3"
+titulo: "Lógica y TypeScript básico"
+fase: 0
+nivel: "Base"
+duracion_min: 240
+prerequisitos: ["0.2"]
+version: "2026-11"
+herramientas: ["TypeScript 6.x", "Node 24"]
+---
+
+## 1. Objetivo y contexto
+
+<Objetivo>
+  Aprenderás a leer y escribir programas muy pequeños en TypeScript: guardar datos en variables,
+  tomar decisiones, repetir tareas, agrupar código en funciones y describir datos con arreglos,
+  objetos y tipos. Al terminar podrás escribir una función que valide un precio y probarla con una
+  lista de casos de prueba. Es un módulo largo (unas 4 horas para quien nunca ha programado): puedes
+  partirlo en dos sesiones, con los ejercicios 1 a 15 en la primera y los ejercicios 16 a 30 y el
+  reto en la segunda.
+</Objetivo>
+
+Un tester no necesita ser programador, pero sí necesita **leer código** y **escribir scripts cortos**. Las pruebas automáticas de Playwright, Vitest o Postman son código TypeScript o JavaScript. Si entiendes un `if`, un bucle y una función, puedes entender un test y arreglarlo cuando falla.
+
+Usamos TypeScript porque añade **tipos**: etiquetas que dicen "esto es un número" o "esto es un texto". El compilador revisa esas etiquetas antes de ejecutar y te avisa de muchos errores. Para QA es una red de seguridad muy útil.
+
+Todos los ejemplos usan situaciones de QA: validar un precio, contar tests que fallan y guardar casos de prueba en un arreglo de objetos.
+
+**Preparación (una sola vez).** Crea una carpeta de práctica con TypeScript instalado. Necesitas Node 24 (`node -v` debe mostrar `v24.x`) y tu terminal (WSL2 en Windows):
+
+```bash
+mkdir practica-ts && cd practica-ts
+npm init -y
+npm i -D typescript@6.0.3
+```
+
+Crea en esa carpeta el archivo `tsconfig.json` con este contenido mínimo:
+
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "moduleDetection": "force"
+  }
+}
+```
+
+`strict` activa la revisión de tipos completa, `noEmit` evita generar archivos y `moduleDetection: "force"` hace que cada archivo `.ts` sea independiente, así que puedes repetir nombres de variables entre archivos sin conflictos.
+
+**Cómo ejecutar los ejemplos.** Guarda cada ejemplo en un archivo `.ts` dentro de `practica-ts` (por ejemplo `practica.ts`) y ejecútalo con Node 24, que ya entiende TypeScript sencillo:
+
+```bash
+node practica.ts
+```
+
+Para que TypeScript revise los tipos de **todos** los archivos de la carpeta, ejecuta el compilador sin argumentos (lee el `tsconfig.json`):
+
+```bash
+npx tsc
+```
+
+Si no hay mensajes, no hay errores. No le pases nombres de archivo: con un `tsconfig.json` presente, TypeScript 6 lo rechaza con `error TS5112`. Y usa siempre `npx tsc` dentro de la carpeta donde instalaste `typescript`; si lo ejecutas fuera, `npx` puede ofrecerte instalar un paquete antiguo y distinto llamado `tsc`: responde que no. Node solo **quita** los tipos para ejecutar; no los revisa. Por eso conviene correr ambos comandos.
+
+## 2. Explicación paso a paso
+
+<Paso numero={1} titulo="Variables: guardar datos con nombre">
+Una variable es una caja con nombre. Usa `const` cuando el valor no va a cambiar y `let` cuando sí.
+
+```ts
+const testName = "login valido";
+let failedTests = 0;
+failedTests = failedTests + 2;
+console.log(testName, failedTests); // login valido 2
+```
+
+Los tipos básicos son `string` (texto), `number` (número), `boolean` (`true` o `false`). TypeScript suele **deducirlos** solo, pero puedes escribirlos:
+
+```ts
+const price: number = 19.99;
+const sku: string = "A-100";
+const inStock: boolean = true;
+console.log(price, sku, inStock); // 19.99 A-100 true
+```
+
+Para mezclar texto y valores usa una plantilla con comillas invertidas:
+
+```ts
+const passed = 8;
+const total = 10;
+console.log(`Pasaron ${passed} de ${total} tests`); // Pasaron 8 de 10 tests
+```
+
+</Paso>
+
+<Paso numero={2} titulo="Condicionales: tomar decisiones">
+`if` ejecuta un bloque solo si la condición es verdadera. Se usa `===` para comparar (nunca un solo `=`, que asigna).
+
+```ts
+let failed = 2;
+if (failed === 0) {
+  console.log("verde");
+} else if (failed <= 3) {
+  console.log("amarillo");
+} else {
+  console.log("rojo");
+}
+// amarillo
+```
+
+Operadores útiles: `&&` (y), `||` (o), `!` (no), `>`, `>=`, `<`, `<=`, `!==` (distinto). El operador `??` da un valor por defecto cuando algo es `null` o `undefined`:
+
+```ts
+const config: { timeout?: number } = {};
+const timeout = config.timeout ?? 5000;
+console.log(timeout); // 5000
+```
+
+</Paso>
+
+<Paso numero={3} titulo="Bucles: repetir sin copiar y pegar">
+`for...of` recorre los elementos de un arreglo. Es el bucle que más usarás para revisar resultados.
+
+```ts
+const results = [true, false, true, false, false]; // true = el test pasó
+let failCount = 0;
+for (const ok of results) {
+  if (!ok) {
+    failCount++;
+  }
+}
+console.log(`Fallos: ${failCount}`); // Fallos: 3
+```
+
+El `for` clásico cuenta con un índice, y `while` repite mientras una condición sea verdadera. Con `break` sales del bucle antes de tiempo.
+
+```ts
+for (let run = 1; run <= 3; run++) {
+  console.log(`Ejecución ${run}`);
+}
+// Ejecución 1
+// Ejecución 2
+// Ejecución 3
+```
+
+</Paso>
+
+<Paso numero={4} titulo="Funciones: agrupar y reutilizar">
+Una función recibe **parámetros** y devuelve un resultado con `return`. En TypeScript escribes el tipo de cada parámetro y el del resultado.
+
+```ts
+function isValidPrice(price: number): boolean {
+  return price > 0 && price <= 10000;
+}
+console.log(isValidPrice(49.9), isValidPrice(-5)); // true false
+```
+
+Existe una forma corta, la función flecha, equivalente:
+
+```ts
+const isValidPriceArrow = (price: number): boolean => price > 0 && price <= 10000;
+console.log(isValidPriceArrow(0)); // false
+```
+
+</Paso>
+
+<Paso numero={5} titulo="Arreglos: listas de cosas">
+Un arreglo guarda varios valores en orden. El primer elemento está en la posición 0.
+
+```ts
+const queue: string[] = ["login", "logout"];
+queue.push("checkout");
+console.log(queue.length, queue[0], queue.at(-1)); // 3 login checkout
+```
+
+Los métodos `filter` (selecciona), `map` (transforma) y `find` (busca uno) reciben una función pequeña:
+
+```ts
+const durations = [120, 80, 200, 100];
+const slow = durations.filter((ms) => ms > 100);
+const seconds = durations.map((ms) => ms / 1000);
+const firstFast = durations.find((ms) => ms < 100);
+console.log(slow, seconds, firstFast); // [ 120, 200 ] [ 0.12, 0.08, 0.2, 0.1 ] 80
+```
+
+</Paso>
+
+<Paso numero={6} titulo="Objetos: datos con nombre">
+Un objeto agrupa datos relacionados con **propiedades**. Un caso de prueba cabe perfecto en un objeto, y una lista de casos es un arreglo de objetos.
+
+```ts
+const testCase = { id: 1, name: "precio negativo", input: -5, expected: false };
+console.log(testCase.name, testCase.expected); // precio negativo false
+
+const cases = [
+  { id: 1, name: "precio normal", input: 49.9, expected: true },
+  { id: 2, name: "precio negativo", input: -5, expected: false },
+];
+console.log(cases.length, cases[1].name); // 2 precio negativo
+```
+
+</Paso>
+
+<Paso numero={7} titulo="Tipos propios: describe la forma de tus datos">
+Con `type` das nombre a la forma de un objeto. Desde ahí, TypeScript revisa que cada caso la cumpla.
+
+```ts
+type TestCase = {
+  id: number;
+  name: string;
+  input: number;
+  expected: boolean;
+  note?: string; // el ? lo hace opcional
+};
+
+type Status = "pass" | "fail" | "skip"; // solo estos tres textos son válidos
+
+const login: TestCase = { id: 1, name: "precio normal", input: 49.9, expected: true };
+const state: Status = "pass";
+console.log(login.name, state); // precio normal pass
+```
+
+Si olvidas una propiedad obligatoria o te equivocas de nombre, el compilador lo marca. Aprender a leer esos mensajes es la habilidad clave de este módulo (lo verás en la sección 6).
+
+</Paso>
+
+<Paso numero={8} titulo="Piezas extra">
+Los ejercicios usan unas pocas herramientas más. Aquí tienes un ejemplo ejecutable de cada una; los ejercicios que las usan te lo recordarán.
+
+```ts
+// switch: compara un valor contra varios casos (cada caso termina con break)
+let level = "warn";
+switch (level) {
+  case "error":
+    console.log("rojo");
+    break;
+  case "warn":
+    console.log("amarillo");
+    break;
+  default:
+    console.log("verde");
+}
+
+// ternario: condición ? valor-si-cierta : valor-si-falsa
+const retries = 2;
+console.log(retries > 0 ? "con reintentos" : "sin reintentos");
+
+// parámetro por defecto: si no pasas el argumento, usa el valor indicado
+function greet(name: string, polite: boolean = true): string {
+  return polite ? `Hola, ${name}` : name;
+}
+console.log(greet("Ana"), greet("Ana", false));
+
+// number | null: un número, o null cuando no hay valor
+function toPort(text: string): number | null {
+  const n = Number(text);
+  return Number.isNaN(n) ? null : n;
+}
+console.log(toPort("8080"), toPort("abc"));
+
+// tipo de función: un parámetro que es una función (x: number) => number
+function applyTwice(n: number, f: (x: number) => number): number {
+  return f(f(n));
+}
+console.log(applyTwice(3, (x) => x * 2));
+
+// un texto tiene métodos, como toUpperCase()
+console.log("login".toUpperCase());
+
+// every / some / find con ?. sobre un arreglo de objetos
+const people = [
+  { id: 1, active: true },
+  { id: 2, active: false },
+];
+console.log(
+  people.every((p) => p.active),
+  people.some((p) => p.active),
+);
+const found = people.find((p) => p.id === 9); // no existe: es undefined
+console.log(found?.active); // ?. evita el error y devuelve undefined
+
+// reduce: acumula un valor; [...x] hace una copia del arreglo
+const nums = [3, 1, 2];
+console.log(nums.reduce((acc, n) => acc + n, 0));
+const sortedCopy = [...nums].sort((a, b) => a - b);
+console.log(sortedCopy, nums);
+
+// arreglos paralelos: la posición i de uno corresponde a la posición i del otro
+const letters = ["a", "b"];
+const flags = [true, false];
+console.log(letters[1], flags[1]);
+
+// tipo literal: un valor exacto como tipo; un objeto con una propiedad por estado
+type Light = "red" | "green"; // "literal" = solo estos textos exactos
+type Counts = { red: number; green: number };
+const counts: Counts = { red: 0, green: 0 };
+const lights: Light[] = ["red", "green", "red"];
+for (const l of lights) {
+  counts[l]++;
+}
+console.log(counts);
+```
+
+Salida al ejecutarlo con `node`:
+
+```text
+amarillo
+con reintentos
+Hola, Ana Ana
+8080 null
+12
+LOGIN
+false true
+undefined
+6
+[ 1, 2, 3 ] [ 3, 1, 2 ]
+b false
+{ red: 2, green: 1 }
+```
+
+</Paso>
+
+## 3. Ejemplo resuelto
+
+<Ejemplo titulo="Validar precios con una tabla de casos de prueba">
+Queremos probar una función que valida el precio que escribe un usuario en un formulario (viene como texto). Reglas: debe ser un número, mayor que 0, como máximo 10000 y con a lo sumo 2 decimales. Primero la función, que devuelve si es válido y, si no, el motivo:
+
+```ts
+type PriceCheck = { ok: boolean; reason?: string };
+
+function checkPrice(text: string): PriceCheck {
+  const value = Number(text);
+  if (text.trim() === "" || Number.isNaN(value)) {
+    return { ok: false, reason: "no es un número" };
+  }
+  if (value <= 0) {
+    return { ok: false, reason: "debe ser mayor que 0" };
+  }
+  if (value > 10000) {
+    return { ok: false, reason: "supera el máximo" };
+  }
+  const decimals = text.includes(".") ? text.split(".")[1].length : 0;
+  if (decimals > 2) {
+    return { ok: false, reason: "más de 2 decimales" };
+  }
+  return { ok: true };
+}
+```
+
+Ahora los casos de prueba como arreglo de objetos, y un bucle que ejecuta cada caso y cuenta los que fallan:
+
+```ts
+type PriceCase = { name: string; input: string; expectedOk: boolean };
+
+const priceCases: PriceCase[] = [
+  { name: "precio normal", input: "49.90", expectedOk: true },
+  { name: "dos decimales", input: "19.99", expectedOk: true },
+  { name: "texto", input: "abc", expectedOk: false },
+  { name: "vacío", input: "", expectedOk: false },
+  { name: "cero", input: "0", expectedOk: false },
+  { name: "negativo", input: "-5", expectedOk: false },
+  { name: "límite superior", input: "10000", expectedOk: true },
+  { name: "sobre el límite", input: "10000.01", expectedOk: false },
+  { name: "tres decimales", input: "9.999", expectedOk: false },
+];
+
+let failedCases = 0;
+for (const c of priceCases) {
+  const result = checkPrice(c.input);
+  if (result.ok !== c.expectedOk) {
+    failedCases++;
+    console.log(`FALLA: ${c.name} (${c.input})`);
+  } else {
+    console.log(`ok: ${c.name}${result.reason ? " -> " + result.reason : ""}`);
+  }
+}
+console.log(`${failedCases} casos fallidos de ${priceCases.length}`);
+```
+
+Salida al ejecutarlo con `node`:
+
+```text
+ok: precio normal
+ok: dos decimales
+ok: texto -> no es un número
+ok: vacío -> no es un número
+ok: cero -> debe ser mayor que 0
+ok: negativo -> debe ser mayor que 0
+ok: límite superior
+ok: sobre el límite -> supera el máximo
+ok: tres decimales -> más de 2 decimales
+0 casos fallidos de 9
+```
+
+**Una lección de QA: el error de coma flotante.** La primera versión de esta función comprobaba los decimales con una cuenta: `Math.round(value * 100) !== value * 100`. Parece correcta, pero los números decimales se guardan en binario con pequeños errores: `19.99 * 100` da `1998.9999999999998`, no `1999`, y esa versión rechazaba el precio `19.99` con el motivo «más de 2 decimales». Una tabla que solo tuviera `49.90` como precio con decimales nunca lo habría detectado, porque `49.90 * 100` sí da justo `4990`. Por eso la tabla incluye `19.99`: un caso de prueba bien elegido destapa un defecto real. La solución es no hacer aritmética con decimales para esta regla y **contar los decimales sobre el texto**: lo que está después del punto.
+
+Observa lo que ocurrió: usaste variables, condicionales, una función, un bucle, un arreglo de objetos y tipos propios en unas 50 líneas. Cada caso incluye el **resultado esperado**; el programa compara el esperado con el real. Esa es la idea de toda prueba automática.
+
+</Ejemplo>
+
+## 4. Ejercicios guiados
+
+Son 30 ejercicios cortos, ordenados de menor a mayor dificultad y agrupados por tema. Puedes hacerlos en dos sesiones: los ejercicios 1 a 15 y, después, los ejercicios 16 a 30. Para cada uno: crea un archivo `.ts` en tu carpeta `practica-ts`, **escribe tú el código**, ejecútalo con `node archivo.ts` y revísalo con `npx tsc` (revisa toda la carpeta, así que si un archivo anterior tiene un error, también aparecerá). Si te atascas, abre las pistas de una en una. Si aparece un error que no entiendes, pídele a la IA que te lo explique (sección 6), pero no que te dé la solución.
+
+### Variables y tipos
+
+<Ejercicio id="ej-0-3-01-primera-variable">
+  1. Declara una constante `testName` con el texto `"login valido"` y una variable `failedTests` que
+  empiece en 0. Súmale 2 e imprime las dos.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-02-mensaje-con-plantilla">
+  2. Con `passed = 8` y `total = 10`, imprime exactamente `Pasaron 8 de 10 tests` usando una
+  plantilla de texto (comillas invertidas).
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-03-corrige-un-tipo">
+  3. Este código no compila: `let attempts: number = "3";`. Léelo, entiende qué dice TypeScript y
+  corrígelo. Añade además `price` (número), `sku` (texto) e `inStock` (booleano) con su tipo
+  escrito.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-04-porcentaje-de-aprobacion">
+  4. Con 18 tests aprobados de 20, calcula el porcentaje de aprobación e imprime `Aprobación: 90%`.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-05-texto-a-numero">
+  5. Convierte el texto `"19.99"` a número y súmale 1 (debe dar 20.99). Después comprueba si
+  `Number("abc")` es un número válido.
+</Ejercicio>
+
+### Condicionales
+
+<Ejercicio id="ej-0-3-06-aprobado-o-fallido">
+  6. Con `failed = 2`, guarda en `verdict` el texto `"FAIL"` si hay algún fallo y `"PASS"` si no.
+  Imprímelo.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-07-precio-en-rango">
+  7. Imprime `precio válido` si el precio `49.9` es mayor que 0 y como máximo 10000; si no, imprime
+  `precio inválido`.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-08-semaforo-de-fallos">
+  8. Según el número de fallos imprime `verde` (0), `amarillo` (1 a 3) o `rojo` (más de 3). Prueba
+  con 2.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-09-codigo-http-con-switch">
+  9. Dado `statusCode` con el valor 404 (declarado con `let`), imprime `OK` para 200, `No
+  encontrado` para 404, `Error del servidor` para 500 y `Código desconocido` para cualquier otro.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-10-valor-por-defecto">
+  10. Un objeto de configuración puede traer `timeout` o no. Obtén el timeout, y si falta, usa 5000.
+  Comprueba que un `timeout` de 0 se respeta.
+</Ejercicio>
+
+### Bucles
+
+<Ejercicio id="ej-0-3-11-ejecuciones-con-for">
+  11. Imprime `Ejecución 1` hasta `Ejecución 5`, cada una en su línea.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-12-contar-fallos">
+  12. Dado el arreglo `[true, false, true, false, false]` (true = pasó), cuenta cuántos fallaron e
+  imprime `Fallos: 3`.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-13-reintentar-con-while">
+  13. `attemptsLog = [false, false, true, true]` dice si cada intento pasó. Cuenta cuántos intentos
+  hicieron falta hasta el primer éxito e imprime `Pasó en el intento 3`.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-14-primer-fallo-con-break">
+  14. Con `names = ["login", "logout", "checkout", "search"]` y `outcomes = [true, true, false,
+  false]` (arreglos paralelos: `outcomes[i]` es el resultado de `names[i]`), imprime el nombre del
+  primer test que falló, o `ninguno` si todos pasaron. Detén el bucle al encontrarlo.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-15-promedio-de-duraciones">
+  15. Dadas las duraciones `[120, 80, 200, 100]` (ms), imprime la suma y el promedio.
+</Ejercicio>
+
+### Funciones
+
+<Ejercicio id="ej-0-3-16-funcion-de-validacion">
+  16. Escribe `isValidPrice(price: number): boolean` que devuelva `true` si el precio es mayor que 0
+  y como máximo 10000.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-17-funcion-flecha">
+  17. Escribe una función flecha `percent(passed, total)` que devuelva el porcentaje y devuelva 0
+  cuando `total` sea 0.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-18-parametro-por-defecto">
+  18. Escribe `formatResult(name, ok)` que devuelva `login: PASS` o `login: FAIL`. Si no se pasa
+  `ok`, debe asumir `true`.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-19-devolver-numero-o-null">
+  19. Escribe `parseQuantity(text: string): number | null` que convierta el texto a número y
+  devuelva `null` si no es un número o es negativo.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-20-funcion-que-recibe-funcion">
+  20. Escribe `countWhere(values, predicate)` que cuente cuántos números cumplen una condición dada
+  por una función. Úsala para contar las duraciones mayores a 100 ms.
+</Ejercicio>
+
+### Arreglos
+
+<Ejercicio id="ej-0-3-21-cola-de-pruebas">
+  21. Crea el arreglo `queue` con `"login"` y `"logout"`, agrega `"checkout"` y muestra su longitud,
+  el primer elemento y el último.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-22-filtrar-fallidos">
+  22. Con `runs = [{ name: "login", passed: true }, { name: "logout", passed: false }, { name: "checkout", passed: false }]`,
+  obtén solo los que no pasaron e imprime cuántos son.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-23-extraer-nombres">
+  23. Con `suite = [{ name: "login", passed: true }, { name: "logout", passed: false }]`, obtén un
+  arreglo con los nombres en mayúsculas.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-24-buscar-y-comprobar">
+  24. Con `cases = [{ id: 1, passed: true }, { id: 2, passed: false }, { id: 3, passed: true }]`,
+  encuentra el caso con id 2, y comprueba si todos pasaron y si alguno falló.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-25-sumar-y-ordenar">
+  25. Con `times = [120, 80, 200, 100]` calcula la suma con `reduce` y obtén una copia ordenada de
+  mayor a menor sin modificar `times`.
+</Ejercicio>
+
+### Objetos y tipos propios
+
+<Ejercicio id="ej-0-3-26-caso-de-prueba-como-objeto">
+  26. Crea un objeto `testCase` con `id: 1`, `name: "precio negativo"`, `expected: false` y `passed:
+  true`. Cambia `passed` a `false` e imprime `name` y `passed`.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-27-define-un-tipo">
+  27. Define un tipo `TestCase` con `id`, `name`, `input` (número) y `expected` (booleano). Crea un
+  arreglo `priceCases: TestCase[]` con dos casos.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-28-propiedad-opcional">
+  28. Define `Result = { name: string; error?: string }` y una función que devuelva `login pasó` o `checkout falló: timeout` según haya `error`.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-29-estados-posibles">
+  29. Define `Status = "pass" | "fail" | "skip"` y una función que cuente cuántos elementos hay de
+  cada estado.
+</Ejercicio>
+
+<Ejercicio id="ej-0-3-30-valida-una-tabla-de-casos">
+  30. Escribe `validatePrice` y una tabla de casos `{ name, input, expected }` (normal, cero, negativo, 10000 y 10000.01). Recórrela e imprime los casos donde el resultado no coincide con `expected` y el total de fallidos.
+</Ejercicio>
+
+## 5. Reto sin guía
+
+<Reto titulo="Validador de correos con tabla de casos">
+
+Escribe, desde cero y sin ayuda de la IA para el código, un archivo `validar-correo.ts` en tu carpeta `practica-ts` con:
+
+1. Una función `isValidEmail(text: string): boolean`. Regla simple: tiene exactamente un `@`, algo antes, un dominio después con al menos un punto, y no contiene espacios (por ejemplo `ana@example.com`).
+2. Un tipo `EmailCase` y un arreglo de **al menos 8 casos de prueba** (válidos, vacío, sin `@`, dos `@`, sin dominio, con espacios, etc.), cada uno con el resultado esperado.
+3. Un bucle que ejecute los casos, imprima `FALLA: <nombre>` para cada uno que no coincida y termine con `N casos fallidos de M`.
+
+Criterios para autocomprobarte:
+
+- `node validar-correo.ts` se ejecuta sin errores y imprime el resumen final.
+- `npx tsc` (sin argumentos, dentro de `practica-ts`) no muestra errores y no usaste `any`.
+- Tu función pasa todos tus casos (0 fallidos). Después **rompe** a propósito una regla y comprueba que algún caso falla: así sabes que tus pruebas detectan errores.
+- Hay al menos un caso de borde (cadena vacía) y uno con dos `@`.
+
+No hay evaluación automática: la autocomprobación es parte del ejercicio.
+
+</Reto>
+
+## 6. Uso de IA en este módulo
+
+En este módulo la regla es: **la IA explica, tú escribes**. Si le pides que escriba el código, te saltas justo el aprendizaje que necesitas. Úsala como un tutor que traduce mensajes de error.
+
+**Qué pedirle**
+
+- Que te **explique un mensaje de error** de TypeScript o de ejecución, con palabras sencillas.
+- Que te diga **qué línea** y **qué idea** estás confundiendo, sin darte el código arreglado.
+- Que te proponga **casos de prueba** extra (por ejemplo, valores de borde de un precio) para que los escribas tú.
+
+**Prompt modelo**
+
+```text
+Soy principiante en TypeScript. Me sale este error al ejecutar tsc.
+Explícame con palabras simples qué significa y en qué parte de mi código
+debo mirar. No me des el código corregido: dame una pista y yo lo escribo.
+
+Error: <pega aquí el mensaje completo>
+Mi código: <pega aquí las líneas relevantes>
+```
+
+**Ejemplo real 1: un tipo equivocado.** Este código:
+
+```text
+let attempts: number = "3";
+```
+
+produce, con `npx tsc`:
+
+```text
+a.ts(1,5): error TS2322: Type 'string' is not assignable to type 'number'.
+```
+
+Cómo leerlo: `a.ts(1,5)` es el archivo, la línea y la columna (línea 1, columna 5, donde está `attempts`). `TS2322` es el código del error (sirve para buscarlo). La frase dice que pusiste un `string` (el texto `"3"`) donde la variable promete un `number`. Arreglo: quitar las comillas o cambiar el tipo declarado, según lo que realmente quieras.
+
+**Ejemplo real 2: falta una propiedad.** Este código:
+
+```text
+type TestCase = { id: number; name: string; expected: boolean };
+const c: TestCase = { id: 1, name: "login" };
+```
+
+produce:
+
+```text
+c.ts(2,7): error TS2741: Property 'expected' is missing in type '{ id: number; name: string; }' but required in type 'TestCase'.
+```
+
+Cómo leerlo: el `(2,7)` apunta a `c`, la variable. Primero dice **qué falta** (`expected`), luego **qué objeto escribiste** (`{ id: number; name: string; }`) y al final **qué tipo exigía** (`TestCase`). Arreglo: agregar `expected: true` o hacer la propiedad opcional con `expected?: boolean`, si de verdad puede faltar.
+
+**Un error de ejecución.** No todo lo detecta el compilador. Con `const results: { name: string }[] = [];` y `console.log(results[0].name);`, `node` muestra:
+
+```text
+TypeError: Cannot read properties of undefined (reading 'name')
+```
+
+Se lee así: `results[0]` no existe (el arreglo está vacío), vale `undefined`, y a `undefined` no le puedes pedir `.name`. Dile a la IA: "el arreglo estaba vacío, ¿cómo lo compruebo antes?" y escribe tú la comprobación.
+
+**Qué revisar siempre**
+
+- Que la explicación mencione **tu línea** y el **texto del error**, no una respuesta genérica.
+- Que lo que te sugiera lo **entiendas**. Si no, pídele otra explicación más simple.
+- Ejecuta de nuevo `node` y `npx tsc` después de cada cambio.
+
+**Qué rechazar**
+
+- Soluciones que "arreglan" el error con `any`, con `as` o con el comentario `// @ts-ignore`: silencian al compilador, no arreglan el problema.
+- Código completo que no pediste: cópialo solo para **comparar** con el tuyo, nunca para entregarlo.
+- Explicaciones que no puedes comprobar ejecutando el código.
+
+## 7. Errores comunes
+
+<ErrorComun titulo="Usar = en lugar de === al comparar">
+  Un solo `=` **asigna**, no compara. Escribe `if (failed === 0)`. TypeScript no lo detecta si la
+  variable es `let` (solo avisa con `const`), y `node` tampoco: revisa cada `if` a mano.
+</ErrorComun>
+
+<ErrorComun titulo="Pasarse de largo en el último índice">
+Un arreglo de 4 elementos tiene posiciones 0 a 3. Recorrer con `i <= arr.length` lee la posición 4, que es `undefined`. Usa `i < arr.length` o, mejor, `for...of`.
+</ErrorComun>
+
+<ErrorComun titulo="Sumar un texto y un número">
+  `"19.99" + 1` da `"19.991"` (texto pegado), no `20.99`. Convierte antes con `Number(...)` y
+  comprueba con `Number.isNaN(...)`. Todo lo que viene de un formulario o de un archivo llega como
+  texto.
+</ErrorComun>
+
+<ErrorComun titulo="Ordenar con sort y modificar el original">
+  `times.sort(...)` **cambia** el arreglo `times`. Si necesitas conservar el orden original, ordena
+  una copia: `[...times].sort(...)`.
+</ErrorComun>
+
+<ErrorComun titulo="Silenciar el error con any">
+  Escribir `let x: any` o `// @ts-ignore` hace desaparecer el mensaje, pero el fallo sigue ahí y
+  aparecerá en tiempo de ejecución. Lee el error, entiéndelo y corrige la causa.
+</ErrorComun>
+
+## 8. Resumen
+
+<Resumen>
+
+- `const` para valores fijos, `let` para valores que cambian; los tipos básicos son `string`, `number` y `boolean`.
+- `if / else if / else` decide; compara con `===` y combina condiciones con `&&`, `||` y `!`.
+- `for...of` recorre arreglos; `for` con índice y `while` repiten; `break` sale antes.
+- Una función recibe parámetros tipados y devuelve un resultado con `return`.
+- Un arreglo de objetos es la forma natural de guardar casos de prueba; `filter`, `map` y `find` los consultan.
+- `type` describe la forma de tus datos y el compilador revisa que se cumpla.
+- Un mensaje de TypeScript se lee por partes: archivo y línea, código de error, qué falta o qué sobra.
+- La IA explica errores y tú escribes el código; nunca la uses para silenciar al compilador.
+
+</Resumen>
+
+## 9. Autoevaluación
+
+<Quiz />

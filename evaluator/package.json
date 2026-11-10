@@ -1,0 +1,30 @@
+{
+  "name": "@course/evaluator",
+  "version": "1.0.2",
+  "private": true,
+  "type": "module",
+  "description": "Challenge evaluator: reusable workflow, phases, criteria and signed report",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "selftest": "vitest run .integration.test.ts",
+    "build": "tsx scripts/build.ts",
+    "retos:generate": "tsx scripts/generate-retos.ts",
+    "retos:check": "tsx scripts/generate-retos.ts --check",
+    "publish:prepare": "tsx scripts/publish.ts"
+  },
+  "dependencies": {
+    "@course/shared": "workspace:*",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@arena/scenarios": "workspace:*",
+    "@course/scenario-engine": "workspace:*",
+    "@playwright/test": "1.64.1",
+    "@types/node": "^24.0.0",
+    "esbuild": "0.28.2",
+    "tsx": "^4.23.15",
+    "vitest": "^5.1.0"
+  }
+}

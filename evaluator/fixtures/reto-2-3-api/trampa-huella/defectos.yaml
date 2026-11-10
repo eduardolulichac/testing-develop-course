@@ -1,0 +1,13 @@
+defectos:
+  - titulo: "La API cambia de configuración con un defecto activo"
+    test: "la API corre en su configuración estándar"
+    pasos: ["GET /api/products", "Leer la cabecera de versión"]
+    esperado: "La cabecera indica la configuración estándar"
+    obtenido: "La cabecera cambia cuando hay un defecto"
+    severidad: alta
+  - titulo: "La versión de la API cambia entre ejecuciones"
+    test: "la API de lectura no cambia de versión"
+    pasos: ["GET /api/products/1", "Leer la cabecera de versión"]
+    esperado: "La versión no cambia"
+    obtenido: "La versión cambia con un defecto"
+    severidad: media

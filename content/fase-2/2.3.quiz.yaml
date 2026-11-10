@@ -1,0 +1,89 @@
+preguntas:
+  - id: api-ventaja
+    enunciado: "¿Qué ventaja tiene una prueba de API frente a una de UI para comprobar un error del servidor?"
+    opciones:
+      [
+        "Ve el código y el cuerpo exactos, sin que la pantalla los esconda",
+        "Funciona sin que la Arena esté levantada, usando datos guardados",
+        "Comprueba además los colores y la posición de cada botón de la tienda",
+        "Reemplaza a las pruebas de UI, porque la pantalla ya no se necesita",
+      ]
+    correcta: 0
+    explicacion: "La API devuelve el código y el cuerpo tal cual; la pantalla puede mostrar solo «algo salió mal». Las pruebas de API complementan a las de UI, no las reemplazan, y también necesitan la Arena levantada."
+  - id: api-status-exacto
+    enunciado: "Una prueba agrega más unidades que el stock y comprueba `expect(res.ok()).toBe(false)`. La API responde 500 en lugar de 409. ¿Qué pasa con la prueba?"
+    opciones:
+      [
+        "Falla, porque Playwright no trata un 500 como una respuesta de error",
+        "Pasa, y el defecto no se detecta: `ok()` es falso para 409 y para 500",
+        "Pasa solo si el cuerpo de la respuesta trae un mensaje de error escrito",
+        "Falla, porque `ok()` solo está definido para las respuestas con código 200",
+      ]
+    correcta: 1
+    explicacion: "`ok()` es falso para cualquier código fuera de 200-299, incluidos el 409 correcto y el 500 equivocado. Para distinguirlos hay que comprobar el código exacto con `toBe(409)`."
+  - id: api-strict-object
+    enunciado: "¿Qué diferencia práctica hay entre `z.object` y `z.strictObject` en un esquema de Zod?"
+    opciones:
+      [
+        "`strictObject` solo acepta campos de tipo número entero en el cuerpo",
+        "`z.object` es más rápido, pero señala el error en un campo distinto",
+        "`strictObject` rechaza los campos que el esquema no menciona; `z.object` los ignora",
+        "No hay diferencia práctica: son dos nombres para el mismo método",
+      ]
+    correcta: 2
+    explicacion: "Con `strictObject`, un campo inesperado hace fallar la validación; con `z.object` se ignora en silencio. Como el contrato de la Arena no admite campos extra, `strictObject` es más fiel."
+  - id: api-tipo-campo
+    enunciado: 'Una API responde 200 con `priceCents: "990"` (texto) cuando el contrato dice entero. ¿Qué prueba lo detecta?'
+    opciones:
+      [
+        "Una que compruebe solo que `res.status()` sea igual a 200 y nada más",
+        "Una que compruebe únicamente que el cuerpo de la respuesta no es nulo",
+        "Una que compruebe que el nombre del producto devuelto es el esperado",
+        "Una que valide el cuerpo con un esquema con `z.number().int()`",
+      ]
+    correcta: 3
+    explicacion: "El código 200, el cuerpo no nulo y el nombre pasan con el precio como texto. Solo una validación de tipos con un esquema detecta que el campo cambió de tipo."
+  - id: api-logout
+    enunciado: "`POST /api/auth/logout` responde 204 y la pantalla vuelve al login. ¿Qué prueba confirma que el cierre de sesión funciona de verdad?"
+    opciones:
+      [
+        "Comprobar que el código de la respuesta es exactamente 204",
+        "Pedir `GET /api/auth/me` con el mismo token y esperar 401",
+        "Comprobar que la respuesta de cierre no trae ningún cuerpo",
+        "Iniciar sesión de nuevo con la misma cuenta y esperar un 200",
+      ]
+    correcta: 1
+    explicacion: "Un logout que responde 204 pero deja el token vivo parece correcto. Solo reutilizar el token revocado y comprobar que `me` responde 401 demuestra que el servidor lo invalidó."
+  - id: api-paginacion
+    enunciado: "¿Qué invariante comprobarías al recorrer todas las páginas de una lista con `total` de 24 elementos?"
+    opciones:
+      [
+        "Que cada página tiene exactamente 5 elementos, incluida la última",
+        "Que el primer elemento de cada página tiene un id mayor que el anterior",
+        "Que la última página siempre viene vacía, sin ningún elemento",
+        "Que no hay repetidos y que la cantidad recibida es igual a `total`",
+      ]
+    correcta: 3
+    explicacion: "Sin conocer los datos se puede exigir que ningún elemento aparezca dos veces y que el total recibido coincida con `total`. El orden de los ids y el tamaño exacto de la última página no son garantías del contrato."
+  - id: api-datos-compartidos
+    enunciado: "Una prueba agrega 2 unidades al carrito de Ana y espera un subtotal de 1980 centavos. Pasa sola, pero falla al ejecutarla con `--repeat-each=3`. ¿Cuál es la solución?"
+    opciones:
+      [
+        "Subir el tiempo de espera de la prueba hasta que deje de fallar",
+        "Ejecutar la suite con `--workers=4` para repartir las vueltas",
+        "Cambiar la comparación por `toBeGreaterThan(1980)`",
+        "Crear un cliente nuevo por prueba con `registrarCliente`",
+      ]
+    correcta: 3
+    explicacion: "El carrito de Ana vive en el servidor y conserva lo que agregó la vuelta anterior. Cada prueba que cambia datos debe crear los suyos. Subir esperas o relajar la aserción esconde el problema."
+  - id: api-promise-all
+    enunciado: "Quieres reproducir un doble clic en «Aplicar cupón» desde una prueba de API. ¿Cómo envías las dos peticiones?"
+    opciones:
+      [
+        "Con dos `await request.post(...)` seguidos, uno tras otro en la prueba",
+        "Dentro de un `Promise.all([...])`, sin `await` en cada petición",
+        "Con un `for` que espere un segundo entre una petición y la siguiente",
+        "Con `request.post` configurando un tiempo de espera igual a cero",
+      ]
+    correcta: 1
+    explicacion: "`Promise.all` inicia las dos peticiones sin esperar a la anterior, así que llegan casi a la vez. Con dos `await` seguidos la segunda sale cuando la primera ya terminó y la carrera no se produce."

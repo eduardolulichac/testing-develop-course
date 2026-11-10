@@ -99,7 +99,7 @@ T3 son las fases 3 y 4. Con solo F3 publicada hay 4 retos y el 80 % exige **4 de
 | Ola | Tareas                                                                                                                                                                        |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0   | **F3-ESC-0** (§2): token sembrado, `gateway_down`, `api.field_renamed`, pantallas de accesibilidad, `requiresPostgres` en el arnés                                            |
-| 1   | **F3-ESC-1** `fase3-flakiness`, `fase3-servicio-caido`, `fase3-seguridad` (solo API)                                                                                          |
+| 1   | **F3-ESC-1** `fase3-flakiness`, `fase3-servicio-caido`, `fase3-seguridad` (solo API). **HECHA** (2026-11-10, ver §10)                                                         |
 | 2   | **F3-ESC-2** `fase3-visual`, `fase3-accesibilidad`, `fase3-rendimiento` (front y navegador real) y los 4 `eval-3-*`                                                           |
 | 3   | **F3-ESC-3** registro en `index.ts`, quitar de `planned.ts`, `registry.test.ts`, `scenarios.test.ts`, `validate:content`; prueba de integración con Docker de la carrera (B3) |
 | 4   | **F3-TPL-0a** esquema en `packages/shared` (`repeticiones`, `workers`, `suite_tiempo`/relativo, `informe` `a11y-v1` y causa raíz)                                             |
@@ -129,3 +129,15 @@ Después, E4-F3 (redacción 3.1–3.8; 3.6 defensivo; revisión Opus). Como en F
 - La carrera contra Postgres real, axe en navegador real, la precedencia de `describe.configure({ retries })` frente a `--retries=0`, la red de k6 en Docker y los tiempos de CI no se han comprobado. Cada uno se mide en su tarea antes de fijar umbrales (N de repeticiones, k de paralelismo, topes).
 - El arreglo A1 no llega a las Arenas publicadas hasta reconstruir las imágenes de GHCR y regenerar los digests (E5-3).
 - El proyecto de cierre de F3 («informe de flakiness, rendimiento y accesibilidad») queda sin medición de rendimiento (M8).
+
+## 10. Notas de la implementación de F3-ESC-1 (2026-11-10)
+
+Los tres escenarios están registrados (`index.ts`, `planned.ts`, `registry.test.ts`) con README y confirmador. Se registraron ya en esta ola, y no en F3-ESC-3, porque el arnés diferencial solo prueba lo registrado. Lo que la implementación corrigió del diseño:
+
+1. **Los ids de release son semver** (`vX.Y.Z`): `fase3-servicio-caido` usa `v1.0.0` («Pasarela caída», por defecto) y `v2.0.0` («Pasarela lenta»), no `v1`/`v2`.
+2. **Las releases son acumulativas.** `v2.0.0` lleva `removeDefects: ["payment.gateway_down"]`. Esto **no cambia lo observable por HTTP** (el timeout se decide primero y siempre dispara): solo deja un defecto activo por release. Se comprueba en `registry.test.ts`, con una mutación que falla si se quita (un primer test por HTTP pasaba también sin la eliminación, y se descartó).
+3. **`api.flaky_checkout` no es aleatorio.** Falla en una posición fija por cada ventana de 10 llamadas a `POST /api/checkout`, que sale de la semilla (3101). Por eso el confirmador hace 10 checkouts **con el carrito vacío** (los sanos dan 422 y no compran nada) y exige ver un 503, sin stock ni carritos.
+4. **El IDOR se prueba con Luis leyendo el pedido #1, que es de Ana.** Los pedidos sembrados (#1 y #2) son de Ana, no de Luis.
+5. **El token caducado está copiado en `fase3-seguridad/confirm.ts`**, porque el paquete de escenarios no puede importar de la API; si se separa de `SEED_EXPIRED_TOKEN`, el arnés diferencial falla.
+6. **`v2.0.0` se prueba en `api/test/scenarios.test.ts` con un `sleep` instantáneo**, porque duerme 8 s de servidor y el confirmador solo ve la release por defecto.
+7. `checkFlakyCheckout` (`fase3-flakiness/checks.ts`) queda pensado para que `eval-3-1-intermitente` lo reutilice; su evidencia es genérica porque esos archivos se empaquetan en el evaluador público.

@@ -8,7 +8,7 @@ import { defects, registry, scenarios } from "./index.ts";
 import { PLANNED_SCENARIOS } from "./planned.ts";
 
 describe("scenario registry", () => {
-  it("registers baseline, the phase 0/1 scenarios and the phase 2 ones", () => {
+  it("registers baseline, the phase 0/1 scenarios and the phase 2 and 3 ones", () => {
     expect(scenarios.map((s) => s.id)).toEqual([
       "baseline",
       "eval-2-3-esquema",
@@ -32,6 +32,9 @@ describe("scenario registry", () => {
       "fase2-base-de-datos",
       "fase2-despliegue",
       "fase2-e2e-combinado",
+      "fase3-flakiness",
+      "fase3-seguridad",
+      "fase3-servicio-caido",
     ]);
   });
 
@@ -43,6 +46,20 @@ describe("scenario registry", () => {
     for (const s of scenarios.filter((x) => !x.id.startsWith("eval-"))) {
       expect(registry.scenarios.get(s.id)?.hosted, s.id).toBe(true);
     }
+  });
+
+  it("gives each fase3-servicio-caido release exactly one defect (releases are cumulative)", () => {
+    const active = (release: string) => {
+      const engine = createEngine({
+        scenario: registry.scenarios.get("fase3-servicio-caido")!,
+        registry,
+        allowRunnerOnly: false,
+        release,
+      });
+      return defects.filter((d) => engine.isActive(d.id)).map((d) => d.id);
+    };
+    expect(active("v1.0.0")).toEqual(["payment.gateway_down"]);
+    expect(active("v2.0.0")).toEqual(["payment.gateway_timeout_leaks_stock"]);
   });
 
   it("keeps baseline free of defects", () => {

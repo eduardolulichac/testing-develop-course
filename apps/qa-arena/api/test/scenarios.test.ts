@@ -5,6 +5,10 @@ import { registry } from "@arena/scenarios";
 import type { ArenaClient, Confirmer } from "@course/scenario-engine";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ANA, appInjectClient, makeApp, makeDefectApp, type TestApp } from "./helpers.js";
+import {
+  checkGatewayDownHandled,
+  checkTimeoutLeaksStock,
+} from "../../scenarios/fase3-servicio-caido/checks.ts";
 
 /**
  * Differential self-check: a scenario's confirmer must report its defect with the scenario
@@ -95,6 +99,37 @@ describe("scenario confirmers (differential)", () => {
       expect(await accentStatus("v1.4.0")).not.toBe(422);
       expect(await accentStatus("v1.5.0")).toBe(422);
     });
+  });
+});
+
+describe("fase3-servicio-caido releases", () => {
+  // `v2.0.0` waits 8 s of server time before timing out, so this app gets an instant `sleep`.
+  let t: TestApp;
+  beforeAll(async () => {
+    t = await makeApp({ ARENA_DEPLOYMENT: "ephemeral" }, undefined, undefined, async () => {});
+  });
+  afterAll(() => t.close());
+
+  it("v1.0.0 handles the gateway being down (402, cart kept); the baseline approves", async () => {
+    const { on, off } = await differential(t.app, "fase3-servicio-caido", checkGatewayDownHandled);
+    expect(on.present, on.evidence).toBe(true);
+    expect(off.present, off.evidence).toBe(false);
+  });
+
+  it("v2.0.0 times out and leaks stock, and no longer answers 402 like v1.0.0", async () => {
+    const { on, off } = await differential(
+      t.app,
+      "fase3-servicio-caido",
+      checkTimeoutLeaksStock,
+      "v2.0.0",
+    );
+    expect(on.present, on.evidence).toBe(true);
+    expect(off.present, off.evidence).toBe(false);
+    // Behavioural only: the timeout wins over `gateway_down` at the same point, so this does not
+    // prove `v1.0.0`'s defect was removed (`registry.test.ts` checks the active set).
+    const c = appInjectClient(t.app);
+    await c.setScenario("fase3-servicio-caido", "v2.0.0");
+    expect((await checkGatewayDownHandled(c)).present).toBe(false);
   });
 });
 

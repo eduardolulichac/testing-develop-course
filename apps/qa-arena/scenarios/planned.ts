@@ -5,10 +5,7 @@
  */
 export const PLANNED_SCENARIOS = [
   "fase3-accesibilidad",
-  "fase3-flakiness",
   "fase3-rendimiento",
-  "fase3-seguridad",
-  "fase3-servicio-caido",
   "fase3-visual",
   "fase4-agente-explorador",
   "fase4-asistente-compras",

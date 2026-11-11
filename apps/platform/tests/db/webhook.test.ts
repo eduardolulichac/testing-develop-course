@@ -188,6 +188,28 @@ describe("reserve_challenge_submission", () => {
     const r = await reserve(c, nonce(), nextRun());
     expect(r.status).toBe("limit");
     expect(r.retry_after).toBeGreaterThan(0);
+    expect(r.retry_after).toBeLessThanOrEqual(60);
+  });
+
+  // `now()` cannot be faked inside a transaction, so the boundary is checked on the pure function
+  // the limit uses. The old expression (`60 - extract(second from now())::integer`) rounded every
+  // instant from :59.5 to :59.999 to 0, so about 1 run in 120 told the client to retry in 0 s
+  // (seen in CI at 01:50:59.8, which made the test above fail).
+  it("asks the client to wait at least 1 s, even in the last half second of a minute", async () => {
+    const wait = async (iso: string) =>
+      (
+        await pool.query<{ s: number }>(
+          "select public.webhook_minute_retry_after($1::timestamptz) as s",
+          [iso],
+        )
+      ).rows[0]!.s;
+    expect(await wait("2026-11-11T01:50:59.999Z")).toBe(1);
+    expect(await wait("2026-11-11T01:50:59.800Z")).toBe(1);
+    expect(await wait("2026-11-11T01:50:59.500Z")).toBe(1);
+    expect(await wait("2026-11-11T01:50:59.000Z")).toBe(1);
+    expect(await wait("2026-11-11T01:50:30.000Z")).toBe(30);
+    expect(await wait("2026-11-11T01:50:00.200Z")).toBe(60);
+    expect(await wait("2026-11-11T01:50:00.000Z")).toBe(60);
   });
 
   it("answers limit_global when the GitHub hourly budget is spent", async () => {
@@ -254,6 +276,20 @@ describe("permissions", () => {
           "select public.finalize_challenge_submission(gen_random_uuid(), 'rechazado', null, null, null, '{}', '{}')",
         ),
       ).rejects.toThrow(/permission denied/);
+    } finally {
+      await client.query("rollback");
+      client.release();
+    }
+  });
+
+  it("denies the retry_after helper to authenticated users too", async () => {
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query("set local role authenticated");
+      await expect(client.query("select public.webhook_minute_retry_after(now())")).rejects.toThrow(
+        /permission denied/,
+      );
     } finally {
       await client.query("rollback");
       client.release();

@@ -100,7 +100,7 @@ T3 son las fases 3 y 4. Con solo F3 publicada hay 4 retos y el 80 % exige **4 de
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0   | **F3-ESC-0** (§2): token sembrado, `gateway_down`, `api.field_renamed`, pantallas de accesibilidad, `requiresPostgres` en el arnés                                            |
 | 1   | **F3-ESC-1** `fase3-flakiness`, `fase3-servicio-caido`, `fase3-seguridad` (solo API). **HECHA** (2026-11-10, ver §10)                                                         |
-| 2   | **F3-ESC-2** `fase3-visual`, `fase3-accesibilidad`, `fase3-rendimiento` (front y navegador real) y los 4 `eval-3-*`                                                           |
+| 2   | **F3-ESC-2** `fase3-visual`, `fase3-accesibilidad`, `fase3-rendimiento` (front y navegador real) y los 4 `eval-3-*`. **HECHA** (2026-11-10, ver §10)                          |
 | 3   | **F3-ESC-3** registro en `index.ts`, quitar de `planned.ts`, `registry.test.ts`, `scenarios.test.ts`, `validate:content`; prueba de integración con Docker de la carrera (B3) |
 | 4   | **F3-TPL-0a** esquema en `packages/shared` (`repeticiones`, `workers`, `suite_tiempo`/relativo, `informe` `a11y-v1` y causa raíz)                                             |
 | 5   | **F3-TPL-0b** `run.ts`, `playwright-report.ts` (`workerIndex`, repeticiones), `evaluate.yml` — **revisión Opus** (evaluador público, H42)                                     |
@@ -141,3 +141,14 @@ Los tres escenarios están registrados (`index.ts`, `planned.ts`, `registry.test
 5. **El token caducado está copiado en `fase3-seguridad/confirm.ts`**, porque el paquete de escenarios no puede importar de la API; si se separa de `SEED_EXPIRED_TOKEN`, el arnés diferencial falla.
 6. **`v2.0.0` se prueba en `api/test/scenarios.test.ts` con un `sleep` instantáneo**, porque duerme 8 s de servidor y el confirmador solo ve la release por defecto.
 7. `checkFlakyCheckout` (`fase3-flakiness/checks.ts`) queda pensado para que `eval-3-1-intermitente` lo reutilice; su evidencia es genérica porque esos archivos se empaquetan en el evaluador público.
+
+### F3-ESC-2 (2026-11-10)
+
+Registrados `fase3-visual`, `fase3-accesibilidad`, `fase3-rendimiento` y los cuatro `eval-3-*`, cada uno con README y confirmador. Lo que la implementación decidió o corrigió:
+
+8. **`eval-3-2-paralelo` tiene un solo defecto (`api.slow_catalog`), no dos.** §3.2 listaba también `auth.slow_login`, pero `registry.test.ts` exige exactamente un defecto a todo `eval-*`. El catálogo es la mejor elección: casi todo flujo de compra lo lista, mientras que una suite que reutiliza la sesión guardada (`storageState`) inicia sesión una sola vez, y `slow_login` casi no añadiría latencia que solapar.
+9. **No existe un defecto «checkout lento».** `fase3-rendimiento` solo tiene `api.slow_catalog` (el listado, no el detalle); la lección mide `POST /api/checkout` tal cual está, como punto de comparación.
+10. **Los escenarios de solo front se confirman por `uiFlags`** (`confirmUiFlags` en `helpers.ts`), que es lo que ya hacía `fase1-localizadores`. Es tautológico a propósito (revisión M2): el aspecto y el DOM los comprueba el render (`web/src/test/ui-flags`) y, para el reto 3-4, el confirmador de navegador de F3-TPL-0c.
+11. **Los confirmadores de latencia miden tiempo de pared** (`checkSlowCatalog`, umbral 1000 ms frente a un mínimo de 1500 del defecto y milisegundos en baseline). El arnés los ejecuta con el `sleep` real, ~2 s cada uno.
+12. **`eval-3-1-carrera` está verificado contra Postgres real** (Arena en Docker, modo runner con token), porque PGlite no puede mostrar la carrera y el arnés lo omite (`requiresPostgres`). Tres ejecuciones con el defecto dieron `201,201,201` con stock final 0 (se venden 6 unidades con stock 2) y el confirmador presente; en `baseline`, `201,409,409` y ausente. Falta automatizarlo como prueba de integración de CI (F3-ESC-3, B3).
+13. **Los escenarios `hosted: false` exigen el modo runner con token** (`ARENA_RUNNER_MODE=1`, despliegue `ephemeral`, token de 32+ caracteres): sin él, activarlos da 403. Hay que tenerlo en cuenta al escribir esa prueba de integración.

@@ -19,6 +19,10 @@ describe("scenario registry", () => {
       "eval-2-9-cupon",
       "eval-2-9-login-error",
       "eval-2-9-quitar",
+      "eval-3-1-carrera",
+      "eval-3-1-intermitente",
+      "eval-3-2-paralelo",
+      "eval-3-7-contrato",
       "fase0-entorno",
       "fase0-red",
       "fase1-ambientes",
@@ -32,9 +36,12 @@ describe("scenario registry", () => {
       "fase2-base-de-datos",
       "fase2-despliegue",
       "fase2-e2e-combinado",
+      "fase3-accesibilidad",
       "fase3-flakiness",
+      "fase3-rendimiento",
       "fase3-seguridad",
       "fase3-servicio-caido",
+      "fase3-visual",
     ]);
   });
 

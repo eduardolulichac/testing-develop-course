@@ -25,6 +25,13 @@ import fase2BaseDeDatos from "./fase2-base-de-datos/scenario.ts";
 import fase3Flakiness from "./fase3-flakiness/scenario.ts";
 import fase3ServicioCaido from "./fase3-servicio-caido/scenario.ts";
 import fase3Seguridad from "./fase3-seguridad/scenario.ts";
+import fase3Visual from "./fase3-visual/scenario.ts";
+import fase3Accesibilidad from "./fase3-accesibilidad/scenario.ts";
+import fase3Rendimiento from "./fase3-rendimiento/scenario.ts";
+import eval31Carrera from "./eval-3-1-carrera/scenario.ts";
+import eval31Intermitente from "./eval-3-1-intermitente/scenario.ts";
+import eval32Paralelo from "./eval-3-2-paralelo/scenario.ts";
+import eval37Contrato from "./eval-3-7-contrato/scenario.ts";
 
 export { defects, type DefectId } from "./defects.ts";
 export { defineScenario } from "./define.ts";
@@ -57,6 +64,13 @@ export const scenarios = [
   fase3Flakiness,
   fase3ServicioCaido,
   fase3Seguridad,
+  fase3Visual,
+  fase3Accesibilidad,
+  fase3Rendimiento,
+  eval31Carrera,
+  eval31Intermitente,
+  eval32Paralelo,
+  eval37Contrato,
 ].sort((a, b) => a.id.localeCompare(b.id));
 
 /**
